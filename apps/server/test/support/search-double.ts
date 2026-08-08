@@ -6,7 +6,6 @@ interface Entry {
   path: string;
   space: string;
   title: string;
-  tags: string[];
   body: string;
 }
 
@@ -18,7 +17,6 @@ function toEntry(page: Page): Entry {
     path: page.path,
     space: page.space,
     title: page.title,
-    tags: page.tags.map((tag) => tag.toLowerCase()),
     body: page.markdown,
   };
 }
@@ -71,7 +69,6 @@ export class MemorySearchIndex implements SearchIndex {
     const hits: SearchHit[] = [];
     for (const entry of this.#entries.values()) {
       if (options.space !== undefined && entry.space !== options.space) continue;
-      if (options.tag !== undefined && !entry.tags.includes(options.tag.toLowerCase())) continue;
 
       const title = entry.title.toLowerCase();
       const body = entry.body.toLowerCase();

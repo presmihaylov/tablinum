@@ -87,13 +87,6 @@ export const PanelRight = (props: IconProps) => (
   </Svg>
 );
 
-export const TableIcon = (props: IconProps) => (
-  <Svg {...props}>
-    <rect x="2" y="3" width="12" height="10" rx="1.5" />
-    <path d="M2 6.5h12M6.5 6.5V13" />
-  </Svg>
-);
-
 export const DocIcon = (props: IconProps) => (
   <Svg {...props}>
     <path d="M9 1.5H4.5A1.5 1.5 0 0 0 3 3v10a1.5 1.5 0 0 0 1.5 1.5h7A1.5 1.5 0 0 0 13 13V5.5Z" />

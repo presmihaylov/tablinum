@@ -1,5 +1,6 @@
 import type MarkdownIt from 'markdown-it';
 import type Token from 'markdown-it/lib/token.mjs';
+import type StateBlock from 'markdown-it/lib/rules_block/state_block.mjs';
 import type StateCore from 'markdown-it/lib/rules_core/state_core.mjs';
 import type StateInline from 'markdown-it/lib/rules_inline/state_inline.mjs';
 import { DATA, isCalloutType } from './dialect';
@@ -43,11 +44,18 @@ export function configureMarkdownIt(md: MarkdownIt): MarkdownIt {
   md.inline.ruler.before('newline', 'gd_break', breakRule);
   md.inline.ruler.before('link', 'gd_wikilink', wikilinkRule);
 
+  // No `alt` list, so the rule never interrupts an open paragraph. `Intro:\n![[a]]`
+  // stays one paragraph, which is what every other markdown reader sees.
+  md.block.ruler.before('paragraph', 'gd_pageembed', pageEmbedRule);
+
   // Escapes have to be claimed before `text_join` folds them into plain text.
   md.core.ruler.before('text_join', 'gd_escape', escapeRule);
   md.core.ruler.push('gd_markup', markupRule);
   md.core.ruler.push('gd_callout', calloutRule);
   md.core.ruler.push('gd_tasklist', taskListRule);
+  md.core.ruler.push('gd_listtight', listTightRule);
+  // After `gd_listtight`, which reads the very flag this rule clears.
+  md.core.ruler.push('gd_itemparagraph', itemParagraphRule);
 
   installRenderers(md);
   return md;
@@ -129,6 +137,39 @@ function wikilinkRule(state: StateInline, silent: boolean): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// block rules
+// ---------------------------------------------------------------------------
+
+/**
+ * `![[path]]` alone on a line, the whole page embedded in this one. The line has to
+ * match to the byte: a trailing space would be dropped on the way back out, and the
+ * paragraph this then stays is written back unchanged.
+ */
+const PAGE_EMBED_RE = /^!\[\[([^[\]\r\n|]+)\]\]$/;
+
+function pageEmbedRule(
+  state: StateBlock,
+  startLine: number,
+  _endLine: number,
+  silent: boolean,
+): boolean {
+  // Four columns in it is an indented code block, whoever wrote it.
+  if ((state.sCount[startLine] ?? 0) - state.blkIndent >= 4) return false;
+
+  const from = (state.bMarks[startLine] ?? 0) + (state.tShift[startLine] ?? 0);
+  const match = PAGE_EMBED_RE.exec(state.src.slice(from, state.eMarks[startLine] ?? from));
+  if (!match) return false;
+  if (silent) return true;
+
+  const token = state.push('gd_pageembed', 'div', 0);
+  token.map = [startLine, startLine + 1];
+  token.markup = '![[';
+  token.attrSet(DATA.embed, match[1] ?? '');
+  state.line = startLine + 1;
+  return true;
+}
+
+// ---------------------------------------------------------------------------
 // core rules
 // ---------------------------------------------------------------------------
 
@@ -155,14 +196,23 @@ function escapeRule(state: StateCore): void {
 /** Copies source markers onto tokens so the serializer can reproduce them. */
 function markupRule(state: StateCore): void {
   let lines: string[] | null = null;
+  // How many quotes wrote a prefix onto the lines this token sits on.
+  let quotes = 0;
 
   for (const token of state.tokens) {
-    if (token.level === 0 && token.nesting >= 0 && token.map) {
+    if (token.type === 'blockquote_close') quotes -= 1;
+
+    if (token.nesting >= 0 && token.map && token.type !== 'inline') {
       lines = lines ?? state.src.split('\n');
-      const gap = blankLinesBefore(lines, token.map[0]);
+      const gap = blankLinesBefore(lines, token.map[0], quotes);
       // One blank line is the default separation and is not stored. Zero is, so a
       // heading and the line under it are not pushed apart on the first save.
       if (gap !== 1) token.attrSet(DATA.gap, String(gap));
+    }
+    // Counted after its own gap: the lines above a quote are outside it.
+    if (token.type === 'blockquote_open') {
+      quotes += 1;
+      continue;
     }
     if (token.type === 'bullet_list_open') {
       token.attrSet(DATA.marker, token.markup);
@@ -172,14 +222,31 @@ function markupRule(state: StateCore): void {
       token.attrSet(DATA.delimiter, token.markup);
       continue;
     }
+    // markdown-it parks the item's own source number here. Without it the serializer
+    // renumbers from the list's start, and `1./1./1.` becomes `1./2./3.` on every save.
+    if (token.type === 'list_item_open' && token.info.length > 0) {
+      token.attrSet(DATA.number, token.info);
+      continue;
+    }
     if (token.type === 'table_open') {
       lines = lines ?? state.src.split('\n');
       const delimiter = delimiterRow(lines, token);
       if (delimiter) token.attrSet(DATA.delims, delimiter);
+      const rows = sourceRows(lines, token);
+      if (rows) token.attrSet(DATA.rows, encodeRaw(rows));
+      continue;
+    }
+    // Only at the top level: deeper down the leading run also carries the container's
+    // own indent, and writing that back inside `wrapBlock` doubles it on every save.
+    if (token.type === 'code_block' && token.level === 0) {
+      lines = lines ?? state.src.split('\n');
+      const indent = codeIndent(lines, token);
+      if (indent) token.attrSet(DATA.indent, encodeRaw(indent));
       continue;
     }
     if (token.type === 'hr') {
-      token.attrSet(DATA.markup, token.markup);
+      lines = lines ?? state.src.split('\n');
+      token.attrSet(DATA.markup, ruleMarkup(lines, token));
       continue;
     }
     if (token.type === 'heading_open') {
@@ -205,26 +272,39 @@ function markupRule(state: StateCore): void {
         child.attrSet(DATA.marker, child.markup);
         continue;
       }
-      if (child.type === 'link_open' && child.markup === 'autolink') {
-        child.attrSet(DATA.autolink, 'true');
+      if (child.type === 'link_open') {
+        // Record both answers. Without the explicit 'false' the serializer falls back to a
+        // heuristic and rewrites `[https://e.com](https://e.com)` as a bare autolink.
+        child.attrSet(DATA.autolink, child.markup === 'autolink' ? 'true' : 'false');
       }
     }
   }
 }
 
-/**
- * A parser keeps no record of how many blank lines separated two blocks. Only
- * top-level blocks are measured: inside a quote or a list a "blank" line still
- * carries the container's own prefix, which is not whitespace.
- */
-function blankLinesBefore(lines: string[], startLine: number): number {
+/** A parser keeps no record of how many blank lines separated two blocks. */
+function blankLinesBefore(lines: string[], startLine: number, quotes: number): number {
   let count = 0;
   let index = startLine - 1;
-  while (index >= 0 && (lines[index] ?? '').trim().length === 0) {
+  while (index >= 0 && isBlankLine(lines[index] ?? '', quotes)) {
     count += 1;
     index -= 1;
   }
   return count;
+}
+
+/**
+ * A separator line inside a quote still carries its `>` markers, so a plain trim never
+ * calls it blank. Only the markers the enclosing quotes wrote may be stripped: a lone `>`
+ * at the top level is an empty blockquote, not a blank line.
+ */
+function isBlankLine(line: string, quotes: number): boolean {
+  let index = 0;
+  for (let depth = 0; depth < quotes; depth += 1) {
+    while (line[index] === ' ' || line[index] === '\t') index += 1;
+    if (line[index] !== '>') break;
+    index += 1;
+  }
+  return line.slice(index).trim().length === 0;
 }
 
 /** markdown-it trims a paragraph before parsing it, so the last line's tail is read back out. */
@@ -249,6 +329,40 @@ function atxTail(lines: string[], token: Token): string | null {
   return /(?:[ \t]+#+)?[ \t]*$/.exec(line)?.[0] || null;
 }
 
+/**
+ * The four columns markdown-it strips off an indented code block. A tab spans to the next
+ * multiple of four, so one file spends a byte where another spends four. Anything past the
+ * fourth column stays in the content and must not be captured twice.
+ */
+function codeIndent(lines: string[], token: Token): string | null {
+  const line = token.map ? lines[token.map[0]] : undefined;
+  if (typeof line !== 'string') return null;
+  let columns = 0;
+  for (let i = 0; i < line.length; i += 1) {
+    const char = line[i];
+    if (char === ' ') columns += 1;
+    else if (char === '\t') columns += 4 - (columns % 4);
+    else return null;
+    if (columns >= 4) return line.slice(0, i + 1);
+  }
+  return null;
+}
+
+const RULE_LINE = /^[ \t]*([-*_])(?:[ \t]*\1){2,}[ \t]*$/;
+
+/**
+ * `token.markup` is the marker repeated, so `- - -` comes back as `---`. The source line
+ * holds the spelling the file used. Inside a quote or a list item the container's own
+ * prefix is dropped, because `wrapBlock` writes it again.
+ */
+function ruleMarkup(lines: string[], token: Token): string {
+  const line = token.map ? lines[token.map[0]] : undefined;
+  if (typeof line !== 'string') return token.markup;
+  const stripped = token.level === 0 ? line : line.replace(/^[ \t>]*/, '');
+  const source = stripped.replace(/[ \t]+$/, '');
+  return RULE_LINE.test(source) ? source : token.markup;
+}
+
 /** `=` / `-` underlines only; the run is read back out of the source line. */
 function setextUnderline(lines: string[], token: Token): string | null {
   if (token.markup !== '=' && token.markup !== '-') return null;
@@ -256,10 +370,16 @@ function setextUnderline(lines: string[], token: Token): string | null {
   if (!map) return null;
   const line = lines[map[1] - 1];
   if (typeof line !== 'string') return null;
-  // The indent is part of the underline: dropping it rewrites the line on the first save.
-  const match = /^([ \t]*(?:=+|-+))[ \t]*$/.exec(line);
+  // At the top level the indent is part of the underline: dropping it rewrites the line on
+  // the first save. Inside a quote or a list item the leading run is the container's own
+  // prefix, which `wrapBlock` writes again, so it must not be stored twice.
+  const candidate = token.level === 0 ? line : line.replace(/^[ \t>]*/, '');
+  const match = /^([ \t]*(?:=+|-+))[ \t]*$/.exec(candidate);
   return match?.[1] ?? null;
 }
+
+/** Whatever a container wrote before the block's own content on the line. */
+const CONTAINER_PREFIX = /^[ \t>]*/;
 
 /**
  * The `| --- | :-: |` line under a table header, exactly as written. The parser keeps only the
@@ -270,9 +390,27 @@ function delimiterRow(lines: string[], token: Token): string | null {
   if (!map) return null;
   const line = lines[map[0] + 1];
   if (typeof line !== 'string') return null;
-  const row = line.trim();
+  // A delimiter cell can never start with `>`, so the leading run is the quote's own prefix.
+  const row = line.replace(CONTAINER_PREFIX, '').trim();
   if (row.length === 0 || !/^[-:| \t]+$/.test(row)) return null;
   return row;
+}
+
+/**
+ * Every line of the table as the file wrote it. The parser trims each cell before it parses
+ * the inline content, so cell padding, ragged widths and one-sided pipes can only be
+ * reproduced from the source rows.
+ */
+function sourceRows(lines: string[], token: Token): string | null {
+  const map = token.map;
+  if (!map) return null;
+  const rows: string[] = [];
+  for (let index = map[0]; index < map[1]; index += 1) {
+    const line = lines[index];
+    if (typeof line !== 'string') return null;
+    rows.push(line.replace(CONTAINER_PREFIX, ''));
+  }
+  return rows.length > 0 ? rows.join('\n') : null;
 }
 
 const ALERT_RE = /^\[!([A-Za-z]+)\][ \t]*$/;
@@ -295,6 +433,11 @@ function calloutRule(state: StateCore): void {
     const match = ALERT_RE.exec(first.content);
     const kind = match?.[1]?.toUpperCase();
     if (!kind || !isCalloutType(kind)) continue;
+
+    // GitHub wants the marker alone on its line. `[!NOTE] **Bold** title` leaves the text
+    // child holding only `[!NOTE] `, so the regex passes while the line carries a title.
+    const after = children[1]?.type;
+    if (after !== undefined && after !== 'softbreak' && after !== 'hardbreak') continue;
 
     tokens[i]?.attrSet(DATA.callout, kind);
     // The keyword is matched case-insensitively, so its source casing travels alongside the
@@ -360,6 +503,66 @@ function taskListRule(state: StateCore): void {
   }
 }
 
+/**
+ * Records the tightness markdown-it computed. A tight list hides its items' paragraphs and
+ * says nothing else, so a list whose items hold no paragraph at all - only headings, fences
+ * or nested lists - renders exactly like the loose form and the HTML probe cannot tell them
+ * apart.
+ */
+function listTightRule(state: StateCore): void {
+  const tokens = state.tokens;
+  let lines: string[] | null = null;
+
+  for (let i = 0; i < tokens.length; i += 1) {
+    const token = tokens[i];
+    if (token?.type !== 'bullet_list_open' && token?.type !== 'ordered_list_open') continue;
+    lines = lines ?? state.src.split('\n');
+    token.attrSet('data-tight', String(listIsTight(tokens, i, lines)));
+  }
+}
+
+function listIsTight(tokens: Token[], listIndex: number, lines: string[]): boolean {
+  const level = tokens[listIndex]?.level ?? 0;
+  const maps: number[][] = [];
+
+  for (let i = listIndex + 1; i < tokens.length; i += 1) {
+    const token = tokens[i];
+    if (!token || token.level <= level) break;
+    // Direct children of the items. Anything deeper belongs to a nested container.
+    if (token.level !== level + 2 || token.nesting < 0) continue;
+    if (token.type === 'paragraph_open') return token.hidden;
+    if (token.map) maps.push(token.map);
+  }
+
+  // No paragraph to read, so the blank line between two blocks is the only evidence left.
+  for (let i = 1; i < maps.length; i += 1) {
+    const from = maps[i - 1]?.[1] ?? 0;
+    const to = maps[i]?.[0] ?? 0;
+    for (let line = from; line < to; line += 1) {
+      if ((lines[line] ?? '').trim().length === 0) return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * A tight list hides its items' paragraphs, and a hidden token renders no element, so every
+ * attribute on it is lost. Only an item's first block can do without one: a later paragraph
+ * needs an element to carry the blank-line run that comes before it.
+ */
+function itemParagraphRule(state: StateCore): void {
+  const tokens = state.tokens;
+
+  for (let i = 0; i < tokens.length; i += 1) {
+    const token = tokens[i];
+    if (token?.type !== 'paragraph_open' || !token.hidden) continue;
+    if (tokens[i - 1]?.type === 'list_item_open') continue;
+    token.hidden = false;
+    const close = tokens[i + 2];
+    if (close?.type === 'paragraph_close') close.hidden = false;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // renderers
 // ---------------------------------------------------------------------------
@@ -413,6 +616,12 @@ function installRenderers(md: MarkdownIt): void {
     return self.renderToken(tokens, idx, options);
   };
 
+  rules['gd_pageembed'] = (tokens, idx) => {
+    const token = tokens[idx];
+    const target = token?.attrGet(DATA.embed) ?? '';
+    return `<div ${DATA.embed}="${escapeHtml(target)}"${gapAttr(token)}></div>`;
+  };
+
   rules['gd_wikilink'] = (tokens, idx) => {
     const token = tokens[idx];
     if (!token) return '';
@@ -429,11 +638,16 @@ function renderCode(token: Token, rawContent: string, fence: string, info: strin
   const language = info.trim().split(/\s+/)[0] ?? '';
   const className = language ? ` class="${escapeHtml(LANG_PREFIX + language)}"` : '';
   const attrs = `${DATA.fence}="${escapeHtml(fence)}" ${DATA.info}="${escapeHtml(info)}"`;
-  return `<pre ${attrs}${gapAttr(token)}><code${className}>${escapeHtml(content)}</code></pre>`;
+  const extra = `${gapAttr(token)}${copyAttr(token, DATA.indent)}`;
+  return `<pre ${attrs}${extra}><code${className}>${escapeHtml(content)}</code></pre>`;
 }
 
 /** The custom block renderers bypass `renderToken`, so the gap is copied by hand. */
 function gapAttr(token: Token | undefined): string {
-  const gap = token?.attrGet(DATA.gap);
-  return gap === null || gap === undefined ? '' : ` ${DATA.gap}="${escapeHtml(gap)}"`;
+  return copyAttr(token, DATA.gap);
+}
+
+function copyAttr(token: Token | undefined, name: string): string {
+  const value = token?.attrGet(name);
+  return value === null || value === undefined ? '' : ` ${name}="${escapeHtml(value)}"`;
 }

@@ -149,8 +149,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             path: childPathFor(spaces, container, `${node.title} copy`),
             title: `${node.title} copy`,
             markdown: source.page.markdown,
-            tags: source.page.tags,
-            props: source.page.props,
             ...(source.page.icon ? { icon: source.page.icon } : {}),
           };
           const created = await createPage.mutateAsync(body);

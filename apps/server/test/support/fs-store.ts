@@ -27,7 +27,6 @@ import type {
   PageId,
   PagePath,
   PageSummary,
-  PropValue,
   Space,
   TreeNode,
   UpdatePageBody,
@@ -37,6 +36,7 @@ import {
   parseFlatYaml,
   parsePageFile,
   serializeFlatYaml,
+  type Scalar,
   serializeFrontmatter,
 } from './frontmatter.js';
 
@@ -146,7 +146,7 @@ export class FsContentStore implements ContentStore {
     if (existsSync(dir)) throw conflict(`Space ${input.slug} already exists`);
     await mkdir(dir, { recursive: true });
 
-    const descriptor: Record<string, PropValue> = { name: input.name };
+    const descriptor: Record<string, Scalar> = { name: input.name };
     if (input.icon !== undefined) descriptor.icon = input.icon;
     if (input.order !== undefined) descriptor.order = input.order;
     await writeFile(
@@ -181,10 +181,6 @@ export class FsContentStore implements ContentStore {
     return (await this.#allPages()).map(toSummary);
   }
 
-  async listChildren(path: PagePath): Promise<PageSummary[]> {
-    const pages = await this.listPages();
-    return pages.filter((page) => parentPath(page.path) === path);
-  }
 
   async getPageByPath(path: PagePath): Promise<Page | null> {
     const rel = this.#fileOf(path);
@@ -223,9 +219,7 @@ export class FsContentStore implements ContentStore {
       updated: now,
     };
     if (input.icon !== undefined) frontmatter.icon = input.icon;
-    if (input.tags !== undefined) frontmatter.tags = input.tags;
     if (input.order !== undefined) frontmatter.order = input.order;
-    if (input.props !== undefined) frontmatter.props = input.props;
 
     const rel = pagePathToRelFile(input.path, parent === null);
     const abs = join(this.contentDir, rel);
@@ -260,14 +254,10 @@ export class FsContentStore implements ContentStore {
     const icon = patch.icon === null ? undefined : (patch.icon ?? page.icon);
     if (icon !== undefined) frontmatter.icon = icon;
 
-    const tags = patch.tags ?? page.tags;
-    if (tags.length > 0) frontmatter.tags = tags;
 
     const order = patch.order === null ? undefined : (patch.order ?? page.order);
     if (order !== undefined) frontmatter.order = order;
 
-    const props = patch.props ?? page.props;
-    if (Object.keys(props).length > 0) frontmatter.props = props;
 
     const markdown = patch.markdown ?? page.markdown;
     await writeFile(page.filePath, serializeFrontmatter(frontmatter) + markdown, 'utf8');
@@ -403,10 +393,8 @@ export class FsContentStore implements ContentStore {
       path,
       space: spaceOf(path),
       title: frontmatter.title,
-      tags: frontmatter.tags ?? [],
       created: frontmatter.created,
       updated: frontmatter.updated,
-      props: frontmatter.props ?? {},
       markdown,
       filePath: abs,
       hasChildren: isIndexRel(relFile),

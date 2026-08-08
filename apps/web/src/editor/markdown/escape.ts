@@ -79,7 +79,17 @@ function readsBackAsPlainText(value: string, context: EscapeContext): boolean {
   const children = inline.children ?? [];
   if (children.length !== 1) return false;
   const only = children[0];
-  return only?.type === 'text' && only.content === value;
+  if (only?.type !== 'text') return false;
+  return only.content === probedText(value, context.lineStart);
+}
+
+/**
+ * markdown-it's block parser drops the trailing horizontal whitespace of a paragraph line,
+ * so the identity compare has to drop it too. Exactly `[ \t]`, never a newline: anything
+ * wider would hide a real difference and under-escape.
+ */
+function probedText(value: string, viaBlockParser: boolean): string {
+  return viaBlockParser ? value.replace(/[ \t]+$/, '') : value;
 }
 
 /** A line the file wrote under another line of the same block, never on its own. */
@@ -99,7 +109,8 @@ function readsBackAsContinuation(md: MarkdownIt, value: string): boolean {
   if (children[0]?.type !== 'text' || children[0]?.content !== CONTINUATION_ANCHOR) return false;
   if (children[1]?.type !== 'softbreak') return false;
   const last = children[2];
-  return last?.type === 'text' && last.content === value;
+  if (last?.type !== 'text') return false;
+  return last.content === probedText(value, true);
 }
 
 function paragraphInline(md: MarkdownIt, value: string): Token | null {
@@ -144,10 +155,25 @@ export function escapeLinkLabel(value: string): string {
   return value.replace(/([\\[\]])/g, '\\$1');
 }
 
+function hasBalancedParens(href: string): boolean {
+  let open = 0;
+  for (const char of href) {
+    if (char === '(') open += 1;
+    if (char === ')') {
+      open -= 1;
+      if (open < 0) return false;
+    }
+  }
+  return open === 0;
+}
+
 /** A destination with whitespace must be wrapped, which is also how it was written. */
 export function formatDestination(href: string): string {
   if (href.length === 0) return '';
   if (/[\s<>]/.test(href)) return `<${href.replace(/([<>\\])/g, '\\$1')}>`;
+  // A balanced run of parens is legal bare CommonMark and is how the author wrote it.
+  // An unbalanced one would end the destination early, so that still needs a backslash.
+  if (hasBalancedParens(href)) return href;
   return href.replace(/([()])/g, '\\$1');
 }
 

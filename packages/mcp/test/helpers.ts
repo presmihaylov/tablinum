@@ -137,8 +137,6 @@ export function makePage(overrides: Partial<Page> = {}): Page {
     path,
     space,
     title: 'Deploy runbook',
-    tags: [],
-    props: {},
     created: '2026-08-01T09:00:00.000Z',
     updated: '2026-08-08T10:00:00.000Z',
     markdown: 'The deploy runbook body.\n',

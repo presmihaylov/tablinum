@@ -68,7 +68,6 @@ describe('SearchIndex', () => {
       page({
         path: 'eng/runbooks/deploy',
         title: 'Deploy runbook',
-        tags: ['ops'],
         markdown: 'The canary stage watches error rates.',
       }),
     );
@@ -196,39 +195,6 @@ describe('SearchIndex', () => {
       ops.id,
     ]);
     expect(await index.search('glossary', { space: 'marketing' })).toEqual([]);
-  });
-
-  it('filters by tag, case-insensitively', async () => {
-    const tagged = page({
-      path: 'eng/alpha',
-      tags: ['Ops', 'deploy'],
-      markdown: 'shared vocabulary term glossary',
-    });
-    index.upsert(tagged);
-    index.upsert(page({ path: 'eng/beta', tags: ['design'], markdown: 'glossary of terms' }));
-
-    expect((await index.search('glossary', { tag: 'ops' })).map((hit) => hit.id)).toEqual([
-      tagged.id,
-    ]);
-    expect((await index.search('glossary', { tag: 'OPS' })).map((hit) => hit.id)).toEqual([
-      tagged.id,
-    ]);
-    expect(await index.search('glossary', { tag: 'missing' })).toEqual([]);
-  });
-
-  it('does not let a tag filter match a partial tag name', async () => {
-    index.upsert(page({ path: 'eng/alpha', tags: ['operations'], markdown: 'glossary' }));
-    expect(await index.search('glossary', { tag: 'ops' })).toEqual([]);
-  });
-
-  it('combines the space and tag filters', async () => {
-    const wanted = page({ path: 'ops/alpha', tags: ['deploy'], markdown: 'glossary' });
-    index.upsert(wanted);
-    index.upsert(page({ path: 'eng/alpha', tags: ['deploy'], markdown: 'glossary' }));
-    index.upsert(page({ path: 'ops/beta', tags: ['design'], markdown: 'glossary' }));
-
-    const hits = await index.search('glossary', { space: 'ops', tag: 'deploy' });
-    expect(hits.map((hit) => hit.id)).toEqual([wanted.id]);
   });
 
   it('honours the limit and clamps it to a sane range', async () => {

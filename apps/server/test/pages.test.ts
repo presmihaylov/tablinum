@@ -37,18 +37,14 @@ describe('page lifecycle', () => {
       title: 'Rollback',
       markdown: 'Roll back with one command.',
       icon: '⏪',
-      tags: ['ops'],
       order: 5,
-      props: { status: 'draft' },
     });
     expect(created.statusCode).toBe(201);
     const page = bodyOf(created, PageResponseSchema).page;
     expect(page.path).toBe('eng/rollback');
     expect(page.space).toBe('eng');
     expect(page.icon).toBe('⏪');
-    expect(page.tags).toEqual(['ops']);
     expect(page.order).toBe(5);
-    expect(page.props).toEqual({ status: 'draft' });
     expect(page.hasChildren).toBe(false);
     expect(existsSync(join(harness.contentDir, 'eng/rollback.md'))).toBe(true);
 
@@ -81,12 +77,11 @@ describe('page lifecycle', () => {
       method: 'PATCH',
       url: `/api/v1/pages/${page.id}`,
       headers: headers(),
-      payload: { title: 'Rollback runbook', markdown: 'Updated body.', props: { status: 'live' } },
+      payload: { title: 'Rollback runbook', markdown: 'Updated body.' },
     });
     const updated = bodyOf(patched, PageResponseSchema).page;
     expect(updated.title).toBe('Rollback runbook');
     expect(updated.markdown).toBe('Updated body.');
-    expect(updated.props).toEqual({ status: 'live' });
     expect(updated.id).toBe(page.id);
     expect(updated.created).toBe(page.created);
 

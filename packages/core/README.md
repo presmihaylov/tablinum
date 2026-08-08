@@ -27,7 +27,6 @@ await store.init();
 | `readRaw(file)` / `writeRaw(file, content)` | Byte-for-byte access inside the content root. |
 | `saveAsset(pageId, filename, data)` | Stores an attachment under `_assets/<pageId>/`. |
 | `getBacklinks(id)` / `resolveLinks(markdown, from?)` | Link graph over the files on disk. |
-| `queryView(query)` | A table over the direct children of a page, filtered by frontmatter props. |
 
 Every failure is an `AppError` from `@gitdocs/shared`, so the server can map it straight onto a
 status code.
@@ -52,21 +51,20 @@ when it loses its last one. Page ids never change across a rename or a move.
 
 ## Frontmatter
 
-`parse()` and `serialize()` keep the contract key order: `id`, `title`, `icon`, `tags`, `order`,
-`created`, `updated`, `props`. Two rules make the store safe to point at a git repository:
+`parse()` and `serialize()` keep the contract key order: `id`, `title`, `icon`, `order`,
+`created`, `updated`. Two rules make the store safe to point at a git repository:
 
 - **Round trips are byte identical.** Opening and saving an unchanged page produces no git diff.
   Values that YAML would coerce (`yes`, `null`, `1.0`, `12:30`, `2026-01-02`, padded strings) are
   quoted on the way out and read back as the exact same string.
 - **Broken frontmatter is repaired, never rejected.** An agent may hand-write a `.md` file with no
   frontmatter at all. The parser generates the id, takes the title from the first heading or the
-  filename, and folds unknown top-level keys into `props`. The file is only rewritten once
+  filename, and ignores every key the contract does not name. The file is only rewritten once
   something actually changes it.
 
 ## Other exports
 
 - `IndexMap` - in-memory id to file index, with duplicate-id detection.
 - `extractLinks`, `resolveWikilinks`, `buildBacklinkIndex`, `createPageResolver` - the link graph.
-- `queryView`, `filtersFromRecord` - table views over frontmatter props.
 - `watchContent(dir, onChange)` - debounced chokidar watcher that skips `.git` and `_assets`.
 - `resolveInside(root, target)` - path guard; anything outside the content root throws.

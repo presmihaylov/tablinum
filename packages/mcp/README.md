@@ -104,17 +104,16 @@ The local, unpublished form of the same file:
 
 | Tool | Arguments | Returns |
 | --- | --- | --- |
-| `gitdocs_search` | `query`, `space?`, `tag?`, `limit?` | Ranked hits with title, path, id, score and a one line snippet. |
+| `gitdocs_search` | `query`, `space?`, `limit?` | Ranked hits with title, path, id, score and a one line snippet. |
 | `gitdocs_get_page` | `path?`, `id?` | A metadata header plus the markdown body, verbatim. |
 | `gitdocs_list_tree` | `space?` | The page tree as an indented outline, one line per page. |
-| `gitdocs_create_page` | `path`, `title`, `markdown`, `icon?`, `tags?`, `props?`, `order?` | The new page as a one line summary. |
-| `gitdocs_update_page` | `id?`/`path?`, `title?`, `markdown?`, `icon?`, `tags?`, `props?`, `order?` | Which fields changed, plus the page summary. |
+| `gitdocs_create_page` | `path`, `title`, `markdown`, `icon?`, `order?` | The new page as a one line summary. |
+| `gitdocs_update_page` | `id?`/`path?`, `title?`, `markdown?`, `icon?`, `order?` | Which fields changed, plus the page summary. |
 | `gitdocs_append_page` | `id?`/`path?`, `markdown` | How much was appended, plus the page summary. |
 | `gitdocs_move_page` | `id?`/`path?`, `newPath` | The new path, plus the page summary. |
 | `gitdocs_delete_page` | `id?`/`path?`, `recursive?` | Every deleted path. |
 | `gitdocs_page_history` | `id?`/`path?`, `limit?` | Short sha, date, author and subject per commit. |
 | `gitdocs_git_sync` | `push?` | Commit, pull and push outcome, plus the git status. |
-| `gitdocs_query_view` | `dir`, `where?`, `sort?`, `order?` | A markdown table over the frontmatter props of the child pages. |
 
 Design rules that make these usable by a model:
 
@@ -127,7 +126,7 @@ Design rules that make these usable by a model:
   so a metadata-only edit can never blank a page.
 - **Appending never rewrites.** `gitdocs_append_page` reads the current body, adds a blank line and
   writes the addition after it, so a model can add a section without holding the whole page.
-- **Compact text, not JSON dumps.** Search results, the tree, history and views come back as short
+- **Compact text, not JSON dumps.** Search results, the tree and history come back as short
   lines a model can read cheaply. Only `gitdocs_get_page` returns the full markdown, byte for byte.
 - **Errors are actionable.** Every API error becomes `CODE: message` followed by `What to do: ...`,
   for example a `CONFLICT` tells the model to update the existing page instead of recreating it.
@@ -150,8 +149,7 @@ Attach it to a conversation to give a model the map of the site without spending
 
 `gitdocs_style_guide` carries the house conventions for writing pages here: the server owns the
 frontmatter, headings start at `##`, page links use `[[page-path]]`, paths are lowercase kebab-case,
-prop keys are reused across siblings so the table view stays clean, and metadata-only edits omit
-`markdown`. It takes an optional `space` argument, which adds guidance for that space.
+and metadata-only edits omit `markdown`. It takes an optional `space` argument, which adds guidance for that space.
 
 ## Development
 

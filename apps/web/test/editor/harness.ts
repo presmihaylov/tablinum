@@ -2,7 +2,7 @@ import { Editor } from '@tiptap/core';
 import type { Extensions } from '@tiptap/core';
 import { buildExtensions } from '../../src/editor/extensions';
 import type { EditorExtensionOptions } from '../../src/editor/extensions';
-import { readMarkdown, writeMarkdown } from '../../src/editor/markdown';
+import { PARSE_OPTIONS, readMarkdown, writeMarkdown } from '../../src/editor/markdown';
 
 /** A headless editor with the real schema. React node views are left out on purpose. */
 export function createTestEditor(
@@ -10,7 +10,11 @@ export function createTestEditor(
   overrides: Partial<EditorExtensionOptions> = {},
 ): Editor {
   const extensions: Extensions = buildExtensions({ interactive: false, ...overrides });
-  return new Editor({ extensions, content: readMarkdown(markdown).body });
+  return new Editor({
+    extensions,
+    content: readMarkdown(markdown).body,
+    parseOptions: PARSE_OPTIONS,
+  });
 }
 
 /** markdown -> ProseMirror -> markdown, exactly as the editor does it on load and save. */

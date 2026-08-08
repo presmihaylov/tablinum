@@ -22,32 +22,21 @@ function base(overrides: Partial<Frontmatter> = {}): Frontmatter {
 describe('serialize', () => {
   it('writes the contract key order', () => {
     const out = serialize(
-      base({
-        title: 'Deploy',
-        icon: 'D',
-        tags: ['ops', 'runbook'],
-        order: 2,
-        props: { status: 'live', owner: 'infra' },
-      }),
+      base({ title: 'Deploy', icon: 'D', order: 2 }),
       '# Deploy\n',
     );
-    expect(out.split('\n').slice(1, 10)).toEqual([
+    expect(out.split('\n').slice(1, 7)).toEqual([
       `id: ${ID}`,
       'title: Deploy',
       'icon: "D"',
-      'tags: [ops, runbook]',
       'order: 2',
       `created: ${CREATED}`,
       `updated: ${UPDATED}`,
-      'props:',
-      '  status: live',
     ]);
   });
 
   it('omits empty optional fields', () => {
-    const out = serialize(base({ tags: [], props: {} }), 'hi');
-    expect(out).not.toContain('tags:');
-    expect(out).not.toContain('props:');
+    const out = serialize(base(), 'hi');
     expect(out).not.toContain('icon:');
     expect(out).not.toContain('order:');
   });
@@ -94,36 +83,7 @@ describe('round trip', () => {
       expect(serialize(parsed.frontmatter, parsed.body)).toBe(original);
       expect(serializePreserving(parsed, parsed.frontmatter, parsed.body)).toBe(original);
     });
-
-    it(`keeps a prop and a tag with ${label} byte identical`, () => {
-      // A tag is always trimmed, so the canonical file never carries an untrimmed one.
-      const tag = value.trim();
-      const original = serialize(base({ tags: [tag], props: { note: value } }), 'body');
-      const parsed = parse(original);
-      expect(parsed.frontmatter.tags).toEqual([tag]);
-      expect(parsed.frontmatter.props?.['note']).toBe(value);
-      expect(parsed.repaired).toBe(false);
-      expect(serialize(parsed.frontmatter, parsed.body)).toBe(original);
-    });
   }
-
-  it('keeps hostile prop keys byte identical', () => {
-    const props = { 'due: date': '2026-03-01', 'has space': 'yes', normal: 'ok' };
-    const original = serialize(base({ props }), 'body');
-    const parsed = parse(original);
-    expect(parsed.frontmatter.props).toEqual(props);
-    expect(parsed.repaired).toBe(false);
-    expect(serialize(parsed.frontmatter, parsed.body)).toBe(original);
-  });
-
-  it('keeps mixed prop value types', () => {
-    const props = { count: 3, ready: true, missing: null, list: ['a', 'b'], ratio: -0.5 };
-    const original = serialize(base({ props }), 'body');
-    const parsed = parse(original);
-    expect(parsed.frontmatter.props).toEqual(props);
-    expect(parsed.repaired).toBe(false);
-    expect(serialize(parsed.frontmatter, parsed.body)).toBe(original);
-  });
 
   it('hands back the original bytes when nothing changed', () => {
     const original = serialize(base({ icon: 'X', order: 1 }), 'Hello\n\nWorld');
@@ -138,6 +98,19 @@ describe('round trip', () => {
     const out = serializePreserving(parsed, next, parsed.body);
     expect(out).not.toBe(original);
     expect(out).toContain('title: Renamed');
+  });
+
+  /** tags and props were dropped from the contract. A file that still carries them is left
+      alone until something else about the page changes, and loses them on that save. */
+  it('keeps a retired key on disk until the page changes, then drops it', () => {
+    const raw = `---\nid: ${ID}\ntitle: T\ntags: [ops]\ncreated: ${CREATED}\nupdated: ${UPDATED}\nprops:\n  status: live\n---\n\nbody\n`;
+    const parsed = parse(raw);
+    expect(parsed.repaired).toBe(false);
+    expect(serializePreserving(parsed, parsed.frontmatter, parsed.body)).toBe(raw);
+
+    const out = serializePreserving(parsed, { ...parsed.frontmatter, title: 'U' }, parsed.body);
+    expect(out).not.toContain('tags:');
+    expect(out).not.toContain('props:');
   });
 
   it('never preserves the bytes of a repaired file', () => {
@@ -178,15 +151,14 @@ describe('repair', () => {
     expect(parsed.repaired).toBe(true);
   });
 
-  it('folds unknown top-level keys into props', () => {
+  it('ignores a key the contract does not name', () => {
     const parsed = parse(`---\nid: ${ID}\ntitle: T\nstatus: live\nowner: infra\n---\n\nbody\n`);
-    expect(parsed.frontmatter.props).toEqual({ status: 'live', owner: 'infra' });
-    expect(parsed.repaired).toBe(true);
-  });
-
-  it('splits a comma separated tag string', () => {
-    const parsed = parse(`---\nid: ${ID}\ntitle: T\ntags: ops, infra\n---\n`);
-    expect(parsed.frontmatter.tags).toEqual(['ops', 'infra']);
+    expect(parsed.frontmatter).toEqual({
+      id: ID,
+      title: 'T',
+      created: expect.any(String),
+      updated: expect.any(String),
+    });
   });
 
   it('keeps the body and the id when the YAML block is broken', () => {
@@ -254,22 +226,6 @@ describe('YAML 1.1 coercion', () => {
       expect(serializePreserving(parsed, parsed.frontmatter, parsed.body)).toBe(raw);
     });
   }
-
-  it('keeps coerced prop values exactly as written', () => {
-    const raw = `${head}title: T\n${tail.replace('---\n\nBody.', 'props:\n  a: 0123\n  b: 1.0\n  c: 3\n  d: -0.5\n  e: null\n---\n\nBody.')}`;
-    const parsed = parse(raw);
-    expect(parsed.frontmatter.props).toEqual({ a: '0123', b: '1.0', c: 3, d: -0.5, e: null });
-    expect(parsed.repaired).toBe(false);
-    expect(serializePreserving(parsed, parsed.frontmatter, parsed.body)).toBe(raw);
-  });
-
-  it('keeps a nested props map as its JSON text instead of deleting it', () => {
-    const raw = `${head}title: T\n${tail.replace('---\n\nBody.', 'props:\n  owner:\n    name: me\n---\n\nBody.')}`;
-    const parsed = parse(raw);
-    expect(parsed.frontmatter.props).toEqual({ owner: '{"name":"me"}' });
-    expect(parsed.repaired).toBe(false);
-    expect(serializePreserving(parsed, parsed.frontmatter, parsed.body)).toBe(raw);
-  });
 });
 
 describe('a file whose first line is a thematic break', () => {
@@ -298,6 +254,40 @@ describe('helpers', () => {
     expect(firstHeading('```\n# Not a title\n```\n\n# Real title\n')).toBe('Real title');
   });
 
+  describe('line endings and number forms', () => {
+    const FM = `id: ${ID}\ntitle: T\ncreated: ${CREATED}\nupdated: ${UPDATED}\n`;
+
+    it('keeps the body of a CR-only file', () => {
+      const raw = `---\r${FM.replace(/\n/g, '\r')}---\r\rThe prose.\r`;
+      const out = parse(raw);
+      expect(out.body).toBe('The prose.');
+      expect(out.frontmatter.title).toBe('T');
+      expect(out.frontmatter.id).toBe(ID);
+    });
+
+    it('leaves no blank line when the closing delimiter has a trailing space', () => {
+      expect(parse(`---\n${FM}--- \n\nBody.\n`).body).toBe('Body.');
+    });
+
+    it('keeps the indent of a body that opens with an indented code block', () => {
+      expect(parse(`---\n${FM}---\n\n    code\n`).body).toBe('    code');
+    });
+
+    it('reads a zero-padded order as decimal, not octal', () => {
+      const order = (text: string): number | undefined =>
+        parse(`---\n${FM}order: ${text}\n---\n\nB.\n`).frontmatter.order;
+      expect(order('010')).toBe(10);
+      expect(order('08')).toBe(8);
+      expect(order('09')).toBe(9);
+      expect(order('007')).toBe(7);
+      expect(order('1_000')).toBe(1000);
+    });
+
+    it('never rewrites a file for a zero-padded order', () => {
+      expect(parse(`---\n${FM}order: 010\n---\n\nB.\n`).repaired).toBe(false);
+    });
+  });
+
   it('reads a setext heading', () => {
     expect(firstHeading('Real title\n==========\n')).toBe('Real title');
   });
@@ -307,11 +297,10 @@ describe('helpers', () => {
     expect(titleize('')).toBe('Untitled');
   });
 
-  it('compares frontmatter including prop key order', () => {
-    const a = base({ props: { x: '1', y: '2' } });
-    const b = base({ props: { y: '2', x: '1' } });
-    expect(frontmatterEqual(a, b)).toBe(false);
-    expect(frontmatterEqual(a, base({ props: { x: '1', y: '2' } }))).toBe(true);
+  it('compares every field of the contract', () => {
+    expect(frontmatterEqual(base({ order: 1 }), base({ order: 2 }))).toBe(false);
+    expect(frontmatterEqual(base({ icon: 'A' }), base())).toBe(false);
+    expect(frontmatterEqual(base({ order: 1 }), base({ order: 1 }))).toBe(true);
   });
 
   it('renders a block without the document markers', () => {

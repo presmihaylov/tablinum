@@ -1,10 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import {
-  ErrorBodySchema,
-  PageResponseSchema,
-  SearchResponseSchema,
-  ViewsResponseSchema,
-} from '@gitdocs/shared';
+import { ErrorBodySchema, PageResponseSchema, SearchResponseSchema } from '@gitdocs/shared';
 import { bodyOf, makeHarness, seed, type Harness } from './support/harness.js';
 
 let harness: Harness;
@@ -38,7 +33,6 @@ describe('search', () => {
       path: 'eng/kubernetes',
       title: 'Kubernetes notes',
       markdown: 'Drain the node before an upgrade.',
-      tags: ['ops'],
     });
 
     const response = await harness.app.inject({
@@ -123,71 +117,5 @@ describe('search', () => {
     });
     expect(response.statusCode).toBe(400);
     expect(bodyOf(response, ErrorBodySchema).error.code).toBe('VALIDATION');
-  });
-});
-
-describe('views', () => {
-  beforeEach(async () => {
-    await seed(harness);
-    await createPage({
-      path: 'eng/alpha',
-      title: 'Alpha',
-      order: 2,
-      props: { status: 'draft', owner: 'ana' },
-    });
-    await createPage({
-      path: 'eng/beta',
-      title: 'Beta',
-      order: 1,
-      props: { status: 'live', owner: 'bo' },
-    });
-    await createPage({
-      path: 'eng/gamma',
-      title: 'Gamma',
-      props: { status: 'draft', owner: 'cy', priority: 3 },
-    });
-  });
-
-  it('returns the child rows and the union of their prop columns', async () => {
-    const response = await harness.app.inject({
-      method: 'GET',
-      url: '/api/v1/views?dir=eng',
-      headers: headers(),
-    });
-    expect(response.statusCode).toBe(200);
-    const { columns, rows } = bodyOf(response, ViewsResponseSchema);
-    expect(columns.sort()).toEqual(['owner', 'priority', 'status']);
-    expect(rows.map((row) => row.path)).toContain('eng/alpha');
-    expect(rows.every((row) => row.path.startsWith('eng/'))).toBe(true);
-  });
-
-  it('filters on a prop and sorts by a prop', async () => {
-    const response = await harness.app.inject({
-      method: 'GET',
-      url: '/api/v1/views?dir=eng&where=status:draft&sort=owner&order=desc',
-      headers: headers(),
-    });
-    const { rows } = bodyOf(response, ViewsResponseSchema);
-    expect(rows.map((row) => row.title)).toEqual(['Gamma', 'Alpha']);
-  });
-
-  it('sorts by sibling order when no sort key is given', async () => {
-    const response = await harness.app.inject({
-      method: 'GET',
-      url: '/api/v1/views?dir=eng&where=status:live',
-      headers: headers(),
-    });
-    const { rows } = bodyOf(response, ViewsResponseSchema);
-    expect(rows.map((row) => row.title)).toEqual(['Beta']);
-  });
-
-  it('answers NOT_FOUND for an unknown directory', async () => {
-    const response = await harness.app.inject({
-      method: 'GET',
-      url: '/api/v1/views?dir=eng/nope',
-      headers: headers(),
-    });
-    expect(response.statusCode).toBe(404);
-    expect(bodyOf(response, ErrorBodySchema).error.code).toBe('NOT_FOUND');
   });
 });

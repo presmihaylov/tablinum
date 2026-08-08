@@ -15,7 +15,6 @@ import {
   SearchResponseSchema,
   SpacesResponseSchema,
   TreeResponseSchema,
-  ViewsResponseSchema,
   type Backlink,
   type CreatePageBody,
   type ErrorCode,
@@ -33,7 +32,6 @@ import {
   type Space,
   type TreeNode,
   type UpdatePageBody,
-  type ViewsResponse,
 } from '@gitdocs/shared';
 import type { z } from 'zod';
 
@@ -56,15 +54,7 @@ export interface GitdocsClientOptions {
 export interface SearchParams {
   q: string;
   space?: string;
-  tag?: string;
   limit?: number;
-}
-
-export interface ViewParams {
-  dir: PagePath;
-  where?: string;
-  sort?: string;
-  order?: 'asc' | 'desc';
 }
 
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -272,7 +262,6 @@ export class GitdocsClient {
     const query = buildQuery({
       q: params.q,
       space: params.space,
-      tag: params.tag,
       limit: params.limit,
     });
     const body = await this.request('GET', `/api/v1/search${query}`, SearchResponseSchema);
@@ -305,15 +294,6 @@ export class GitdocsClient {
     );
   }
 
-  async views(params: ViewParams): Promise<ViewsResponse> {
-    const query = buildQuery({
-      dir: params.dir,
-      where: params.where,
-      sort: params.sort,
-      order: params.order,
-    });
-    return this.request('GET', `/api/v1/views${query}`, ViewsResponseSchema);
-  }
 
   async gitStatus(): Promise<GitStatus> {
     const body = await this.request('GET', '/api/v1/git/status', GitStatusResponseSchema);

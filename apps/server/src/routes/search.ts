@@ -9,7 +9,6 @@ export function registerSearchRoutes(app: FastifyInstance, ctx: RouteContext): v
     const query = parseOrThrow(SearchQuerySchema, request.query, 'search query');
     const hits = await ctx.deps.search.search(query.q, {
       space: query.space,
-      tag: query.tag,
       limit: query.limit ?? DEFAULT_SEARCH_LIMIT,
     });
     return { hits };

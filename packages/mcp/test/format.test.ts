@@ -6,8 +6,6 @@ import {
   formatPageLine,
   formatSearchHits,
   formatTreeOutline,
-  formatViewTable,
-  renderPropValue,
 } from '../src/format.js';
 import {
   makeHit,
@@ -72,9 +70,7 @@ describe('formatPage', () => {
     const page = makePage({
       markdown,
       icon: '🚀',
-      tags: ['ops', 'deploy'],
       order: 10,
-      props: { status: 'draft', reviewers: ['ana', 'bo'], archived: false, owner: null },
     });
 
     const text = formatPage(page);
@@ -82,26 +78,20 @@ describe('formatPage', () => {
 
     expect(body).toBe(markdown);
     expect(text).toContain(`path: ${page.path}`);
-    expect(text).toContain('tags: ops, deploy');
+    expect(text).toContain('icon: 🚀');
     expect(text).toContain('order: 10');
-    expect(text).toContain('  status: draft');
-    expect(text).toContain('  reviewers: ana, bo');
-    expect(text).toContain('  archived: false');
-    expect(text).toContain('  owner: ');
   });
 
   it('omits optional lines when the fields are unset', () => {
     const text = formatPage(makePage());
     expect(text).not.toContain('icon:');
-    expect(text).not.toContain('tags:');
-    expect(text).not.toContain('props:');
+    expect(text).not.toContain('order:');
   });
 
   it('summarises a page on one line', () => {
-    const page = makePage({ tags: ['ops'], order: 3 });
+    const page = makePage({ order: 3 });
     const line = formatPageLine(page);
     expect(line).toContain(`path=${page.path}`);
-    expect(line).toContain('tags=[ops]');
     expect(line).toContain('order=3');
   });
 });
@@ -121,29 +111,6 @@ describe('formatHistory', () => {
   });
 });
 
-describe('formatViewTable', () => {
-  it('renders a markdown table and the row ids', () => {
-    const row = makeSummary({ path: 'eng/runbooks/deploy', props: { status: 'draft | wip' } });
-    const text = formatViewTable({ columns: ['status'], rows: [row] }, 'eng/runbooks');
-
-    expect(text).toContain('1 row under eng/runbooks:');
-    expect(text).toContain('| title | path | status |');
-    expect(text).toContain('| --- | --- | --- |');
-    expect(text).toContain('draft \\| wip');
-    expect(text).toContain(`eng/runbooks/deploy=${row.id}`);
-  });
-
-  it('leaves a cell empty when a page lacks the prop', () => {
-    const row = makeSummary({ props: {} });
-    const text = formatViewTable({ columns: ['status'], rows: [row] }, 'eng');
-    expect(text).toContain('|  |');
-  });
-
-  it('explains an empty result', () => {
-    expect(formatViewTable({ columns: [], rows: [] }, 'eng')).toContain('gitdocs_list_tree');
-  });
-});
-
 describe('formatGitStatus', () => {
   it('reports the branch, the remote and the counters', () => {
     const text = formatGitStatus(makeStatus({ ahead: 2, behind: 1, dirtyFiles: ['eng/deploy.md'] }));
@@ -160,15 +127,5 @@ describe('formatGitStatus', () => {
     expect(text).toContain('remote: none configured');
     expect(text).toContain('dirty files: none');
     expect(text).not.toContain('last commit');
-  });
-});
-
-describe('renderPropValue', () => {
-  it('flattens each supported value type', () => {
-    expect(renderPropValue('draft')).toBe('draft');
-    expect(renderPropValue(3)).toBe('3');
-    expect(renderPropValue(true)).toBe('true');
-    expect(renderPropValue(['a', 'b'])).toBe('a, b');
-    expect(renderPropValue(null)).toBe('');
   });
 });

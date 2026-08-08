@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { DragEvent as ReactDragEvent, RefObject } from 'react';
 import type { Editor } from '@tiptap/core';
-import { NodeSelection } from '@tiptap/pm/state';
+import { nodeSelectionAt, startNodeDrag } from './nodeDrag';
 
 interface HandleTarget {
   pos: number;
@@ -28,7 +28,13 @@ export function BlockHandles({ editor, canvas }: BlockHandlesProps) {
       const box = canvas.current;
       if (!box) return;
       const root = editor.view.dom;
-      const block = topLevelBlock(root, event.target);
+      if (!nearDocument(root, event)) {
+        setTarget(null);
+        return;
+      }
+      // The pointer is beside a block as often as it is on one: in the gutter the handles
+      // stand in, past the end of a short line, or in the margin between two blocks.
+      const block = topLevelBlock(root, event.target) ?? blockAtY(root, event.clientY);
       if (!block) {
         setTarget(null);
         return;
@@ -45,34 +51,21 @@ export function BlockHandles({ editor, canvas }: BlockHandlesProps) {
   );
 
   useEffect(() => {
-    const box = canvas.current;
-    if (!box) return;
-    const clear = (): void => setTarget(null);
-    box.addEventListener('mousemove', locate);
-    box.addEventListener('mouseleave', clear);
-    return () => {
-      box.removeEventListener('mousemove', locate);
-      box.removeEventListener('mouseleave', clear);
-    };
-  }, [locate, canvas]);
+    window.addEventListener('mousemove', locate);
+    return () => window.removeEventListener('mousemove', locate);
+  }, [locate]);
 
   if (!target || !editor.isEditable) return null;
 
   const select = (): void => {
-    const selection = nodeSelection(editor, target.pos);
+    const selection = nodeSelectionAt(editor, target.pos);
     if (!selection) return;
     editor.view.dispatch(editor.state.tr.setSelection(selection));
     editor.view.focus();
   };
 
   const startDrag = (event: ReactDragEvent<HTMLButtonElement>): void => {
-    const selection = nodeSelection(editor, target.pos);
-    if (!selection) return;
-    const view = editor.view;
-    view.dispatch(view.state.tr.setSelection(selection));
-    view.dragging = { slice: selection.content(), move: true };
-    event.dataTransfer.effectAllowed = 'move';
-    event.dataTransfer.setDragImage(target.element, 0, 0);
+    startNodeDrag(editor, target.pos, target.element, event.dataTransfer);
   };
 
   const insertBelow = (): void => {
@@ -89,8 +82,15 @@ export function BlockHandles({ editor, canvas }: BlockHandlesProps) {
       .run();
   };
 
+  // A table keeps its own row grips against its left edge, so these two stack into a
+  // single column to stay clear of them.
+  const stacked = target.element.tagName === 'TABLE';
+
   return (
-    <div className="gd-editor-handles" style={{ top: `${Math.round(target.top)}px` }}>
+    <div
+      className={`gd-editor-handles${stacked ? ' gd-editor-handles--stacked' : ''}`}
+      style={{ top: `${Math.round(target.top)}px` }}
+    >
       <button
         type="button"
         className="gd-editor-handles__btn"
@@ -116,6 +116,42 @@ export function BlockHandles({ editor, canvas }: BlockHandlesProps) {
   );
 }
 
+/** The gutter the handles stand in, to the left of the editable box. */
+const GUTTER = 72;
+/** How far past the other three edges the pointer may go and still hold the handles. */
+const EDGE = 24;
+
+function nearDocument(root: HTMLElement, event: MouseEvent): boolean {
+  const rect = root.getBoundingClientRect();
+  return (
+    event.clientX >= rect.left - GUTTER &&
+    event.clientX <= rect.right + EDGE &&
+    event.clientY >= rect.top - EDGE &&
+    event.clientY <= rect.bottom + EDGE
+  );
+}
+
+/** The top-level block that holds `y`, or the next one down when `y` is in a gap. */
+function blockAtY(root: HTMLElement, y: number): HTMLElement | null {
+  // The children are laid out top to bottom, so their bottom edges are sorted.
+  const children = root.children;
+  let low = 0;
+  let high = children.length - 1;
+  let found: HTMLElement | null = null;
+  while (low <= high) {
+    const mid = (low + high) >> 1;
+    const child = children[mid];
+    if (!(child instanceof HTMLElement)) return null;
+    if (child.getBoundingClientRect().bottom >= y) {
+      found = child;
+      high = mid - 1;
+      continue;
+    }
+    low = mid + 1;
+  }
+  return found;
+}
+
 function topLevelBlock(root: HTMLElement, node: EventTarget | null): HTMLElement | null {
   if (!(node instanceof HTMLElement)) return null;
   if (!root.contains(node) || node === root) return null;
@@ -131,14 +167,6 @@ function blockPos(editor: Editor, element: HTMLElement): number | null {
     const inside = editor.view.posAtDOM(element, 0);
     const resolved = editor.state.doc.resolve(inside);
     return resolved.depth === 0 ? inside : resolved.before(1);
-  } catch {
-    return null;
-  }
-}
-
-function nodeSelection(editor: Editor, pos: number): NodeSelection | null {
-  try {
-    return NodeSelection.create(editor.state.doc, pos);
   } catch {
     return null;
   }

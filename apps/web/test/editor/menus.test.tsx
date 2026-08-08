@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import type { Editor } from '@tiptap/core';
 import { toMarkdown } from './harness';
-import { mountEditor, settle } from './mount';
+import { hoverTable, mountEditor, settle } from './mount';
 
 const TABLE = ['| a | b |', '| --- | --- |', '| 1 | 2 |'].join('\n');
 
@@ -64,18 +64,66 @@ describe('selection toolbar', () => {
   });
 });
 
-describe('table toolbar', () => {
-  it('appears while the caret sits in a table', async () => {
+describe('table controls', () => {
+  it('appear once the pointer is over the table', async () => {
     const editor = await mountEditor({ content: `${TABLE}\n` });
-    await select(editor, 4, 4);
+    await hoverTable(editor);
 
-    await waitFor(() => expect(bar('Table')).not.toBeNull());
-    expect(bar('Text formatting')).toBeNull();
+    expect(screen.getByLabelText('Add a column')).toBeTruthy();
+    expect(screen.getByLabelText('Add a row')).toBeTruthy();
+    expect(screen.getByLabelText('Select column 1')).toBeTruthy();
+    expect(screen.getByLabelText('Select row 2')).toBeTruthy();
   });
 
-  it('adds a row below the caret', async () => {
+  it('stay away while the pointer is elsewhere', async () => {
+    const editor = await mountEditor({ content: `${TABLE}\n` });
+
+    expect(screen.queryByLabelText('Add a column')).toBeNull();
+  });
+
+  it('adds a column at the right edge', async () => {
+    const editor = await mountEditor({ content: `${TABLE}\n` });
+    await hoverTable(editor);
+    await settle(() => fireEvent.click(screen.getByLabelText('Add a column')));
+
+    expect(toMarkdown(editor)).toBe(
+      ['| a | b |  |', '| --- | --- | --- |', '| 1 | 2 |  |', ''].join('\n'),
+    );
+  });
+
+  it('adds a row at the bottom edge', async () => {
+    const editor = await mountEditor({ content: `${TABLE}\n` });
+    await hoverTable(editor);
+    await settle(() => fireEvent.click(screen.getByLabelText('Add a row')));
+
+    expect(toMarkdown(editor)).toBe(
+      ['| a | b |', '| --- | --- |', '| 1 | 2 |', '|  |  |', ''].join('\n'),
+    );
+  });
+});
+
+describe('table toolbar', () => {
+  it('stays away while the caret only sits in a table', async () => {
     const editor = await mountEditor({ content: `${TABLE}\n` });
     await select(editor, 4, 4);
+
+    expect(bar('Table')).toBeNull();
+  });
+
+  it('offers the row actions once a grip selects a row', async () => {
+    const editor = await mountEditor({ content: `${TABLE}\n` });
+    await hoverTable(editor);
+    await settle(() => fireEvent.click(screen.getByLabelText('Select row 1')));
+
+    await waitFor(() => expect(bar('Table')).not.toBeNull());
+    expect(screen.getByRole('button', { name: 'Delete row' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Delete column' })).toBeNull();
+  });
+
+  it('adds a row below the selected row', async () => {
+    const editor = await mountEditor({ content: `${TABLE}\n` });
+    await hoverTable(editor);
+    await settle(() => fireEvent.click(screen.getByLabelText('Select row 1')));
 
     await waitFor(() => expect(bar('Table')).not.toBeNull());
     fireEvent.click(screen.getByRole('button', { name: 'Row below' }));
@@ -87,9 +135,31 @@ describe('table toolbar', () => {
     );
   });
 
-  it('adds a column to the right of the caret', async () => {
+  it('deletes the selected row whole', async () => {
     const editor = await mountEditor({ content: `${TABLE}\n` });
-    await select(editor, 4, 4);
+    await hoverTable(editor);
+    await settle(() => fireEvent.click(screen.getByLabelText('Select row 2')));
+
+    await waitFor(() => expect(bar('Table')).not.toBeNull());
+    fireEvent.click(screen.getByRole('button', { name: 'Delete row' }));
+
+    await waitFor(() => expect(toMarkdown(editor)).toBe(['| a | b |', '| --- | --- |', ''].join('\n')));
+  });
+
+  it('offers the column actions once a grip selects a column', async () => {
+    const editor = await mountEditor({ content: `${TABLE}\n` });
+    await hoverTable(editor);
+    await settle(() => fireEvent.click(screen.getByLabelText('Select column 1')));
+
+    await waitFor(() => expect(bar('Table')).not.toBeNull());
+    expect(screen.getByRole('button', { name: 'Delete column' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Delete row' })).toBeNull();
+  });
+
+  it('adds a column right of the selected column', async () => {
+    const editor = await mountEditor({ content: `${TABLE}\n` });
+    await hoverTable(editor);
+    await settle(() => fireEvent.click(screen.getByLabelText('Select column 1')));
 
     await waitFor(() => expect(bar('Table')).not.toBeNull());
     fireEvent.click(screen.getByRole('button', { name: 'Column right' }));
@@ -101,9 +171,23 @@ describe('table toolbar', () => {
     );
   });
 
-  it('deletes the whole table', async () => {
+  it('deletes the selected column whole', async () => {
     const editor = await mountEditor({ content: `${TABLE}\n` });
-    await select(editor, 4, 4);
+    await hoverTable(editor);
+    await settle(() => fireEvent.click(screen.getByLabelText('Select column 2')));
+
+    await waitFor(() => expect(bar('Table')).not.toBeNull());
+    fireEvent.click(screen.getByRole('button', { name: 'Delete column' }));
+
+    await waitFor(() =>
+      expect(toMarkdown(editor)).toBe(['| a |', '| --- |', '| 1 |', ''].join('\n')),
+    );
+  });
+
+  it('deletes the whole table from the corner grip', async () => {
+    const editor = await mountEditor({ content: `${TABLE}\n` });
+    await hoverTable(editor);
+    await settle(() => fireEvent.click(screen.getByLabelText('Select the table')));
 
     await waitFor(() => expect(bar('Table')).not.toBeNull());
     fireEvent.click(screen.getByRole('button', { name: 'Delete table' }));

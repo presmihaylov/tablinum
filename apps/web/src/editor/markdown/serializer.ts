@@ -21,6 +21,8 @@ type SerializerState = Parameters<NodeSerializers[string]>[0];
 interface Scratch {
   inTable: boolean;
   blockLineStart: boolean;
+  /** A checkbox has just been written, so the next paragraph does not open a line. */
+  afterCheckbox: boolean;
   autolink: boolean;
   forced: WeakSet<PMNode>;
 }
@@ -29,6 +31,7 @@ export function serializeDoc(doc: PMNode): string {
   const scratch: Scratch = {
     inTable: false,
     blockLineStart: true,
+    afterCheckbox: false,
     autolink: false,
     forced: new WeakSet<PMNode>(),
   };
@@ -48,8 +51,15 @@ export function serializeDoc(doc: PMNode): string {
  */
 const TIGHT_MARK = '\u0000gd-tight\u0000';
 
+/**
+ * The blank separator line, plus the delimiter run that opens the marked line. `write` puts
+ * the container's delimiter back after the blank line, so inside a quoted list the real
+ * output is `\n>\n>   ` and a bare `\n\n` never matches.
+ */
+const TIGHT_SEPARATOR = new RegExp(`\\n[ \\t>]*\\n([ \\t>]*)${TIGHT_MARK}`, 'g');
+
 function dropTightMarks(text: string): string {
-  return text.split(`\n\n${TIGHT_MARK}`).join('\n').split(TIGHT_MARK).join('');
+  return text.replace(TIGHT_SEPARATOR, '\n$1').split(TIGHT_MARK).join('');
 }
 
 /** Clipboard copies hand over a slice; wrap it so the doc serializer can run. */
@@ -91,17 +101,25 @@ function withGaps(serializers: NodeSerializers): NodeSerializers {
   return wrapped;
 }
 
+/**
+ * The containers whose children record a blank-line run. A table cell is deliberately not
+ * one: its paragraphs are written on one line and a replayed gap would break the row.
+ */
+const GAP_PARENTS = new Set(['doc', 'blockquote', 'callout', 'listItem', 'taskItem']);
+
 function writeGap(
   state: SerializerState,
   node: PMNode,
   parent: PMNode,
   index: number,
 ): void {
-  if (index === 0 || parent.type.name !== 'doc') return;
+  if (index === 0 || !GAP_PARENTS.has(parent.type.name)) return;
   const gap = numberAttr(node.attrs['gap']);
   if (gap === null) return;
   if (gap > 1) {
-    state.text('\n'.repeat(gap - 1), false);
+    // Not a run of bare newlines: a blank line inside a container carries the delimiter,
+    // trailing space trimmed off, which is exactly what `flushClose` writes.
+    internals(state).flushClose(gap + 1);
     return;
   }
   // The blank line goes back in when the pair could read as one block, because an
@@ -118,6 +136,8 @@ function staysSplit(previous: PMNode, node: PMNode): boolean {
 function endsBlock(node: PMNode): boolean {
   const name = node.type.name;
   if (name === 'heading' || name === 'codeBlock' || name === 'horizontalRule') return true;
+  // The embed is one whole line, so the line under it can only start a new block.
+  if (name === 'pageEmbed') return true;
   return name === 'htmlBlock' && isComment(node);
 }
 
@@ -128,11 +148,50 @@ function interrupts(node: PMNode): boolean {
   if (name === 'horizontalRule') return true;
   // An indented code block reads as a continuation line, a fenced one does not.
   if (name === 'codeBlock') return rawStringAttr(node.attrs['fence']) !== '';
-  return name === 'htmlBlock' && isComment(node);
+  if (name === 'table' || name === 'blockquote' || name === 'callout') return true;
+  if (name === 'bulletList') return firstItemNonEmpty(node);
+  // An ordered list may only interrupt a paragraph when it starts at one, and no list
+  // may interrupt with an empty first item. `Intro:\n-\n` is a setext heading, not a list.
+  if (name === 'orderedList' || name === 'taskList') {
+    return startsAtOne(node) && firstItemNonEmpty(node);
+  }
+  return name === 'htmlBlock' && opensBlockHtml(node);
+}
+
+function startsAtOne(node: PMNode): boolean {
+  if (node.type.name === 'taskList' && node.attrs['ordered'] !== true) return true;
+  return (numberAttr(node.attrs['start']) ?? 1) === 1;
+}
+
+function firstItemNonEmpty(node: PMNode): boolean {
+  return node.childCount > 0 && !itemIsEmpty(node, 0);
 }
 
 function isComment(node: PMNode): boolean {
   return (rawStringAttr(node.attrs['raw']) ?? '').startsWith('<!--');
+}
+
+/** CommonMark HTML block types 1 and 6, the tags that open a block on their own line. */
+const BLOCK_HTML_TAGS = new Set([
+  'address', 'article', 'aside', 'base', 'basefont', 'blockquote', 'body', 'caption',
+  'center', 'col', 'colgroup', 'dd', 'details', 'dialog', 'dir', 'div', 'dl', 'dt',
+  'fieldset', 'figcaption', 'figure', 'footer', 'form', 'frame', 'frameset', 'h1', 'h2',
+  'h3', 'h4', 'h5', 'h6', 'head', 'header', 'hr', 'html', 'iframe', 'legend', 'li',
+  'link', 'main', 'menu', 'menuitem', 'nav', 'noframes', 'ol', 'optgroup', 'option', 'p',
+  'param', 'pre', 'script', 'search', 'section', 'style', 'summary', 'table', 'tbody',
+  'td', 'textarea', 'tfoot', 'th', 'thead', 'title', 'tr', 'track', 'ul',
+]);
+
+/**
+ * Types 1-6 interrupt a paragraph; type 7, an arbitrary tag on its own line, does not.
+ * markdown-it folds `Before.\n<custom-tag>` into the paragraph above, so joining that
+ * pair tight would make the file re-read as one block.
+ */
+function opensBlockHtml(node: PMNode): boolean {
+  const raw = (rawStringAttr(node.attrs['raw']) ?? '').trimStart();
+  if (/^<[?!]/.test(raw)) return true; // comments, declarations, CDATA and processing instructions
+  const tag = /^<\/?([a-zA-Z][a-zA-Z0-9-]*)(?=[\s/>]|$)/.exec(raw)?.[1];
+  return tag !== undefined && BLOCK_HTML_TAGS.has(tag.toLowerCase());
 }
 
 function nodeSerializers(scratch: Scratch): NodeSerializers {
@@ -140,7 +199,10 @@ function nodeSerializers(scratch: Scratch): NodeSerializers {
     text: (state, node, parent, index) => serializeText(scratch, state, node, parent, index),
 
     paragraph: (state, node) => {
-      scratch.blockLineStart = true;
+      // Consumed once: the second paragraph of a loose task item really does open a
+      // line, and it needs the escaping the first one must not get.
+      scratch.blockLineStart = !scratch.afterCheckbox;
+      scratch.afterCheckbox = false;
       state.renderInline(node);
       const trail = stringAttr(node.attrs['trail']);
       if (trail !== null) state.text(trail, false);
@@ -151,7 +213,10 @@ function nodeSerializers(scratch: Scratch): NodeSerializers {
 
     blockquote: (state, node) => {
       guardLeadingText(scratch, node, looksLikeAlert);
-      state.wrapBlock('> ', null, node, () => state.renderContent(node));
+      // An empty quote is one `>`. The delimiter's space would be a trailing run on a
+      // line that never receives content.
+      const opener = isEmptyBlock(node) ? '>' : null;
+      state.wrapBlock('> ', opener, node, () => state.renderContent(node));
     },
 
     callout: (state, node) => {
@@ -159,7 +224,7 @@ function nodeSerializers(scratch: Scratch): NodeSerializers {
         state.write(`[!${calloutKeyword(node)}]`);
         // An empty callout is one line. Opening a second one would leave a newline the
         // serializer never closes, and the document would grow by a byte on every save.
-        if (isEmptyCallout(node)) return;
+        if (isEmptyBlock(node)) return;
         state.ensureNewLine();
         state.renderContent(node);
       });
@@ -192,12 +257,17 @@ function nodeSerializers(scratch: Scratch): NodeSerializers {
       // The label is the source the file held. `alt` is only its flattened text, so it is the
       // fallback for an image this session inserted rather than one it read.
       const label = rawStringAttr(node.attrs['label']) ?? escapeLinkLabel(alt);
-      state.write(`![${label}](${formatDestination(src)}${formatTitle(title)})`);
+      state.write(
+        guardPipes(`![${label}](${formatDestination(src)}${formatTitle(title)})`, scratch.inTable),
+      );
     },
 
     bulletList: (state, node) => {
       const marker = stringAttr(node.attrs['marker']) ?? '-';
-      state.renderList(node, '  ', () => `${marker} `);
+      renderListNode(state, node, {
+        delim: () => '  ',
+        marker: (index) => (itemIsEmpty(node, index) ? marker : `${marker} `),
+      });
     },
 
     orderedList: (state, node) => serializeOrderedList(state, node),
@@ -213,14 +283,19 @@ function nodeSerializers(scratch: Scratch): NodeSerializers {
         return;
       }
       const marker = stringAttr(node.attrs['marker']) ?? '-';
-      state.renderList(node, '  ', () => `${marker} `);
+      renderListNode(state, node, { delim: () => '  ', marker: () => `${marker} ` });
     },
 
     taskItem: (state, node) => {
       // `- [ ]` with no label carries no space after the box; adding one is a trailing run
-      // that most linters flag.
-      state.write(node.textContent.length === 0 ? `[${checkbox(node)}]` : `[${checkbox(node)}] `);
+      // that most linters flag. A label made only of leaf nodes - a wikilink, an image, a
+      // `<br>` - contributes no text, so the test is the item's own emptiness, not its text.
+      state.write(isEmptyBlock(node) ? `[${checkbox(node)}]` : `[${checkbox(node)}] `);
+      // The flag is consumed by the paragraph serializer. An item that opens with any other
+      // block would leave it set and steal the escaping from a later paragraph.
+      scratch.afterCheckbox = node.firstChild?.type.name === 'paragraph';
       state.renderContent(node);
+      scratch.afterCheckbox = false;
     },
 
     table: (state, node) => serializeTable(scratch, state, node),
@@ -243,13 +318,20 @@ function nodeSerializers(scratch: Scratch): NodeSerializers {
     },
 
     htmlInline: (state, node) => {
-      state.text(rawStringAttr(node.attrs['raw']) ?? '', false);
+      state.text(guardPipes(rawStringAttr(node.attrs['raw']) ?? '', scratch.inTable), false);
+    },
+
+    pageEmbed: (state, node) => {
+      state.write(`![[${stringAttr(node.attrs['target']) ?? ''}]]`);
+      state.closeBlock(node);
     },
 
     wikilink: (state, node) => {
       const target = stringAttr(node.attrs['target']) ?? '';
       const alias = rawStringAttr(node.attrs['alias']);
-      state.write(alias === null ? `[[${target}]]` : `[[${target}|${alias}]]`);
+      state.write(
+        guardPipes(alias === null ? `[[${target}]]` : `[[${target}|${alias}]]`, scratch.inTable),
+      );
     },
   };
 }
@@ -261,21 +343,27 @@ function calloutKeyword(node: PMNode): string {
   return label !== null && label.toUpperCase() === type ? label : type;
 }
 
-/** A callout that holds nothing but the empty paragraph the schema requires. */
-function isEmptyCallout(node: PMNode): boolean {
-  if (node.childCount !== 1) return false;
+/**
+ * A block that holds nothing but the empty paragraph the schema requires. `textContent`
+ * alone is not enough: a block whose only child is a nested list, an image or a fence is
+ * also empty by that test, and dropping a list marker's space there writes `-![a](/a.png)`.
+ */
+function isEmptyBlock(node: PMNode): boolean {
   const only = node.firstChild;
-  return only?.type.name === 'paragraph' && only.content.size === 0;
+  return node.childCount === 1 && only?.type.name === 'paragraph' && only.content.size === 0;
 }
 
 const ALERT_LINE = /^\[!([A-Za-z]+)\][ \t]*$/;
 const CHECKBOX_LINE = /^\[[ xX]\](\s|$)/;
 
-function looksLikeAlert(text: string): boolean {
+/** An alert marker only re-reads as a callout when nothing else shares its line. */
+function looksLikeAlert(text: string, aloneOnLine: boolean): boolean {
+  if (!aloneOnLine) return false;
   const kind = ALERT_LINE.exec(text)?.[1];
   return kind !== undefined && isCalloutType(kind.toUpperCase());
 }
 
+/** A checkbox is claimed wherever it starts the item, title or no title. */
 function looksLikeCheckbox(text: string): boolean {
   return CHECKBOX_LINE.test(text);
 }
@@ -288,12 +376,14 @@ function looksLikeCheckbox(text: string): boolean {
 function guardLeadingText(
   scratch: Scratch,
   block: PMNode,
-  matches: (text: string) => boolean,
+  matches: (text: string, aloneOnLine: boolean) => boolean,
 ): void {
   const paragraph = block.firstChild;
   if (paragraph?.type.name !== 'paragraph') return;
   const first = paragraph.firstChild;
-  if (!first?.isText || !matches(first.text ?? '')) return;
+  if (!first?.isText) return;
+  const alone = paragraph.childCount === 1 || paragraph.child(1).type.name === 'hardBreak';
+  if (!matches(first.text ?? '', alone)) return;
   scratch.forced.add(first);
 }
 
@@ -320,7 +410,10 @@ function serializeText(
 
   lines.forEach((line, position) => {
     const first = position === 0;
-    const lineStart = first ? afterBreak || (previous === null && scratch.blockLineStart) : true;
+    // A mark has already written its opening delimiter, so the run is not at column 0
+    // and no block opener can fire there. Escaping it would add a backslash.
+    const opensBlock = previous === null && scratch.blockLineStart && node.marks.length === 0;
+    const lineStart = first ? afterBreak || opensBlock : true;
     const escaped = verbatim
       ? guardPipes(line, scratch.inTable)
       : escapeText(line, {
@@ -396,9 +489,10 @@ function serializeCodeBlock(state: SerializerState, node: PMNode): void {
   // An empty fence attribute marks an indented block. Blank lines stay blank,
   // so `wrapBlock` cannot be used: it would pad them with the four spaces.
   if (fence === '') {
+    const indent = stringAttr(node.attrs['indent']) ?? '    ';
     const indented = text
       .split('\n')
-      .map((line) => (line.length === 0 ? '' : `    ${line}`))
+      .map((line) => (line.length === 0 ? '' : `${indent}${line}`))
       .join('\n');
     state.text(indented, false);
     state.closeBlock(node);
@@ -415,10 +509,27 @@ function serializeCodeBlock(state: SerializerState, node: PMNode): void {
   state.ensureNewLine();
   if (text.length > 0) {
     state.text(text, false);
-    state.ensureNewLine();
+    trimDanglingDelim(state);
+    // Not `ensureNewLine`: the content's own last newline is a blank line the file wrote,
+    // and reusing it as the closing fence's line deletes it.
+    state.text('\n', false);
   }
   state.write(bar);
   state.closeBlock(node);
+}
+
+/**
+ * `text()` opens each line with the delimiter. When the run ends on a newline that
+ * delimiter starts a line that stays empty, so its trailing space is a trailing run -
+ * the same one `flushClose` trims between two blocks.
+ */
+function trimDanglingDelim(state: SerializerState): void {
+  const inner = internals(state);
+  const delim = inner.delim;
+  if (delim.length === 0 || !inner.out.endsWith(delim)) return;
+  const head = inner.out.slice(0, inner.out.length - delim.length);
+  if (head.length > 0 && !head.endsWith('\n')) return;
+  inner.out = head + delim.replace(/[ \t]+$/, '');
 }
 
 /** Longest run of markers on a line that holds nothing else, so it could close the block. */
@@ -479,14 +590,152 @@ function needsCodePad(text: string): boolean {
   return text.startsWith(' ') && text.endsWith(' ') && /[^ ]/.test(text);
 }
 
+/**
+ * These members are `@internal` in prosemirror-markdown and absent from its typings.
+ * `renderList` is reimplemented below because it derives one continuation indent for a
+ * whole ordered list, and that bookkeeping needs them.
+ */
+interface StateInternals {
+  closed: PMNode | null;
+  inTightList: boolean;
+  delim: string;
+  out: string;
+  flushClose(size: number): void;
+}
+
+function internals(state: SerializerState): StateInternals {
+  return state as unknown as StateInternals;
+}
+
+interface ListShape {
+  /** Indent added to every line of the item after the first. */
+  delim: (index: number) => string;
+  /** The marker written before the item's first line, its trailing space included. */
+  marker: (index: number) => string;
+}
+
+/**
+ * `MarkdownSerializerState.renderList` with three corrections: a relaxed separator
+ * between two lists that cannot merge, a tightness recomputed from the content being
+ * written, and a per-item indent.
+ */
+function renderListNode(state: SerializerState, node: PMNode, shape: ListShape): void {
+  const inner = internals(state);
+  if (inner.closed && inner.closed.type === node.type) {
+    // Two blank lines are what stop two sibling lists merging on re-parse. Lists that
+    // already differ in marker or delimiter cannot merge, so one newline is enough.
+    inner.flushClose(sameListSyntax(inner.closed, node) ? 3 : 1);
+  } else if (inner.inTightList) {
+    inner.flushClose(1);
+  }
+
+  const tight = isTightList(node);
+  const previousTight = inner.inTightList;
+  inner.inTightList = tight;
+  node.forEach((child, _offset, index) => {
+    // The gap between two items cannot go through `withGaps`: `wrapBlock` writes the marker
+    // before the item's own serializer runs, so the blank lines would land after it.
+    if (index > 0) inner.flushClose(itemSeparation(child, tight));
+    state.wrapBlock(shape.delim(index), shape.marker(index), node, () =>
+      state.render(child, node, index),
+    );
+  });
+  inner.inTightList = previousTight;
+}
+
+/** A `flushClose` size: 1 writes no blank line, 2 writes one, 3 writes two. */
+function itemSeparation(item: PMNode, tight: boolean): number {
+  const gap = numberAttr(item.attrs['gap']);
+  if (gap !== null) return gap + 1;
+  return tight ? 1 : 2;
+}
+
+function sameListSyntax(previous: PMNode, node: PMNode): boolean {
+  if (previous.attrs['ordered'] !== node.attrs['ordered']) return false;
+  if (stringAttr(previous.attrs['marker']) !== stringAttr(node.attrs['marker'])) return false;
+  return stringAttr(previous.attrs['delimiter']) === stringAttr(node.attrs['delimiter']);
+}
+
+/**
+ * The stored `tight` flag goes stale: an edit can give an item a second paragraph without
+ * clearing it, and the file would then be written in a form the parser reads back as
+ * loose. A nested list is the one extra child a tight item may hold.
+ */
+function isTightList(node: PMNode): boolean {
+  if (node.attrs['tight'] === false) return false;
+  for (let index = 0; index < node.childCount; index += 1) {
+    const item = node.child(index);
+    for (let child = 1; child < item.childCount; child += 1) {
+      if (!isListNode(item.child(child))) return false;
+    }
+  }
+  return true;
+}
+
+function isListNode(node: PMNode): boolean {
+  const name = node.type.name;
+  return name === 'bulletList' || name === 'orderedList' || name === 'taskList';
+}
+
+/** A task item always writes its checkbox, so its marker's space is never trailing. */
+function itemIsEmpty(list: PMNode, index: number): boolean {
+  if (list.type.name === 'taskList') return false;
+  return isEmptyBlock(list.child(index));
+}
+
 function serializeOrderedList(state: SerializerState, node: PMNode): void {
   const start = numberAttr(node.attrs['start']) ?? 1;
   const delimiter = stringAttr(node.attrs['delimiter']) === ')' ? ')' : '.';
-  const width = String(start + node.childCount - 1).length;
+  const numberAt = itemNumbering(node, start);
 
   // Markers are written flush left. A file almost never pads `9.` to line up with
-  // `10.`, so aligning them here would rewrite the list the moment it is opened.
-  state.renderList(node, state.repeat(' ', width + 2), (index) => `${start + index}${delimiter} `);
+  // `10.`, so aligning them here would rewrite the list the moment it is opened. The
+  // continuation indent follows each item's own marker: one shared width writes an
+  // indented code block under `9.` at the wrong column, and it grows on every save.
+  renderListNode(state, node, {
+    delim: (index) => state.repeat(' ', numberAt(index).length + 2),
+    marker: (index) =>
+      `${numberAt(index)}${delimiter}${itemIsEmpty(node, index) ? '' : ' '}`,
+  });
+}
+
+/**
+ * How each marker gets its number. The file's own numbers are written back while the list
+ * still holds exactly the items it numbered, because numbering every item `1.` is a common
+ * way to write markdown and renumbering would rewrite the list on the first page view. An
+ * edit makes them stale - a new item has no number, and a removed or moved one leaves every
+ * number after it wrong - so the list is then counted afresh from its start.
+ */
+function itemNumbering(node: PMNode, start: number): (index: number) => string {
+  const count = (index: number): string => String(start + index);
+  const source = sourceNumbers(node);
+  if (source === null) return count;
+
+  if (sameItems(source, node)) {
+    return (index) => {
+      const stored = source[index];
+      return stored === undefined || stored === '' ? count(index) : stored;
+    };
+  }
+  // The one style worth keeping through an edit: a file that numbers every item the same
+  // way says nothing about position, so a new item joins it without disturbing the rest.
+  const first = source[0] ?? '';
+  const uniform = first !== '' && source.length > 1 && source.every((one) => one === first);
+  return uniform ? () => first : count;
+}
+
+/** The item numbers the file held, or null for a list that did not come from one. */
+function sourceNumbers(node: PMNode): string[] | null {
+  const raw = stringAttr(node.attrs['sourceNumbers']);
+  return raw === null ? null : raw.split(' ');
+}
+
+/** Whether the list still holds the numbered items, all of them, in the same order. */
+function sameItems(source: string[], node: PMNode): boolean {
+  if (source.length !== node.childCount) return false;
+  return source.every(
+    (number, index) => number === (stringAttr(node.child(index).attrs['number']) ?? ''),
+  );
 }
 
 function checkbox(node: PMNode): string {
@@ -503,22 +752,25 @@ const ALIGN_DELIMITERS: Record<string, string> = {
 function serializeTable(scratch: Scratch, state: SerializerState, node: PMNode): void {
   const alignments = headerAlignments(node);
   const style = sourceStyle(node, alignments);
-  const outerPipes = style?.outerPipes ?? true;
+  const pipes: RowPipes = { leading: style?.leading ?? true, trailing: style?.trailing ?? true };
+  const source = liveSource(node);
   const previousInTable = scratch.inTable;
   scratch.inTable = true;
   scratch.blockLineStart = false;
+
+  // A cell capture rewinds the output buffer, so the separator the previous block left
+  // pending has to be on the page first, or it is rewound away with the capture.
+  internals(state).flushClose(2);
 
   // Each line is opened with a newline rather than closed with one: the last row
   // must not leave a trailing newline behind for `closeBlock` to double up.
   node.forEach((row, _offset, rowIndex) => {
     if (rowIndex > 0) state.ensureNewLine();
-    if (outerPipes) state.write('|');
-    const last = row.childCount - 1;
-    row.forEach((cell, _cellOffset, cellIndex) => {
-      if (outerPipes || cellIndex > 0) state.write(' ');
-      renderCell(state, cell);
-      if (outerPipes || cellIndex < last) state.write(' |');
-    });
+    const cells = renderCells(state, row);
+    // The delimiter row sits between the header and the first body row in the file.
+    const raw = source?.[rowIndex === 0 ? 0 : rowIndex + 1];
+    if (raw !== undefined && rowMatches(raw, cells)) state.write(raw);
+    else writeRow(state, cells, pipes);
 
     if (rowIndex !== 0) return;
     state.ensureNewLine();
@@ -534,9 +786,105 @@ function serializeTable(scratch: Scratch, state: SerializerState, node: PMNode):
   state.closeBlock(node);
 }
 
+/**
+ * The lines the file wrote, dropped once the table changed width. The delimiter row is
+ * always written from the document, and GFM drops a table whose header row and delimiter
+ * row disagree on the cell count, so a stale header line would destroy the table.
+ */
+function liveSource(node: PMNode): string[] | null {
+  const raw = rawStringAttr(node.attrs['sourceRows']);
+  if (raw === null) return null;
+  const rows = raw.split('\n');
+  const header = rows[0];
+  if (header === undefined) return null;
+  return splitRow(header.trim()).length === (node.firstChild?.childCount ?? 0) ? rows : null;
+}
+
+/**
+ * The cell's own bytes, with nothing the row writes around them. The sentinel keeps
+ * `atBlank` false, so `write()` does not open the captured run with the delimiter.
+ */
+function renderCells(state: SerializerState, row: PMNode): string[] {
+  const inner = internals(state);
+  const before = inner.out;
+  const cells: string[] = [];
+  row.forEach((cell) => {
+    inner.out = `${before} `;
+    renderCell(state, cell);
+    cells.push(inner.out.slice(before.length + 1));
+  });
+  inner.out = before;
+  return cells;
+}
+
+interface RowPipes {
+  leading: boolean;
+  trailing: boolean;
+}
+
+function writeRow(state: SerializerState, cells: string[], pipes: RowPipes): void {
+  const last = cells.length - 1;
+  if (pipes.leading) state.write('|');
+  cells.forEach((cell, index) => {
+    if (pipes.leading || index > 0) state.write(' ');
+    state.write(cell);
+    if (index < last) {
+      state.write(' |');
+      return;
+    }
+    // A one-column row with no pipe at all re-reads as a paragraph, and the table is
+    // gone for good: the paragraph form is stable, so no later save can undo it.
+    if (pipes.trailing || last === 0) state.write(' |');
+  });
+}
+
+/**
+ * True when the source line still says what the document says. The comparison is on cell
+ * text only, so padding, ragged widths and one-sided pipes survive an edit elsewhere in
+ * the table, while an edit to this row falls back to a regenerated line.
+ */
+function rowMatches(raw: string, cells: string[]): boolean {
+  const source = splitRow(raw.trim());
+  const shared = Math.min(source.length, cells.length);
+  for (let index = 0; index < shared; index += 1) {
+    if (source[index] !== cells[index]?.trim()) return false;
+  }
+  // The parser pads a short row out to the header's width. Those cells are not in the file
+  // and must not force a rewrite. Extra source cells are ones the parser dropped.
+  for (let index = shared; index < cells.length; index += 1) {
+    if ((cells[index] ?? '').trim().length > 0) return false;
+  }
+  return true;
+}
+
+/** GFM cell split: a bare `|` ends the cell, an escaped one does not. */
+function splitRow(line: string): string[] {
+  const cells: string[] = [];
+  let current = '';
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    if (char === '\\' && index + 1 < line.length) {
+      current += char + line[index + 1];
+      index += 1;
+      continue;
+    }
+    if (char === '|') {
+      cells.push(current);
+      current = '';
+      continue;
+    }
+    current += char;
+  }
+  cells.push(current);
+  if (cells[0] === '') cells.shift();
+  if (cells.length > 0 && cells[cells.length - 1] === '') cells.pop();
+  return cells.map((cell) => cell.trim());
+}
+
 interface DelimiterStyle {
   row: string;
-  outerPipes: boolean;
+  leading: boolean;
+  trailing: boolean;
   alignments: string[];
 }
 
@@ -561,14 +909,16 @@ const DELIMITER_CELL = /^:?-+:?$/;
 
 function parseDelimiterRow(row: string | null): DelimiterStyle | null {
   if (row === null) return null;
-  const outerPipes = row.startsWith('|') && row.endsWith('|') && row.length > 1;
+  // Two independent flags: `| a | b` and `a | b |` are both legal and neither is `| a | b |`.
+  const leading = row.startsWith('|');
+  const trailing = row.endsWith('|') && row.length > 1;
   const cells = row
     .replace(/^\|/, '')
     .replace(/\|$/, '')
     .split('|')
     .map((cell) => cell.trim());
   if (cells.some((cell) => !DELIMITER_CELL.test(cell))) return null;
-  return { row, outerPipes, alignments: cells.map(cellAlignment) };
+  return { row, leading, trailing, alignments: cells.map(cellAlignment) };
 }
 
 function cellAlignment(cell: string): string {
@@ -583,12 +933,20 @@ function cellAlignment(cell: string): string {
 /** GFM has one line per cell, so block children are joined with explicit breaks. */
 function renderCell(state: SerializerState, cell: PMNode): void {
   let written = false;
-  cell.forEach((child) => {
-    if (!child.type.inlineContent) return;
+
+  // A list or a quote can still reach a cell by paste. Its text belongs to the cell, so the
+  // wrapper is flattened rather than dropped with the words inside it.
+  const writeBlock = (child: PMNode): void => {
+    if (!child.type.inlineContent) {
+      child.forEach(writeBlock);
+      return;
+    }
     if (written) state.write('<br>');
     if (child.content.size > 0) state.renderInline(child, false);
     written = true;
-  });
+  };
+
+  cell.forEach(writeBlock);
 }
 
 // ---------------------------------------------------------------------------
@@ -629,7 +987,10 @@ function markSerializers(scratch: Scratch): MarkSerializers {
         scratch.autolink = false;
         if (bare) return '>';
         const href = stringAttr(mark.attrs['href']) ?? '';
-        return `](${formatDestination(href)}${formatTitle(stringAttr(mark.attrs['title']))})`;
+        return guardPipes(
+          `](${formatDestination(href)}${formatTitle(stringAttr(mark.attrs['title']))})`,
+          scratch.inTable,
+        );
       },
     },
   };
@@ -638,16 +999,19 @@ function markSerializers(scratch: Scratch): MarkSerializers {
 /** `<https://example.com>` stays an autolink; every other link keeps its brackets. */
 function isBareUrl(mark: Mark, parent: PMNode, index: number): boolean {
   const flag = mark.attrs['autolink'];
-  if (flag === true) return true;
   if (flag === false) return false;
+
+  const child = index < parent.childCount ? parent.child(index) : null;
+  // An autolink holds one plain text run and no nested syntax. Bolding a source autolink
+  // must therefore drop the `<…>` form, or the emphasis lands inside the destination and
+  // the link is destroyed. This check comes before the flag for exactly that case.
+  if (!child?.isText) return false;
+  if (child.marks.length !== 1 || child.marks[0] !== mark) return false;
+  if (flag === true) return true;
 
   const href = stringAttr(mark.attrs['href']);
   if (!href || stringAttr(mark.attrs['title'])) return false;
   if (!/^\w+:/.test(href)) return false;
-
-  const child = index < parent.childCount ? parent.child(index) : null;
-  if (!child?.isText || child.text !== href) return false;
-  // An autolink cannot hold nested syntax, so the link must be the innermost mark.
-  if (child.marks[child.marks.length - 1] !== mark) return false;
+  if (child.text !== href) return false;
   return index === parent.childCount - 1 || !mark.isInSet(parent.child(index + 1).marks);
 }

@@ -23,8 +23,12 @@ const RAW_BLOCK_RE = /<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi;
 const AUTOLINK_RE = /<((?:https?|ftp|mailto):[^>\s]+)>/gi;
 const HTML_TAG_RE = /<\/?[a-zA-Z][^>]*>/g;
 const FOOTNOTE_REF_RE = /\[\^[^\]\n]+\]/g;
-const IMAGE_RE = /!\[([^\]]*)\]\([^)\s]*(?:\s+"[^"]*")?\)/g;
-const INLINE_LINK_RE = /\[([^\]]*)\]\([^)\s]*(?:\s+"[^"]*")?\)/g;
+const FOOTNOTE_DEFINITION_RE = /^[ \t]{0,3}\[\^[^\]\n]+\]:[ \t]*/gm;
+// One level of nested brackets in the text, one level of balanced parens in the
+// destination. Both are legal CommonMark and both used to leave a raw URL in the index.
+const LINK_BODY = String.raw`\[((?:[^\[\]]|\[[^\[\]]*\])*)\]\((?:[^()\s]|\([^()\s]*\))*(?:\s+"[^"]*")?\)`;
+const IMAGE_RE = new RegExp(`!${LINK_BODY}`, 'g');
+const INLINE_LINK_RE = new RegExp(LINK_BODY, 'g');
 const REFERENCE_LINK_RE = /\[([^\]]*)\]\[[^\]]*\]/g;
 const WIKILINK_ALIAS_RE = /\[\[([^\]|\n]+)\|([^\]\n]+)\]\]/g;
 const WIKILINK_RE = /\[\[([^\]\n]+)\]\]/g;
@@ -91,7 +95,9 @@ function stripBlockMarkers(text: string): string {
     const withoutQuote = raw.replace(BLOCKQUOTE_RE, '');
     const withoutHeading = withoutQuote.replace(HEADING_RE, '').replace(HEADING_TRAIL_RE, '');
     const withoutBullet = withoutHeading.replace(LIST_MARKER_RE, '').replace(TASK_BOX_RE, '');
-    kept.push(withoutBullet.replace(/\|/g, ' '));
+    // `\|` is an escaped pipe, not a cell edge. Leave it whole for BACKSLASH_ESCAPE_RE,
+    // which runs later and would otherwise strand the backslash.
+    kept.push(withoutBullet.replace(/\\.|\|/g, (match) => (match === '|' ? ' ' : match)));
   }
   return kept.join('\n');
 }
@@ -108,20 +114,31 @@ function collapseWhitespace(text: string): string {
   return out.join('\n');
 }
 
+export interface PlainTextOptions {
+  /**
+   * Strip a leading `---` block. Off by default: the indexer passes a stored body that
+   * `ContentStore` already split off its frontmatter, and such a body may legitimately
+   * open with a thematic break. Only a caller holding a whole file should turn this on.
+   */
+  stripFrontmatter?: boolean;
+}
+
 /**
  * Convert a markdown document to plain prose.
- * Frontmatter, code fences, HTML and link syntax are removed; the visible words survive.
+ * Code fences, HTML and link syntax are removed; the visible words survive.
  */
-export function markdownToPlainText(markdown: string): string {
+export function markdownToPlainText(markdown: string, options: PlainTextOptions = {}): string {
   if (typeof markdown !== 'string' || markdown.length === 0) return '';
 
   let text = markdown.replace(/\r\n?/g, '\n');
-  text = text.replace(FRONTMATTER_RE, '');
+  if (options.stripFrontmatter === true) text = text.replace(FRONTMATTER_RE, '');
   text = stripCodeFences(text);
   text = text.replace(HTML_COMMENT_RE, ' ');
   text = text.replace(RAW_BLOCK_RE, ' ');
   text = text.replace(AUTOLINK_RE, '$1');
   text = text.replace(HTML_TAG_RE, ' ');
+  // Before FOOTNOTE_REF_RE, which would otherwise eat the `[^1]` and leave a bare `:`.
+  text = text.replace(FOOTNOTE_DEFINITION_RE, '');
   text = text.replace(FOOTNOTE_REF_RE, ' ');
   text = text.replace(IMAGE_RE, '$1');
   text = text.replace(INLINE_LINK_RE, '$1');

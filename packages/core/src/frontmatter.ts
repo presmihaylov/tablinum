@@ -6,33 +6,12 @@ import {
   newPageId,
   type Frontmatter,
   type PageId,
-  type PropValue,
 } from '@gitdocs/shared';
-import {
-  emitFlowSequence,
-  emitKey,
-  emitNumber,
-  emitPropValue,
-  emitString,
-  emitTimestamp,
-} from './yaml-emit.js';
+import { emitNumber, emitString, emitTimestamp } from './yaml-emit.js';
 
 const BOM = String.fromCharCode(0xfeff);
 const MAX_ICON_LENGTH = 16;
-const MAX_TAG_LENGTH = 64;
 const HEADING_SCAN_LINES = 200;
-
-/** Keys the contract gives a fixed meaning. Anything else folds into `props`. */
-const RESERVED_KEYS = new Set([
-  'id',
-  'title',
-  'icon',
-  'tags',
-  'order',
-  'created',
-  'updated',
-  'props',
-]);
 
 export interface ParsedFile {
   frontmatter: Frontmatter;
@@ -71,7 +50,10 @@ export interface ParseHints {
 
 /** Strip the frontmatter block, then repair whatever the author left out. Never throws. */
 export function parse(raw: string, hints: ParseHints = {}): ParsedFile {
-  const text = raw.startsWith(BOM) ? raw.slice(BOM.length) : raw;
+  const stripped = raw.startsWith(BOM) ? raw.slice(BOM.length) : raw;
+  // gray-matter splits the first line on /\r?\n/. A CR-only file has no such line, so it
+  // reports an empty body and `#persistRepairs` then rewrites the file without its prose.
+  const text = stripped.replace(/\r\n?/g, '\n');
   const block = readMatter(text);
   const body = normalizeBody(block.content);
   const source = readBlockScalars(block.blockText);
@@ -136,11 +118,9 @@ function readMatter(text: string): MatterBlock {
 interface BlockScalars {
   /** Source text of every simple `key: value` line at column 0. */
   top: Map<string, string>;
-  /** Source text of every simple `key: value` line one level under `props:`. */
-  props: Map<string, string>;
 }
 
-const EMPTY_SCALARS: BlockScalars = { top: new Map(), props: new Map() };
+const EMPTY_SCALARS: BlockScalars = { top: new Map() };
 
 const KEY_LINE_RE = /^([ \t]*)([A-Za-z_][A-Za-z0-9_.-]*)[ \t]*:(?:[ \t]+(.*))?$/;
 /** A value YAML would not read as a one-line plain scalar. */
@@ -158,40 +138,23 @@ function plainScalarSource(value: string | undefined): string | null {
 function readBlockScalars(blockText: string): BlockScalars {
   if (blockText.length === 0) return EMPTY_SCALARS;
   const top = new Map<string, string>();
-  const props = new Map<string, string>();
   const lines = blockText.replace(/\r\n/g, '\n').split('\n');
-  let inProps = false;
-  let propsIndent = -1;
 
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index] ?? '';
     if (line.trim().length === 0) continue;
     const match = KEY_LINE_RE.exec(line);
-    if (match === null) {
-      inProps = false;
-      continue;
-    }
-    const indent = (match[1] ?? '').length;
-    const key = match[2] ?? '';
+    if (match === null) continue;
+    if ((match[1] ?? '').length > 0) continue;
     const value = plainScalarSource(match[3]);
     const next = lines[index + 1] ?? '';
     // An indented follow-on line means a multi-line scalar or a nested map, neither of which
     // this reader can reproduce.
     const continues = /^[ \t]/.test(next) && next.trim().length > 0 && KEY_LINE_RE.exec(next) === null;
-
-    if (indent === 0) {
-      inProps = key === 'props' && match[3] === undefined;
-      propsIndent = -1;
-      if (!continues && value !== null) top.set(key, value);
-      continue;
-    }
-    if (!inProps) continue;
-    if (propsIndent === -1) propsIndent = indent;
-    if (indent !== propsIndent) continue;
-    if (!continues && value !== null) props.set(key, value);
+    if (!continues && value !== null) top.set(match[2] ?? '', value);
   }
 
-  return { top, props };
+  return { top };
 }
 
 /** How the emitter would write a scalar YAML handed back. Null when there is no plain form. */
@@ -216,18 +179,11 @@ function withSourceScalars(
   data: Record<string, unknown>,
   source: BlockScalars,
 ): Record<string, unknown> {
-  if (source.top.size === 0 && source.props.size === 0) return data;
+  if (source.top.size === 0) return data;
   const merged: Record<string, unknown> = { ...data };
   for (const [key, value] of source.top) {
     if (merged[key] === undefined) merged[key] = value;
   }
-  if (source.props.size === 0) return merged;
-  const parsedProps = isRecord(merged['props']) ? merged['props'] : {};
-  const props: Record<string, unknown> = { ...parsedProps };
-  for (const [key, value] of source.props) {
-    if (props[key] === undefined) props[key] = value;
-  }
-  merged['props'] = props;
   return merged;
 }
 
@@ -235,7 +191,10 @@ export function normalizeBody(body: string): string {
   return body
     .replace(/\r\n/g, '\n')
     .replace(/\r/g, '\n')
-    .replace(/^\n+/, '')
+    // Whitespace-only leading lines too, not just bare newlines: a closing `---` with a
+    // trailing space leaves one behind. The line must be blank, so an indented code block
+    // that opens the body keeps its indent.
+    .replace(/^(?:[ \t]*\n)+/, '')
     .replace(/[ \t\n]+$/, '');
 }
 
@@ -306,67 +265,6 @@ function toIso(value: unknown): IsoResult {
   return { iso: parsed.toISOString(), exact: false };
 }
 
-interface PropResult {
-  value: PropValue;
-  exact: boolean;
-}
-
-function toPropValue(value: unknown): PropResult | null {
-  if (value === null) return { value: null, exact: true };
-  if (typeof value === 'string') return { value, exact: true };
-  if (typeof value === 'boolean') return { value, exact: true };
-  if (typeof value === 'number') return { value, exact: true };
-  if (value instanceof Date) return { value: value.toISOString(), exact: false };
-  if (!Array.isArray(value)) {
-    // PropValue has no nested shape. Keep the author's data as its JSON text rather than
-    // deleting it, and leave the file alone until something else asks for a rewrite.
-    return { value: JSON.stringify(value), exact: true };
-  }
-  const list: unknown[] = value;
-  const items: string[] = [];
-  let exact = true;
-  for (const item of list) {
-    if (typeof item === 'string') {
-      items.push(item);
-      continue;
-    }
-    if (typeof item === 'number' || typeof item === 'boolean') {
-      items.push(String(item));
-      exact = false;
-      continue;
-    }
-    if (item instanceof Date) {
-      items.push(item.toISOString());
-      exact = false;
-      continue;
-    }
-    items.push(JSON.stringify(item));
-    exact = false;
-  }
-  return { value: items, exact };
-}
-
-function normalizeTag(value: unknown): string | null {
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
-  if (typeof value !== 'string') return null;
-  const trimmed = value.trim();
-  if (trimmed.length === 0) return null;
-  return trimmed.slice(0, MAX_TAG_LENGTH);
-}
-
-/**
- * Trim tags and drop the empty ones. The parser normalizes the same way, so a tag written
- * through here reads back unchanged instead of looking like a repair on the next save.
- */
-export function normalizeTags(tags: readonly string[]): string[] {
-  const out: string[] = [];
-  for (const tag of tags) {
-    const normalized = normalizeTag(tag);
-    if (normalized !== null) out.push(normalized);
-  }
-  return out;
-}
-
 /** Trim an icon the same way the parser does. Returns null when nothing is left. */
 export function normalizeIcon(icon: string): string | null {
   const trimmed = icon.trim();
@@ -403,10 +301,7 @@ function buildFrontmatter(
   const icon = readIcon(data['icon']);
   if (!icon.exact) repaired = true;
 
-  const tags = readTags(data['tags']);
-  if (!tags.exact) repaired = true;
-
-  const order = readOrder(data['order']);
+  const order = readOrder(data['order'], source.top.get('order') ?? null);
   if (!order.exact) repaired = true;
 
   const createdResult = toIso(data['created']);
@@ -415,14 +310,9 @@ function buildFrontmatter(
   const created = createdResult.iso ?? updatedResult.iso ?? nowIso;
   const updated = updatedResult.iso ?? created;
 
-  const props = readProps(data, source.props);
-  if (!props.exact) repaired = true;
-
   const frontmatter: Frontmatter = { id, title: title.value, created, updated };
   if (icon.value !== null) frontmatter.icon = icon.value;
-  if (tags.value.length > 0) frontmatter.tags = tags.value;
   if (order.value !== null) frontmatter.order = order.value;
-  if (Object.keys(props.value).length > 0) frontmatter.props = props.value;
 
   if (FrontmatterSchema.safeParse(frontmatter).success) return { frontmatter, repaired };
   return {
@@ -459,87 +349,19 @@ function readIcon(raw: unknown): { value: string | null; exact: boolean } {
   return { value: trimmed, exact: trimmed === raw };
 }
 
-function readTags(raw: unknown): { value: string[]; exact: boolean } {
-  if (raw === undefined || raw === null) return { value: [], exact: true };
-  if (typeof raw === 'string') {
-    const split = raw
-      .split(',')
-      .map((item) => item.trim())
-      .filter((item) => item.length > 0);
-    return { value: split, exact: false };
-  }
-  if (!Array.isArray(raw)) return { value: [], exact: false };
-  const list: unknown[] = raw;
-  const tags: string[] = [];
-  let exact = true;
-  for (const item of list) {
-    const tag = normalizeTag(item);
-    if (tag === null) {
-      exact = false;
-      continue;
-    }
-    if (item !== tag) exact = false;
-    tags.push(tag);
-  }
-  return { value: tags, exact };
-}
-
-function readOrder(raw: unknown): { value: number | null; exact: boolean } {
+function readOrder(raw: unknown, source: string | null = null): { value: number | null; exact: boolean } {
   if (raw === undefined || raw === null) return { value: null, exact: true };
+  // js-yaml follows YAML 1.1, where a leading zero means octal: `order: 010` reads as 8 and
+  // sorts before `order: 09`, which is not octal at all and comes back as a string. A human
+  // writing a zero-padded number means decimal, so the source text decides.
+  const padded = (source ?? (typeof raw === 'string' ? raw : '')).trim();
+  if (/^0\d+$/.test(padded)) return { value: Number.parseInt(padded, 10), exact: true };
   if (typeof raw === 'number' && Number.isFinite(raw)) return { value: raw, exact: true };
   if (typeof raw === 'string' && raw.trim().length > 0) {
     const parsed = Number(raw.trim());
     if (Number.isFinite(parsed)) return { value: parsed, exact: false };
   }
   return { value: null, exact: false };
-}
-
-function readProps(
-  data: Record<string, unknown>,
-  source: ReadonlyMap<string, string> = EMPTY_SCALARS.props,
-): {
-  value: Record<string, PropValue>;
-  exact: boolean;
-} {
-  const props: Record<string, PropValue> = {};
-  let exact = true;
-
-  const raw = data['props'];
-  if (raw !== undefined && raw !== null && !isRecord(raw)) exact = false;
-  if (isRecord(raw)) {
-    for (const [key, value] of Object.entries(raw)) {
-      if (key.length === 0) {
-        exact = false;
-        continue;
-      }
-      const recovered = sourceOverride(value, source.get(key) ?? null);
-      if (recovered !== null) {
-        props[key] = recovered;
-        continue;
-      }
-      const converted = toPropValue(value);
-      if (converted === null) {
-        exact = false;
-        continue;
-      }
-      if (!converted.exact) exact = false;
-      props[key] = converted.value;
-    }
-  }
-
-  // An agent writing a bare .md file puts its own keys at the top level. Keep them as props
-  // instead of throwing the author's data away.
-  for (const [key, value] of Object.entries(data)) {
-    if (RESERVED_KEYS.has(key)) continue;
-    exact = false;
-    if (key.length === 0) continue;
-    if (Object.prototype.hasOwnProperty.call(props, key)) continue;
-    const converted = toPropValue(value);
-    if (converted === null) continue;
-    props[key] = converted.value;
-  }
-
-  return { value: props, exact };
 }
 
 // ---------------------------------------------------------------------------
@@ -555,20 +377,11 @@ export function stringifyFrontmatter(frontmatter: Frontmatter): string {
     // Always quoted: an emoji next to a YAML indicator is easy to misread, quoted is never wrong.
     lines.push(`icon: ${JSON.stringify(frontmatter.icon)}`);
   }
-  const tags = frontmatter.tags;
-  if (tags !== undefined && tags.length > 0) lines.push(`tags: ${emitFlowSequence(tags)}`);
   if (frontmatter.order !== undefined && frontmatter.order !== null) {
     lines.push(`order: ${emitNumber(frontmatter.order)}`);
   }
   lines.push(`created: ${emitTimestamp(frontmatter.created)}`);
   lines.push(`updated: ${emitTimestamp(frontmatter.updated)}`);
-  const props = frontmatter.props;
-  if (props !== undefined && Object.keys(props).length > 0) {
-    lines.push('props:');
-    for (const [key, value] of Object.entries(props)) {
-      lines.push(`  ${emitKey(key)}: ${emitPropValue(value)}`);
-    }
-  }
   return lines.join('\n');
 }
 
@@ -600,33 +413,12 @@ export function serializePreserving(
   return serialize(frontmatter, body);
 }
 
-function sameStrings(a: readonly string[], b: readonly string[]): boolean {
-  if (a.length !== b.length) return false;
-  return a.every((item, index) => item === b[index]);
-}
-
-function samePropValue(a: PropValue, b: PropValue): boolean {
-  if (Array.isArray(a) || Array.isArray(b)) {
-    if (!Array.isArray(a) || !Array.isArray(b)) return false;
-    return sameStrings(a, b);
-  }
-  return a === b;
-}
-
-/** Deep equality over the frontmatter contract, including prop key order. */
+/** Deep equality over the frontmatter contract. */
 export function frontmatterEqual(a: Frontmatter, b: Frontmatter): boolean {
   if (a.id !== b.id) return false;
   if (a.title !== b.title) return false;
   if ((a.icon ?? null) !== (b.icon ?? null)) return false;
   if ((a.order ?? null) !== (b.order ?? null)) return false;
   if (a.created !== b.created) return false;
-  if (a.updated !== b.updated) return false;
-  if (!sameStrings(a.tags ?? [], b.tags ?? [])) return false;
-
-  const aProps = a.props ?? {};
-  const bProps = b.props ?? {};
-  const aKeys = Object.keys(aProps);
-  const bKeys = Object.keys(bProps);
-  if (!sameStrings(aKeys, bKeys)) return false;
-  return aKeys.every((key) => samePropValue(aProps[key] ?? null, bProps[key] ?? null));
+  return a.updated === b.updated;
 }

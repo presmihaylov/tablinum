@@ -7,11 +7,16 @@ describe('markdownToPlainText', () => {
     expect(markdownToPlainText('   \n\n  ')).toBe('');
   });
 
-  it('strips YAML frontmatter', () => {
-    const md = ['---', 'id: pg_1', 'title: Deploy', 'tags: [ops]', '---', '', 'Body text.'].join(
+  it('strips YAML frontmatter only when asked', () => {
+    const md = ['---', 'id: pg_1', 'title: Deploy', '---', '', 'Body text.'].join(
       '\n',
     );
-    expect(markdownToPlainText(md)).toBe('Body text.');
+    expect(markdownToPlainText(md, { stripFrontmatter: true })).toBe('Body text.');
+  });
+
+  it('keeps the first section of a body that opens with a thematic break', () => {
+    const md = ['---', '', 'Lead paragraph.', '', '---', '', 'Second section.'].join('\n');
+    expect(markdownToPlainText(md)).toBe('Lead paragraph.\n\nSecond section.');
   });
 
   it('keeps a horizontal rule that is not frontmatter', () => {
@@ -61,12 +66,33 @@ describe('markdownToPlainText', () => {
     expect(markdownToPlainText('See [the runbook][ref] now.')).toBe('See the runbook now.');
   });
 
+  it('keeps link text that holds nested brackets', () => {
+    expect(markdownToPlainText('See [the [beta] runbook](https://example.com/x) now.')).toBe(
+      'See the [beta] runbook now.',
+    );
+  });
+
+  it('drops a destination that holds balanced parentheses', () => {
+    expect(markdownToPlainText('See [the runbook](https://example.com/a_(b)/c) now.')).toBe(
+      'See the runbook now.',
+    );
+  });
+
   it('drops link reference definitions', () => {
     expect(markdownToPlainText('Text.\n\n[ref]: https://example.com/x')).toBe('Text.');
   });
 
   it('keeps image alt text', () => {
     expect(markdownToPlainText('![a diagram](/_assets/pg_1/x.png)')).toBe('a diagram');
+    expect(markdownToPlainText('![a [beta] diagram](/_assets/pg_1/x.png)')).toBe(
+      'a [beta] diagram',
+    );
+  });
+
+  it('keeps the alt text of an image used as link text', () => {
+    expect(markdownToPlainText('[![a diagram](/_assets/pg_1/x.png)](https://example.com)')).toBe(
+      'a diagram',
+    );
   });
 
   it('resolves wikilinks to their visible text', () => {
@@ -124,6 +150,17 @@ describe('markdownToPlainText', () => {
     expect(markdownToPlainText('A claim[^1] stands.')).toBe('A claim stands.');
   });
 
+  it('keeps the prose of a footnote definition', () => {
+    expect(markdownToPlainText('A claim[^1] stands.\n\n[^1]: The supporting note.')).toBe(
+      'A claim stands.\n\nThe supporting note.',
+    );
+  });
+
+  it('keeps an escaped pipe as a literal pipe', () => {
+    const md = ['| Name | Rule |', '| --- | --- |', '| Deploy | a \\| b |'].join('\n');
+    expect(markdownToPlainText(md)).toBe('Name Rule\nDeploy a | b');
+  });
+
   it('removes control characters, including the snippet delimiters', () => {
     const md = 'before\u0001middle\u0002after';
     const text = markdownToPlainText(md);
@@ -159,7 +196,7 @@ describe('markdownToPlainText', () => {
       '- [ ] Announce in <b>#eng</b>',
     ].join('\n');
 
-    const text = markdownToPlainText(md);
+    const text = markdownToPlainText(md, { stripFrontmatter: true });
     expect(text).toBe(
       [
         'Deploy runbook',

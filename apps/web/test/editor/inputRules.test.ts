@@ -65,6 +65,19 @@ describe('markdown input rules', () => {
     expect(toMarkdown(instance)).toBe('1. one\n');
   });
 
+  it('turns "1) " into a numbered list and keeps the bracket', () => {
+    const instance = open();
+    type(instance, '1) one');
+    expect(instance.isActive('orderedList')).toBe(true);
+    expect(toMarkdown(instance)).toBe('1) one\n');
+  });
+
+  it('keeps the start number of a bracketed marker', () => {
+    const instance = open();
+    type(instance, '3) three');
+    expect(toMarkdown(instance)).toBe('3) three\n');
+  });
+
   it('turns "[] " into a to-do list', () => {
     const instance = open();
     type(instance, '[] milk');

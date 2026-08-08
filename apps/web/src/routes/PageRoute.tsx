@@ -4,9 +4,7 @@ import { usePage } from '../api/hooks';
 import { PageEditor } from '../editor';
 import { pathFromSplat } from '../lib/href';
 import { useAutosave } from '../lib/useAutosave';
-import { useViewMode } from '../lib/viewMode';
 import { PageMeta } from '../components/PageMeta/PageMeta';
-import { TableView } from '../components/TableView/TableView';
 import { NotFoundRoute } from './NotFoundRoute';
 
 interface PageRouteProps {
@@ -20,7 +18,6 @@ export function PageRoute({ metaOpen }: PageRouteProps) {
   const query = usePage(path);
   const page = query.data?.page;
   const autosave = useAutosave(page?.id);
-  const [view] = useViewMode();
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
@@ -54,26 +51,20 @@ export function PageRoute({ metaOpen }: PageRouteProps) {
     );
   }
 
-  const showTable = view === 'table' && page.hasChildren;
-
   return (
     <>
       <div className="app-content">
-        {showTable ? (
-          <TableView dir={page.path} />
-        ) : (
-          <div className="page-shell">
-            <PageEditor
-              page={page}
-              saveState={autosave.saveState}
-              onChange={(markdown) => autosave.queue({ markdown })}
-              onTitleChange={(title) => autosave.queue({ title })}
-            />
-          </div>
-        )}
+        <div className="page-shell">
+          <PageEditor
+            page={page}
+            saveState={autosave.saveState}
+            onChange={(markdown) => autosave.queue({ markdown })}
+            onTitleChange={(title) => autosave.queue({ title })}
+          />
+        </div>
       </div>
 
-      {metaOpen ? <PageMeta page={page} onPatch={autosave.queue} /> : null}
+      {metaOpen ? <PageMeta page={page} /> : null}
     </>
   );
 }

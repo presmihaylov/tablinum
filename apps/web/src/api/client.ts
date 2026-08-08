@@ -27,8 +27,6 @@ import type {
   SpacesResponse,
   TreeResponse,
   UpdatePageBody,
-  ViewsQuery,
-  ViewsResponse,
 } from '@gitdocs/shared';
 
 export const API_BASE = '/api/v1';
@@ -201,7 +199,7 @@ export const api = {
 
   search: (query: SearchQuery, signal?: AbortSignal): Promise<SearchResponse> =>
     request('/search', {
-      query: { q: query.q, space: query.space, tag: query.tag, limit: query.limit },
+      query: { q: query.q, space: query.space, limit: query.limit },
       signal,
     }),
 
@@ -214,11 +212,6 @@ export const api = {
   revision: (id: PageId, sha: string, signal?: AbortSignal): Promise<RevisionContentResponse> =>
     request(`/pages/${encodeURIComponent(id)}/revisions/${encodeURIComponent(sha)}`, { signal }),
 
-  views: (query: ViewsQuery, signal?: AbortSignal): Promise<ViewsResponse> =>
-    request('/views', {
-      query: { dir: query.dir, where: query.where, sort: query.sort, order: query.order },
-      signal,
-    }),
 
   gitStatus: (signal?: AbortSignal): Promise<GitStatusResponse> => request('/git/status', { signal }),
 

@@ -125,18 +125,14 @@ describe('createPage', () => {
     expect(await exists(dir, 'docs/guide.md')).toBe(true);
   });
 
-  it('stores tags, props, icon and order', async () => {
+  it('stores the icon and the order', async () => {
     const page = await store.createPage({
       path: 'docs/deploy',
       title: 'Deploy',
       markdown: '# Deploy\n',
       icon: 'D',
-      tags: ['ops'],
       order: 3,
-      props: { status: 'live' },
     });
-    expect(page.tags).toEqual(['ops']);
-    expect(page.props).toEqual({ status: 'live' });
     expect(page.icon).toBe('D');
     expect(page.order).toBe(3);
     expect(page.markdown).toBe('# Deploy');
@@ -232,18 +228,6 @@ describe('updatePage', () => {
     expect(next.icon).toBeUndefined();
     expect(next.order).toBeUndefined();
     expect(await readFileAt(dir, 'docs/guide.md')).not.toContain('icon:');
-  });
-
-  it('replaces tags and props wholesale', async () => {
-    const page = await store.createPage({
-      path: 'docs/guide',
-      title: 'Guide',
-      tags: ['a', 'b'],
-      props: { x: '1' },
-    });
-    const next = await store.updatePage(page.id, { tags: ['c'], props: { y: '2' } });
-    expect(next.tags).toEqual(['c']);
-    expect(next.props).toEqual({ y: '2' });
   });
 
   it('renames a leaf and keeps the id', async () => {

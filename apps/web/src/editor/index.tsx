@@ -8,18 +8,24 @@ import type { Page } from '@gitdocs/shared';
 import { api } from '../api/client';
 import { useUploadAsset } from '../api/hooks';
 import { qk } from '../api/keys';
+import { pageHref } from '../lib/href';
 import { useToast } from '../lib/toast';
 import type { SaveState } from '../lib/autosave';
+import { PromptDialog } from '../components/ui/PromptDialog';
+import type { PromptRequest } from '../components/ui/PromptDialog';
 import { SaveIndicator } from '../components/ui/SaveIndicator';
+import { EMBED_PROVIDERS, embedHtml, resolveEmbed } from './embeds';
 import { buildExtensions } from './extensions';
-import type { WikilinkItem } from './extensions';
-import { DEFAULT_FRAME, readMarkdown, writeMarkdown } from './markdown';
+import type { EmbeddedPage, WikilinkItem } from './extensions';
+import { DEFAULT_FRAME, PARSE_OPTIONS, readMarkdown, writeMarkdown } from './markdown';
 import type { MarkdownFrame } from './markdown';
 import { BlockHandles } from './ui/BlockHandles';
 import { EmojiPicker } from './ui/EmojiPicker';
 import type { EmojiAnchor } from './ui/EmojiPicker';
 import { MarkMenu } from './ui/MarkMenu';
+import { PagePicker } from './ui/PagePicker';
 import { PageTitle } from './ui/PageTitle';
+import { TableControls } from './ui/TableControls';
 import { TableMenu } from './ui/TableMenu';
 import './editor.css';
 
@@ -44,8 +50,13 @@ export interface PageEditorProps {
 interface Handlers {
   pickImage: () => void;
   pickEmoji: () => void;
+  pickVideo: () => void;
+  pickPage: () => void;
+  insertVideo: (url: string) => void;
   upload: (file: File) => Promise<string | null>;
   search: (query: string) => Promise<WikilinkItem[]>;
+  load: (path: string) => Promise<EmbeddedPage | null>;
+  open: (path: string) => void;
 }
 
 const SEARCH_LIMIT = 8;
@@ -53,6 +64,8 @@ const SEARCH_LIMIT = 8;
 export function PageEditor({ page, onChange, onTitleChange, saveState }: PageEditorProps) {
   const [title, setTitle] = useState(page.title);
   const [emojiAt, setEmojiAt] = useState<EmojiAnchor | null>(null);
+  const [videoOpen, setVideoOpen] = useState(false);
+  const [pageOpen, setPageOpen] = useState(false);
 
   const canvasRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -103,6 +116,54 @@ export function PageEditor({ page, onChange, onTitleChange, saveState }: PageEdi
     [client],
   );
 
+  const loadPage = useCallback(
+    async (path: string): Promise<EmbeddedPage | null> => {
+      const target = path.trim().replace(/^\/+/, '');
+      if (target.length === 0) return null;
+      try {
+        const data = await client.fetchQuery({
+          queryKey: qk.pageByPath(target),
+          queryFn: ({ signal }) => api.getPageByPath(target, signal),
+          staleTime: 5_000,
+        });
+        return {
+          path: data.page.path,
+          title: data.page.title,
+          icon: data.page.icon ?? null,
+          markdown: data.page.markdown,
+        };
+      } catch {
+        return null;
+      }
+    },
+    [client],
+  );
+
+  const openPage = useCallback(
+    (path: string): void => {
+      const target = path.trim().replace(/^\/+/, '');
+      if (target.length === 0) return;
+      navigate(pageHref(target));
+    },
+    [navigate],
+  );
+
+  const insertVideo = useCallback(
+    (url: string): void => {
+      const embed = resolveEmbed(url);
+      if (embed === null) {
+        toast.push(`That link cannot be embedded. Try ${EMBED_PROVIDERS.join(', ')}.`, 'error');
+        return;
+      }
+      editorRef.current
+        ?.chain()
+        .focus()
+        .insertContent({ type: 'htmlBlock', attrs: { raw: embedHtml(embed) } })
+        .run();
+    },
+    [toast],
+  );
+
   const openEmoji = useCallback((): void => {
     const editor = editorRef.current;
     if (!editor) return;
@@ -113,14 +174,24 @@ export function PageEditor({ page, onChange, onTitleChange, saveState }: PageEdi
   const handlers = useRef<Handlers>({
     pickImage: () => undefined,
     pickEmoji: () => undefined,
+    pickVideo: () => undefined,
+    pickPage: () => undefined,
+    insertVideo: () => undefined,
     upload: () => Promise.resolve(null),
     search: () => Promise.resolve([]),
+    load: () => Promise.resolve(null),
+    open: () => undefined,
   });
   handlers.current = {
     pickImage: () => fileRef.current?.click(),
     pickEmoji: openEmoji,
+    pickVideo: () => setVideoOpen(true),
+    pickPage: () => setPageOpen(true),
+    insertVideo,
     upload: uploadImage,
     search: searchPages,
+    load: loadPage,
+    open: openPage,
   };
 
   // Built once: rebuilding the extension list would recreate the whole schema.
@@ -129,8 +200,12 @@ export function PageEditor({ page, onChange, onTitleChange, saveState }: PageEdi
       buildExtensions({
         onPickImage: () => handlers.current.pickImage(),
         onPickEmoji: () => handlers.current.pickEmoji(),
+        onPickVideo: () => handlers.current.pickVideo(),
+        onPickPage: () => handlers.current.pickPage(),
         uploadImage: (file) => handlers.current.upload(file),
         searchPages: (query) => handlers.current.search(query),
+        loadPage: (path) => handlers.current.load(path),
+        openPage: (path) => handlers.current.open(path),
       }),
     [],
   );
@@ -138,6 +213,7 @@ export function PageEditor({ page, onChange, onTitleChange, saveState }: PageEdi
   const editor = useEditor({
     extensions,
     content: readMarkdown(page.markdown).body,
+    parseOptions: PARSE_OPTIONS,
     editorProps: {
       attributes: { class: 'gd-editor-surface', spellcheck: 'true' },
     },
@@ -159,8 +235,25 @@ export function PageEditor({ page, onChange, onTitleChange, saveState }: PageEdi
     lastSent.current = page.markdown;
     setTitle(page.title);
     setEmojiAt(null);
-    editor?.commands.setContent(readMarkdown(page.markdown).body, false);
+    setVideoOpen(false);
+    setPageOpen(false);
+    editor?.commands.setContent(readMarkdown(page.markdown).body, false, PARSE_OPTIONS);
   }, [page.id, page.title, page.markdown, editor]);
+
+  // Held steady while the dialog is open: a new object resets the field the user types in.
+  const videoRequest = useMemo<PromptRequest | null>(
+    () =>
+      videoOpen
+        ? {
+            title: 'Embed a video',
+            label: 'Video link',
+            confirmLabel: 'Embed',
+            placeholder: 'https://www.youtube.com/watch?v=…',
+            onConfirm: (url) => handlers.current.insertVideo(url),
+          }
+        : null,
+    [videoOpen],
+  );
 
   const changeTitle = (value: string): void => {
     setTitle(value);
@@ -189,6 +282,7 @@ export function PageEditor({ page, onChange, onTitleChange, saveState }: PageEdi
       <div className="editor__canvas" ref={canvasRef} onClickCapture={followLink(navigate)}>
         {editor ? <BlockHandles editor={editor} canvas={canvasRef} /> : null}
         <EditorContent editor={editor} className="editor__body" />
+        {editor ? <TableControls editor={editor} canvas={canvasRef} /> : null}
         {editor ? <MarkMenu editor={editor} /> : null}
         {editor ? <TableMenu editor={editor} /> : null}
       </div>
@@ -203,6 +297,15 @@ export function PageEditor({ page, onChange, onTitleChange, saveState }: PageEdi
           }}
         />
       ) : null}
+
+      <PromptDialog request={videoRequest} onClose={() => setVideoOpen(false)} />
+
+      <PagePicker
+        open={pageOpen}
+        search={searchPages}
+        onClose={() => setPageOpen(false)}
+        onPick={(path) => editorRef.current?.chain().focus().insertPageEmbed(path).run()}
+      />
 
       <input
         ref={fileRef}

@@ -73,6 +73,8 @@ props:                   # optional, Record<string, string|number|boolean|string
 
 Body below is plain CommonMark + GFM (tables, task lists, strikethrough, autolinks).
 Wikilinks `[[page-path]]` and `[[page-path|alias]]` are supported and resolved by core.
+`![[page-path]]` alone on a line embeds that page; it counts as a link like any wikilink.
+Videos are raw HTML: a one-line `<iframe>` or `<div class="gd-video"><video></video></div>`.
 
 ## SHARED TYPES
 

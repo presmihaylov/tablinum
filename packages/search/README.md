@@ -28,7 +28,7 @@ index.upsert(page);              // one page created or changed
 index.remove(page.id);           // one page deleted
 index.removeSubtree('eng/runbooks'); // a page and everything below it
 
-const hits = await index.search('deploy runbook', { space: 'eng', tag: 'ops', limit: 20 });
+const hits = await index.search('deploy runbook', { space: 'eng', limit: 20 });
 
 index.close();
 ```
@@ -52,19 +52,18 @@ signature can absorb a different backend later without a breaking change.
 | `close()` | Release the handle. The instance is unusable afterwards. |
 
 `upsert` accepts an `IndexablePage`, which a full `Page` satisfies:
-`{ id, path, space, title, tags, updated, markdown }`.
+`{ id, path, space, title, updated, markdown }`.
 
 ## Schema
 
 ```sql
-pages(id TEXT PRIMARY KEY, path TEXT, space TEXT, title TEXT, tags TEXT, updated TEXT)
+pages(id TEXT PRIMARY KEY, path TEXT, space TEXT, title TEXT, updated TEXT)
 pages_fts USING fts5(title, body, path, tokenize='porter unicode61')
 ```
 
 `pages_fts.rowid` is joined to the implicit `pages.rowid`. Every write deletes the matching FTS row
 before inserting, and every delete removes both rows, so the two tables never drift.
 
-`tags` is stored as `|a|b|` and filtered with `instr()`, so `tag=ops` cannot match `operations`.
 `body` holds `markdownToPlainText(page.markdown)`, never raw markdown.
 `path` is stored space-separated, so `eng/runbooks/deploy` is searchable by any segment.
 

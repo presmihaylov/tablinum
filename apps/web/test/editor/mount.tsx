@@ -1,12 +1,13 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { expect } from 'vitest';
-import { act, render, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, waitFor } from '@testing-library/react';
 import { EditorContent, useEditor } from '@tiptap/react';
 import type { Editor } from '@tiptap/core';
 import type { Transaction } from '@tiptap/pm/state';
 import { buildExtensions } from '../../src/editor/extensions';
 import type { WikilinkItem } from '../../src/editor/extensions';
 import { MarkMenu } from '../../src/editor/ui/MarkMenu';
+import { TableControls } from '../../src/editor/ui/TableControls';
 import { TableMenu } from '../../src/editor/ui/TableMenu';
 
 /**
@@ -28,6 +29,8 @@ export interface MountOptions {
   searchPages?: (query: string) => Promise<WikilinkItem[]>;
   onPickImage?: () => void;
   onPickEmoji?: () => void;
+  onPickVideo?: () => void;
+  onPickPage?: () => void;
 }
 
 function Harness({
@@ -42,18 +45,22 @@ function Harness({
       ...(options.searchPages ? { searchPages: options.searchPages } : {}),
       ...(options.onPickImage ? { onPickImage: options.onPickImage } : {}),
       ...(options.onPickEmoji ? { onPickEmoji: options.onPickEmoji } : {}),
+      ...(options.onPickVideo ? { onPickVideo: options.onPickVideo } : {}),
+      ...(options.onPickPage ? { onPickPage: options.onPickPage } : {}),
     }),
     content: options.content ?? '',
   });
+  const canvas = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (editor) onReady(editor);
   }, [editor, onReady]);
   return (
-    <>
+    <div className="editor__canvas" ref={canvas}>
       <EditorContent editor={editor} />
+      {editor ? <TableControls editor={editor} canvas={canvas} /> : null}
       {editor ? <MarkMenu editor={editor} /> : null}
       {editor ? <TableMenu editor={editor} /> : null}
-    </>
+    </div>
   );
 }
 
@@ -83,6 +90,13 @@ export function typeText(editor: Editor, text: string): void {
     if (handled) continue;
     editor.view.dispatch(insert());
   }
+}
+
+/** Moves the pointer onto the first table, which is what brings its controls up. */
+export async function hoverTable(editor: Editor): Promise<void> {
+  const cell = editor.view.dom.querySelector('th, td');
+  if (!cell) throw new Error('the document has no table');
+  await settle(() => fireEvent.mouseMove(cell));
 }
 
 /** Runs an edit and lets the asynchronous menu updates settle inside `act`. */

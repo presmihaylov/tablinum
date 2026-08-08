@@ -9,7 +9,6 @@ import {
   makeRevision,
   makeSpaceTree,
   makeStatus,
-  makeSummary,
   mockFetch,
   reply,
   type Routes,
@@ -49,7 +48,6 @@ describe('tool catalogue', () => {
       'gitdocs_delete_page',
       'gitdocs_page_history',
       'gitdocs_git_sync',
-      'gitdocs_query_view',
     ]);
   });
 
@@ -79,9 +77,9 @@ describe('gitdocs_search', () => {
       'GET /api/v1/search': { hits: [makeHit({ path: 'eng/deploy' })] },
     });
 
-    const text = await run('gitdocs_search', { query: 'deploy', space: 'eng', tag: 'ops', limit: 5 });
+    const text = await run('gitdocs_search', { query: 'deploy', space: 'eng', limit: 5 });
 
-    expect(mock.last().query).toEqual({ q: 'deploy', space: 'eng', tag: 'ops', limit: '5' });
+    expect(mock.last().query).toEqual({ q: 'deploy', space: 'eng', limit: '5' });
     expect(text).toContain('[eng/deploy]');
   });
 
@@ -158,16 +156,16 @@ describe('gitdocs_create_page', () => {
       path: 'eng/runbooks/deploy',
       title: 'Deploy runbook',
       markdown: 'Body.',
-      tags: ['ops'],
-      props: { status: 'draft' },
+      icon: '🚀',
+      order: 2,
     });
 
     expect(mock.last().body).toEqual({
       path: 'eng/runbooks/deploy',
       title: 'Deploy runbook',
       markdown: 'Body.',
-      tags: ['ops'],
-      props: { status: 'draft' },
+      icon: '🚀',
+      order: 2,
     });
     expect(text).toContain('Created page.');
     expect(text).toContain(`id=${page.id}`);
@@ -214,9 +212,9 @@ describe('gitdocs_update_page partial body', () => {
     const page = makePage();
     const { run, mock } = harness({ [`PATCH /api/v1/pages/${page.id}`]: { page } });
 
-    await run('gitdocs_update_page', { id: page.id, tags: ['ops'], props: { status: 'live' } });
+    await run('gitdocs_update_page', { id: page.id, icon: '🚀', order: 4 });
 
-    expect(mock.last().body).toEqual({ tags: ['ops'], props: { status: 'live' } });
+    expect(mock.last().body).toEqual({ icon: '🚀', order: 4 });
   });
 
   it('sends markdown when it is explicitly given, even an empty string', async () => {
@@ -263,8 +261,8 @@ describe('gitdocs_update_page partial body', () => {
   it('reports which fields changed', async () => {
     const page = makePage();
     const { run } = harness({ [`PATCH /api/v1/pages/${page.id}`]: { page } });
-    const text = await run('gitdocs_update_page', { id: page.id, title: 'T', tags: [] });
-    expect(text).toContain('Updated title, tags.');
+    const text = await run('gitdocs_update_page', { id: page.id, title: 'T', order: null });
+    expect(text).toContain('Updated title, order.');
   });
 });
 
@@ -454,38 +452,5 @@ describe('gitdocs_git_sync', () => {
 
     const error = await expectError(() => run('gitdocs_git_sync', { push: true }));
     expect(error.code).toBe('GIT_ERROR');
-  });
-});
-
-describe('gitdocs_query_view', () => {
-  it('forwards dir, where, sort and order and renders a table', async () => {
-    const row = makeSummary({ path: 'eng/runbooks/deploy', props: { status: 'draft' } });
-    const { run, mock } = harness({
-      'GET /api/v1/views': { columns: ['status'], rows: [row] },
-    });
-
-    const text = await run('gitdocs_query_view', {
-      dir: 'eng/runbooks',
-      where: 'status:draft',
-      sort: 'status',
-      order: 'desc',
-    });
-
-    expect(mock.last().query).toEqual({
-      dir: 'eng/runbooks',
-      where: 'status:draft',
-      sort: 'status',
-      order: 'desc',
-    });
-    expect(text).toContain('| title | path | status |');
-    expect(text).toContain('| Deploy runbook | eng/runbooks/deploy | draft |');
-  });
-
-  it('rejects an order outside asc and desc', async () => {
-    const { run } = harness({});
-    const error = await expectError(() =>
-      run('gitdocs_query_view', { dir: 'eng', order: 'sideways' }),
-    );
-    expect(error.code).toBe('VALIDATION');
   });
 });

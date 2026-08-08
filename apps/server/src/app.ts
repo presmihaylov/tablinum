@@ -18,7 +18,6 @@ import { registerPageRoutes } from './routes/pages.js';
 import { registerSearchRoutes } from './routes/search.js';
 import { registerSpaceRoutes } from './routes/spaces.js';
 import { registerTreeRoutes } from './routes/tree.js';
-import { registerViewRoutes } from './routes/views.js';
 import { VERSION } from './version.js';
 import { Wiring } from './wiring.js';
 
@@ -77,7 +76,6 @@ export async function buildApp(deps: ServerDeps): Promise<FastifyInstance> {
   registerSpaceRoutes(app, ctx);
   registerTreeRoutes(app, ctx);
   registerPageRoutes(app, ctx);
-  registerViewRoutes(app, ctx);
   registerSearchRoutes(app, ctx);
   registerGitRoutes(app, ctx);
   registerAssetRoutes(app, ctx);

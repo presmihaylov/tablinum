@@ -4,7 +4,6 @@ export type {
   GitdocsClientOptions,
   SearchParams,
   SpaceTree,
-  ViewParams,
 } from './client.js';
 export {
   DEFAULT_BASE_URL,
@@ -20,8 +19,6 @@ export {
   formatPageLine,
   formatSearchHits,
   formatTreeOutline,
-  formatViewTable,
-  renderPropValue,
 } from './format.js';
 export { normalizeRef, refLabel, resolvePage, resolvePageId } from './refs.js';
 export type { PageRef, ResolvedRef } from './refs.js';

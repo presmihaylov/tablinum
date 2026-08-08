@@ -61,6 +61,10 @@ export const GitdocsTaskList = TaskList.extend({
 }).configure({ HTMLAttributes: { class: 'gd-editor-tasks' } });
 
 export const GitdocsTaskItem = TaskItem.extend({
+  // Same reason as `ListItem` in `extensions/index.ts`: the stock `paragraph block*` makes the
+  // DOM parser drop any leading non-paragraph block out of the item.
+  content: 'block+',
+
   addStorage() {
     return { markdown: { parse: {} } };
   },

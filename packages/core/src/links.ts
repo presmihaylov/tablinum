@@ -29,6 +29,7 @@ const WIKILINK = /\[\[([^[\]\n|]+)(?:\|([^[\]\n]*))?\]\]/g;
 const MARKDOWN_LINK =
   /(!?)\[((?:[^\]\\\n]|\\.)*)\]\(\s*(<[^>\n]*>|[^\s()]*)\s*(?:"[^"\n]*"|'[^'\n]*')?\s*\)/g;
 const SCHEME = /^[a-zA-Z][a-zA-Z0-9+.-]*:/;
+const QUOTE_PREFIX = /^(?: {0,3}> ?)+/;
 
 // ---------------------------------------------------------------------------
 // code masking
@@ -82,20 +83,33 @@ export function maskCodeRegions(markdown: string): string {
   const out: string[] = [];
   let fenceChar: string | null = null;
   let fenceLength = 0;
+  let fenceQuoted = false;
   for (const line of lines) {
-    const match = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+    // The fence rules apply to the line inside the quote, not to the `> ` that carries it.
+    const prefix = QUOTE_PREFIX.exec(line)?.[0] ?? '';
+    const quoted = prefix.length > 0;
+    const match = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line.slice(prefix.length));
     const marker = match?.[1] ?? '';
     if (fenceChar === null) {
       if (match) {
         fenceChar = marker.charAt(0);
         fenceLength = marker.length;
+        fenceQuoted = quoted;
         out.push(blank(line));
         continue;
       }
       out.push(maskInlineCode(line));
       continue;
     }
+    // A fence opened inside a blockquote ends where the quote ends, even without a closer.
+    if (fenceQuoted && !quoted) {
+      fenceChar = null;
+      fenceLength = 0;
+      out.push(maskInlineCode(line));
+      continue;
+    }
     const closes =
+      quoted === fenceQuoted &&
       match !== null &&
       marker.charAt(0) === fenceChar &&
       marker.length >= fenceLength &&
@@ -305,6 +319,28 @@ function escapeLinkText(text: string): string {
   return text.replace(/([[\]])/g, '\\$1');
 }
 
+function hasUnbalancedParens(href: string): boolean {
+  let open = 0;
+  for (const char of href) {
+    if (char === '(') open += 1;
+    if (char === ')') {
+      open -= 1;
+      if (open < 0) return true;
+    }
+  }
+  return open !== 0;
+}
+
+/**
+ * Whitespace, a leading `<`, or a paren the reader cannot pair all end the destination early.
+ * Angle brackets fix all three. Balanced parens are legal bare, so leave those as written.
+ */
+function escapeLinkHref(href: string): string {
+  const bare = !/\s/.test(href) && !href.startsWith('<') && !hasUnbalancedParens(href);
+  if (bare) return href;
+  return `<${href.replace(/</g, '%3C').replace(/>/g, '%3E')}>`;
+}
+
 /**
  * Rewrite `[[page]]` and `[[page|alias]]` into ordinary markdown links.
  * A target the resolver does not know is left untouched, so a broken link stays visible.
@@ -326,7 +362,7 @@ export function resolveWikilinks(markdown: string, resolver: WikilinkResolver): 
       continue;
     }
     const text = alias !== undefined && alias.length > 0 ? alias : (resolved.title ?? target);
-    out += `[${escapeLinkText(text)}](${resolved.href})`;
+    out += `[${escapeLinkText(text)}](${escapeLinkHref(resolved.href)})`;
   }
   out += markdown.slice(cursor);
   return out;

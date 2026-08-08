@@ -2,10 +2,9 @@ import { Fragment, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { pageHref } from '../../lib/href';
 import { useTheme } from '../../lib/theme';
-import { breadcrumbFor, findNode } from '../../lib/tree';
-import { useViewMode } from '../../lib/viewMode';
+import { breadcrumbFor } from '../../lib/tree';
 import { useWorkspace } from '../../lib/workspace';
-import { DocIcon, Moon, PanelLeft, PanelRight, Search, Sun, TableIcon } from '../ui/Icon';
+import { Moon, PanelLeft, PanelRight, Search, Sun } from '../ui/Icon';
 import './topbar.css';
 
 interface TopBarProps {
@@ -19,15 +18,12 @@ interface TopBarProps {
 export function TopBar({ sidebarOpen, metaOpen, onToggleSidebar, onToggleMeta, onOpenPalette }: TopBarProps) {
   const { spaces, currentPath } = useWorkspace();
   const { resolved, toggle } = useTheme();
-  const [view, setView] = useViewMode();
 
   const crumbs = useMemo(
     () => (currentPath ? breadcrumbFor(spaces, currentPath) : []),
     [spaces, currentPath],
   );
 
-  const node = currentPath ? findNode(spaces, currentPath) : null;
-  const canTable = Boolean(node && node.children.length > 0);
 
   return (
     <header className="topbar">
@@ -53,27 +49,6 @@ export function TopBar({ sidebarOpen, metaOpen, onToggleSidebar, onToggleMeta, o
       </nav>
 
       <div className="topbar__right">
-        {canTable ? (
-          <div className="segmented" role="group" aria-label="View mode">
-            <button
-              type="button"
-              className={view === 'page' ? 'segmented__item segmented__item--active' : 'segmented__item'}
-              onClick={() => setView('page')}
-            >
-              <DocIcon size={12} />
-              Page
-            </button>
-            <button
-              type="button"
-              className={view === 'table' ? 'segmented__item segmented__item--active' : 'segmented__item'}
-              onClick={() => setView('table')}
-            >
-              <TableIcon size={12} />
-              Table
-            </button>
-          </div>
-        ) : null}
-
         <button type="button" className="btn btn--icon" onClick={onOpenPalette} title="Search (⌘K)" aria-label="Search">
           <Search />
         </button>

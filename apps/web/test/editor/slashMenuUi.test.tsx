@@ -99,6 +99,36 @@ describe('slash menu', () => {
     expect(toMarkdown(editor)).toBe('\n');
   });
 
+  it('hands the video command to the shell', async () => {
+    const onPickVideo = vi.fn();
+    const editor = await mountEditor({ onPickVideo });
+    await settle(() => {
+      editor.commands.setTextSelection(1);
+      typeText(editor, '/video');
+    });
+
+    await waitFor(() => expect(titles()).toEqual(['Video']));
+    fireEvent.keyDown(editor.view.dom, { key: 'Enter' });
+
+    await waitFor(() => expect(onPickVideo).toHaveBeenCalledTimes(1));
+    expect(toMarkdown(editor)).toBe('\n');
+  });
+
+  it('hands the page command to the shell', async () => {
+    const onPickPage = vi.fn();
+    const editor = await mountEditor({ onPickPage });
+    await settle(() => {
+      editor.commands.setTextSelection(1);
+      typeText(editor, '/page');
+    });
+
+    await waitFor(() => expect(titles()).toEqual(['Page']));
+    fireEvent.keyDown(editor.view.dom, { key: 'Enter' });
+
+    await waitFor(() => expect(onPickPage).toHaveBeenCalledTimes(1));
+    expect(toMarkdown(editor)).toBe('\n');
+  });
+
   it('hands the emoji command to the shell', async () => {
     const onPickEmoji = vi.fn();
     const editor = await mountEditor({ onPickEmoji });

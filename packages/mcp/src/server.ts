@@ -96,7 +96,7 @@ export function createGitdocsMcpServer(options: CreateServerOptions): McpServer 
     {
       title: 'gitdocs style guide',
       description:
-        'The house conventions for writing pages in this gitdocs site: frontmatter rules, heading and link style, path naming, tags and props, and how to edit safely next to human authors. Load it before you create or rewrite a page.',
+        'The house conventions for writing pages in this gitdocs site: frontmatter rules, heading and link style, path naming, and how to edit safely next to human authors. Load it before you create or rewrite a page.',
       argsSchema: {
         space: z
           .string()

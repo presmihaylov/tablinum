@@ -154,23 +154,14 @@ Every page file starts with a YAML block, always in this key order:
 id: pg_01J8XYZABCDEFGHJKMNPQRST   # "pg_" + ULID. Stable. Never changes on rename or move.
 title: Deploy runbook             # required
 icon: "🚀"                        # optional, single emoji
-tags: [ops, deploy]               # optional
 order: 10                         # optional, sorts siblings. Missing = sort by title.
 created: 2026-08-08T10:00:00.000Z # ISO 8601 UTC
 updated: 2026-08-08T10:00:00.000Z # ISO 8601 UTC
-props:                            # optional user properties; these power the table view
-  status: draft
-  owner: pmihaylov
 ---
 
 The body is plain CommonMark + GFM: tables, task lists, strikethrough, autolinks.
 Wikilinks work too: [[engineering/runbooks/deploy]] and [[engineering/deploy|the runbook]].
 ```
-
-`props` values may be a string, a number, a boolean, a list of strings, or null.
-
-`GET /api/v1/views` turns the `props` of a directory's child pages into a table, so a folder of
-pages behaves like a database with columns, filters and sorting.
 
 ## REST API
 
@@ -195,14 +186,13 @@ Authentication:
 | GET | `/pages` | `?path=<pagePath>` | `{ page: Page }` |
 | GET | `/pages` | - | `{ pages: PageSummary[] }` (flat, all pages) |
 | GET | `/pages/:id` | - | `{ page: Page }` |
-| POST | `/pages` | `{ path, title, markdown?, icon?, tags?, props?, order? }` | `201 { page: Page }` |
-| PATCH | `/pages/:id` | `{ title?, markdown?, icon?, tags?, props?, order?, path? }` | `{ page: Page }` |
+| POST | `/pages` | `{ path, title, markdown?, icon?, order? }` | `201 { page: Page }` |
+| PATCH | `/pages/:id` | `{ title?, markdown?, icon?, order?, path? }` | `{ page: Page }` |
 | DELETE | `/pages/:id` | `?recursive=true` | `{ deleted: PagePath[] }` |
-| GET | `/search` | `?q=&space=&tag=&limit=` | `{ hits: SearchHit[] }` |
+| GET | `/search` | `?q=&space=&limit=` | `{ hits: SearchHit[] }` |
 | GET | `/pages/:id/backlinks` | - | `{ backlinks: Backlink[] }` |
 | GET | `/pages/:id/history` | `?limit=` | `{ revisions: Revision[] }` |
 | GET | `/pages/:id/revisions/:sha` | - | `{ markdown, frontmatter }` |
-| GET | `/views` | `?dir=&where=k:v,k:v&sort=&order=asc\|desc` | `{ columns: string[], rows: PageSummary[] }` |
 | GET | `/git/status` | - | `{ status: GitStatus }` |
 | POST | `/git/pull` | - | `{ status: GitStatus, pulled: number }` |
 | POST | `/git/push` | - | `{ status: GitStatus, pushed: boolean }` |

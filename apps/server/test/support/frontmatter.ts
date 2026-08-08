@@ -1,5 +1,8 @@
 import { FrontmatterSchema, parseOrThrow, validation } from '@gitdocs/shared';
-import type { Frontmatter, PropValue } from '@gitdocs/shared';
+import type { Frontmatter } from '@gitdocs/shared';
+
+/** Every value this codec can write. `_space.yml` needs no more than these. */
+export type Scalar = string | number | boolean | null | string[];
 
 /**
  * A small YAML codec covering exactly the frontmatter shape the contract defines.
@@ -9,7 +12,7 @@ import type { Frontmatter, PropValue } from '@gitdocs/shared';
 
 const DELIMITER = '---';
 
-function encodeScalar(value: PropValue): string {
+function encodeScalar(value: Scalar): string {
   if (value === null) return 'null';
   if (typeof value === 'number') return String(value);
   if (typeof value === 'boolean') return String(value);
@@ -22,22 +25,14 @@ export function serializeFrontmatter(frontmatter: Frontmatter): string {
   lines.push(`id: ${frontmatter.id}`);
   lines.push(`title: ${encodeScalar(frontmatter.title)}`);
   if (frontmatter.icon !== undefined) lines.push(`icon: ${encodeScalar(frontmatter.icon)}`);
-  if (frontmatter.tags !== undefined) lines.push(`tags: ${encodeScalar(frontmatter.tags)}`);
   if (frontmatter.order !== undefined) lines.push(`order: ${encodeScalar(frontmatter.order)}`);
   lines.push(`created: ${encodeScalar(frontmatter.created)}`);
   lines.push(`updated: ${encodeScalar(frontmatter.updated)}`);
-  const props = frontmatter.props ?? {};
-  if (Object.keys(props).length > 0) {
-    lines.push('props:');
-    for (const [key, value] of Object.entries(props)) {
-      lines.push(`  ${key}: ${encodeScalar(value)}`);
-    }
-  }
   lines.push(DELIMITER, '');
   return lines.join('\n');
 }
 
-function decodeScalar(raw: string): PropValue {
+function decodeScalar(raw: string): Scalar {
   const text = raw.trim();
   if (text.length === 0 || text === 'null' || text === '~') return null;
   if (text === 'true') return true;
@@ -63,8 +58,8 @@ function splitKeyValue(line: string): [string, string] {
 }
 
 /** Read a flat `key: value` document, used for `_space.yml`. */
-export function parseFlatYaml(text: string): Record<string, PropValue> {
-  const record: Record<string, PropValue> = {};
+export function parseFlatYaml(text: string): Record<string, Scalar> {
+  const record: Record<string, Scalar> = {};
   for (const line of text.replace(/\r\n/g, '\n').split('\n')) {
     const trimmed = line.trim();
     if (trimmed.length === 0 || trimmed.startsWith('#')) continue;
@@ -74,7 +69,7 @@ export function parseFlatYaml(text: string): Record<string, PropValue> {
   return record;
 }
 
-export function serializeFlatYaml(record: Record<string, PropValue>): string {
+export function serializeFlatYaml(record: Record<string, Scalar>): string {
   const lines = Object.entries(record)
     .filter(([, value]) => value !== undefined)
     .map(([key, value]) => `${key}: ${encodeScalar(value)}`);
@@ -88,8 +83,6 @@ export function parsePageFile(raw: string): { frontmatter: Frontmatter; markdown
   if (lines[0]?.trim() !== DELIMITER) throw validation('Page file has no frontmatter block');
 
   const record: Record<string, unknown> = {};
-  const props: Record<string, PropValue> = {};
-  let inProps = false;
   let end = -1;
 
   for (let i = 1; i < lines.length; i += 1) {
@@ -100,23 +93,11 @@ export function parsePageFile(raw: string): { frontmatter: Frontmatter; markdown
     }
     if (line.trim().length === 0) continue;
 
-    if (inProps && line.startsWith('  ')) {
-      const [key, value] = splitKeyValue(line.trim());
-      props[key] = decodeScalar(value);
-      continue;
-    }
-
-    inProps = false;
     const [key, value] = splitKeyValue(line);
-    if (key === 'props' && value.trim().length === 0) {
-      inProps = true;
-      continue;
-    }
     record[key] = decodeScalar(value);
   }
 
   if (end === -1) throw validation('Page file frontmatter is not terminated');
-  if (Object.keys(props).length > 0) record.props = props;
 
   const frontmatter = parseOrThrow(FrontmatterSchema, record, 'frontmatter');
   return { frontmatter, markdown: lines.slice(end + 1).join('\n') };

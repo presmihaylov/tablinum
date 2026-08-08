@@ -9,9 +9,28 @@ import { lowlight } from './languages';
  * the rendered `<pre>`. The dialect already emits exactly the markup the schema
  * wants, so the hook is shadowed with an empty one.
  */
+/** Two spaces, not a tab: the character survives every markdown reader the same way. */
+const INDENT = '  ';
+
 const Base = CodeBlockLowlight.extend({
   addStorage() {
     return { markdown: { parse: {} } };
+  },
+
+  addKeyboardShortcuts() {
+    return {
+      ...this.parent?.(),
+      // Tab moved the browser focus out of the editor and lost the caret. `Shift-Tab` stays
+      // unbound on purpose, so the keyboard can still leave the block. `Mod-Enter` also
+      // leaves it: `setHardBreak` tries `exitCode` first.
+      Tab: () => {
+        if (!this.editor.isActive(this.name)) return false;
+        return this.editor.commands.command(({ tr }) => {
+          tr.insertText(INDENT);
+          return true;
+        });
+      },
+    };
   },
 });
 

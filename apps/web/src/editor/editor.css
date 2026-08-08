@@ -33,6 +33,21 @@
   user-select: none;
 }
 
+/* Holds the `:emoji` menu, which is placed against the field rather than the caret. */
+.editor__title-field {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+}
+
+.editor__title-emoji {
+  position: absolute;
+  z-index: 40;
+  top: 100%;
+  left: 0;
+}
+
 .editor__title {
   flex: 1;
   min-width: 0;
@@ -79,6 +94,16 @@
   caret-color: var(--text-strong);
 }
 
+/*
+ * base.css loads after this file, so its `:focus-visible` rule wins the tie against
+ * the plain `outline: none` above and boxes in the whole document while it is edited.
+ * The caret is the focus indicator for both of these.
+ */
+.editor__title:focus-visible,
+.gd-editor-surface:focus-visible {
+  outline: none;
+}
+
 .gd-editor-surface > * + * {
   margin-top: var(--space-2);
 }
@@ -123,10 +148,33 @@
   font-size: var(--text-md);
 }
 
+/* The reset drops every marker, so the editor puts back the two it needs. A task list keeps
+   the reset: its checkbox is the marker. */
 .gd-editor-surface ul,
 .gd-editor-surface ol {
   margin: 0;
   padding-left: var(--space-5);
+  list-style-position: outside;
+}
+
+.gd-editor-surface ul {
+  list-style-type: disc;
+}
+
+.gd-editor-surface ol {
+  list-style-type: decimal;
+}
+
+.gd-editor-surface ul ul {
+  list-style-type: circle;
+}
+
+.gd-editor-surface ul ul ul {
+  list-style-type: square;
+}
+
+.gd-editor-surface li::marker {
+  color: var(--text-muted);
 }
 
 .gd-editor-surface li {
@@ -205,8 +253,9 @@
 /* task lists                                                          */
 /* ------------------------------------------------------------------ */
 
-.gd-editor-tasks {
-  list-style: none;
+/* Scoped to the surface so it outranks the marker rules above, which are also scoped. */
+.gd-editor-surface .gd-editor-tasks {
+  list-style-type: none;
   padding-left: var(--space-1);
 }
 
@@ -442,6 +491,91 @@
 }
 
 /* ------------------------------------------------------------------ */
+/* table controls                                                      */
+/* ------------------------------------------------------------------ */
+
+/* The layer itself must not swallow clicks meant for the cells under it. */
+.gd-table-ctl {
+  position: absolute;
+  z-index: 4;
+  pointer-events: none;
+}
+
+.gd-table-ctl button {
+  position: absolute;
+  padding: 0;
+  border: 0;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.gd-table-ctl__grip {
+  border-radius: 2px;
+  background: var(--border-strong);
+  opacity: 0.5;
+  transition: opacity 120ms ease, background 120ms ease;
+}
+
+.gd-table-ctl__grip:hover {
+  background: var(--accent);
+  opacity: 1;
+}
+
+.gd-table-ctl__grip--col {
+  top: -11px;
+  height: 7px;
+}
+
+.gd-table-ctl__grip--row {
+  left: -11px;
+  width: 7px;
+}
+
+.gd-table-ctl__grip--corner {
+  top: -11px;
+  left: -11px;
+  width: 7px;
+  height: 7px;
+  cursor: grab;
+}
+
+.gd-table-ctl__add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  background: var(--bg-subtle);
+  color: var(--text-faint);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  line-height: 1;
+  opacity: 0.7;
+  transition: opacity 120ms ease, background 120ms ease;
+}
+
+.gd-table-ctl__add:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+  opacity: 1;
+}
+
+/* Both strips sit flush against the table: the bottom one has only the table's own
+   margin to live in, and anything wider would cover the block below it. */
+.gd-table-ctl__add--col {
+  top: 0;
+  left: 100%;
+  width: 0.75rem;
+  height: 100%;
+}
+
+.gd-table-ctl__add--row {
+  top: 100%;
+  left: 0;
+  width: 100%;
+  height: 0.75rem;
+}
+
+/* ------------------------------------------------------------------ */
 /* raw HTML atoms                                                      */
 /* ------------------------------------------------------------------ */
 
@@ -464,6 +598,110 @@
 
 .gd-editor-html--inline {
   padding: 0 var(--space-1);
+}
+
+/* ------------------------------------------------------------------ */
+/* video embeds                                                        */
+/* ------------------------------------------------------------------ */
+
+/* The margin is also the strip that raises the block handle: the player itself
+   swallows every pointer event, so it can never raise one. */
+.gd-editor-embed {
+  margin: var(--space-3) 0;
+}
+
+.gd-editor-embed__frame {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  background: #000;
+}
+
+.gd-editor-embed__player {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* page embeds                                                         */
+/* ------------------------------------------------------------------ */
+
+.gd-editor-pageembed {
+  margin: var(--space-1) 0;
+}
+
+/* Without a node view the node is still a block of markdown source. */
+.gd-editor-pageembed--flat {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.gd-editor-pageembed__link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.gd-editor-pageembed__link:hover {
+  background: var(--bg-hover);
+}
+
+.gd-editor-pageembed__icon {
+  flex: none;
+  font-size: 1.1em;
+  line-height: 1;
+}
+
+.gd-editor-pageembed__title {
+  min-width: 0;
+  overflow: hidden;
+  border-bottom: 1px solid var(--border-strong);
+  color: var(--text-strong);
+  font-weight: var(--weight-medium);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A target with no page behind it stays readable, but says it is broken. */
+.gd-editor-pageembed__link.is-missing .gd-editor-pageembed__title {
+  border-bottom-style: dashed;
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+/* ------------------------------------------------------------------ */
+/* page picker                                                         */
+/* ------------------------------------------------------------------ */
+
+.gd-editor-picker {
+  max-height: 15rem;
+  margin-top: var(--space-3);
+  overflow-y: auto;
+}
+
+.gd-editor-picker__empty {
+  margin: 0;
+  padding: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
 }
 
 /* ------------------------------------------------------------------ */
@@ -505,6 +743,13 @@
   cursor: grab;
 }
 
+/* A table hangs its own row grips 11px off its left edge, right where the second
+   button would be. One column of buttons keeps both sets reachable. */
+.gd-editor-handles--stacked {
+  flex-direction: column;
+  gap: 0;
+}
+
 @media (max-width: 900px) {
   .gd-editor-handles {
     display: none;
@@ -530,6 +775,19 @@
   padding: var(--space-3);
   color: var(--text-muted);
   font-size: var(--text-sm);
+}
+
+.gd-editor-menu--emoji {
+  width: 13rem;
+  max-height: 15rem;
+}
+
+.gd-editor-menu__emoji {
+  flex: none;
+  width: 1.5rem;
+  font-size: var(--text-lg);
+  line-height: 1;
+  text-align: center;
 }
 
 .gd-editor-menu__item {

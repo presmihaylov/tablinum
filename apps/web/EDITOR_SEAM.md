@@ -51,7 +51,7 @@ The full page from `GET /api/v1/pages?path=...`, typed by `@gitdocs/shared`:
 | `title` | Initial title. |
 | `markdown` | Initial body, **without** frontmatter. |
 | `icon` | Optional emoji. The placeholder renders it left of the title. |
-| `path`, `space`, `tags`, `props`, `created`, `updated`, `hasChildren` | Metadata. The details panel owns these; the editor may read them but must not write them. |
+| `path`, `space`, `created`, `updated`, `hasChildren` | Metadata. The details panel owns these; the editor may read them but must not write them. |
 
 ### `onChange(markdown)`
 

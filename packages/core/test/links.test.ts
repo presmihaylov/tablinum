@@ -57,6 +57,20 @@ describe('extractLinks', () => {
     expect(extractLinks(markdown).map((link) => link.target)).toEqual(['real/one']);
   });
 
+  it('ignores links inside a fenced block that sits in a blockquote', () => {
+    const markdown = ['> ```md', '> [[not/a/link]]', '> ```', '', '[[real/one]]'].join('\n');
+    expect(extractLinks(markdown).map((link) => link.target)).toEqual(['real/one']);
+  });
+
+  it('keeps a link in an ordinary blockquote', () => {
+    expect(extractLinks('> See [[eng/deploy]].').map((link) => link.target)).toEqual(['eng/deploy']);
+  });
+
+  it('closes an unterminated quoted fence when the quote ends', () => {
+    const markdown = ['> ```md', '> [[not/a/link]]', '', '[[real/one]]'].join('\n');
+    expect(extractLinks(markdown).map((link) => link.target)).toEqual(['real/one']);
+  });
+
   it('reports offsets that point at the original text', () => {
     const markdown = 'prefix [[foo]] suffix';
     const link = extractLinks(markdown)[0];
@@ -123,6 +137,18 @@ describe('resolveWikilinks', () => {
       title: 'Rollback',
     }));
     expect(out).toBe('see [Rollback](/eng/rollback)');
+  });
+
+  it('wraps a destination that holds a space or an unbalanced paren', () => {
+    const space = resolveWikilinks('[[a]]', () => ({ href: '/eng/roll back', title: 'T' }));
+    expect(space).toBe('[T](</eng/roll back>)');
+    const paren = resolveWikilinks('[[a]]', () => ({ href: '/eng/roll)back', title: 'T' }));
+    expect(paren).toBe('[T](</eng/roll)back>)');
+  });
+
+  it('leaves balanced parens in a destination bare', () => {
+    const out = resolveWikilinks('[[a]]', () => ({ href: '/eng/roll(back)', title: 'T' }));
+    expect(out).toBe('[T](/eng/roll(back))');
   });
 
   it('leaves wikilinks inside code alone', () => {

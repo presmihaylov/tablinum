@@ -1,5 +1,6 @@
 import { Extension } from '@tiptap/core';
 import type { Editor, Range } from '@tiptap/core';
+import type { ResolvedPos } from '@tiptap/pm/model';
 import Suggestion from '@tiptap/suggestion';
 import { PluginKey } from '@tiptap/pm/state';
 import { SlashMenu } from '../ui/SlashMenu';
@@ -10,6 +11,10 @@ export interface SlashMenuOptions {
   onPickImage: () => void;
   /** Opens the emoji popover for the "Emoji" command. */
   onPickEmoji: () => void;
+  /** Opens the link prompt for the "Video" command. */
+  onPickVideo: () => void;
+  /** Opens the page picker for the "Page" command. */
+  onPickPage: () => void;
 }
 
 export interface SlashCommandItem {
@@ -18,7 +23,37 @@ export interface SlashCommandItem {
   hint: string;
   glyph: string;
   keywords: readonly string[];
+  /** Whether the command can run where the cursor is. An absent test means always. */
+  available?: (editor: Editor) => boolean;
   run: (editor: Editor, range: Range, options: SlashMenuOptions) => void;
+}
+
+/**
+ * GFM gives a table cell one line of inline content. A block put there is either written
+ * back as bare text or, for a list or a table, it replaces the cell content outright.
+ */
+function outsideTableCell(editor: Editor): boolean {
+  return !editor.isActive('tableCell') && !editor.isActive('tableHeader');
+}
+
+const LIST_ITEMS = ['listItem', 'taskItem'];
+const LISTS = ['bulletList', 'orderedList', 'taskList'];
+
+/** How many list items enclose the cursor. */
+function listDepth($from: ResolvedPos): number {
+  let count = 0;
+  for (let depth = $from.depth; depth > 0; depth -= 1) {
+    if (LIST_ITEMS.includes($from.node(depth).type.name)) count += 1;
+  }
+  return count;
+}
+
+/** Just past the outermost list around the cursor, or null when there is no list. */
+function afterEnclosingList($from: ResolvedPos): number | null {
+  for (let depth = 1; depth <= $from.depth; depth += 1) {
+    if (LISTS.includes($from.node(depth).type.name)) return $from.after(depth);
+  }
+  return null;
 }
 
 export const SLASH_COMMANDS: readonly SlashCommandItem[] = [
@@ -28,6 +63,7 @@ export const SLASH_COMMANDS: readonly SlashCommandItem[] = [
     hint: 'Big section heading',
     glyph: 'H1',
     keywords: ['h1', 'title', 'heading', 'big'],
+    available: outsideTableCell,
     run: (editor, range) =>
       editor.chain().focus().deleteRange(range).setNode('heading', { level: 1 }).run(),
   },
@@ -37,6 +73,7 @@ export const SLASH_COMMANDS: readonly SlashCommandItem[] = [
     hint: 'Medium section heading',
     glyph: 'H2',
     keywords: ['h2', 'subtitle', 'heading'],
+    available: outsideTableCell,
     run: (editor, range) =>
       editor.chain().focus().deleteRange(range).setNode('heading', { level: 2 }).run(),
   },
@@ -46,6 +83,7 @@ export const SLASH_COMMANDS: readonly SlashCommandItem[] = [
     hint: 'Small section heading',
     glyph: 'H3',
     keywords: ['h3', 'heading'],
+    available: outsideTableCell,
     run: (editor, range) =>
       editor.chain().focus().deleteRange(range).setNode('heading', { level: 3 }).run(),
   },
@@ -55,6 +93,7 @@ export const SLASH_COMMANDS: readonly SlashCommandItem[] = [
     hint: 'A simple bulleted list',
     glyph: 'UL',
     keywords: ['bullet', 'list', 'unordered', 'ul'],
+    available: outsideTableCell,
     run: (editor, range) => editor.chain().focus().deleteRange(range).toggleBulletList().run(),
   },
   {
@@ -63,6 +102,7 @@ export const SLASH_COMMANDS: readonly SlashCommandItem[] = [
     hint: 'A list with numbering',
     glyph: 'OL',
     keywords: ['number', 'ordered', 'list', 'ol'],
+    available: outsideTableCell,
     run: (editor, range) => editor.chain().focus().deleteRange(range).toggleOrderedList().run(),
   },
   {
@@ -71,6 +111,7 @@ export const SLASH_COMMANDS: readonly SlashCommandItem[] = [
     hint: 'Track tasks with checkboxes',
     glyph: 'TODO',
     keywords: ['todo', 'task', 'check', 'checkbox'],
+    available: outsideTableCell,
     run: (editor, range) => editor.chain().focus().deleteRange(range).toggleTaskList().run(),
   },
   {
@@ -79,6 +120,7 @@ export const SLASH_COMMANDS: readonly SlashCommandItem[] = [
     hint: 'Code with syntax highlighting',
     glyph: 'CODE',
     keywords: ['code', 'fence', 'snippet', 'pre'],
+    available: outsideTableCell,
     run: (editor, range) => editor.chain().focus().deleteRange(range).setCodeBlock().run(),
   },
   {
@@ -87,6 +129,7 @@ export const SLASH_COMMANDS: readonly SlashCommandItem[] = [
     hint: 'Capture a quotation',
     glyph: 'QUOTE',
     keywords: ['quote', 'blockquote', 'citation'],
+    available: outsideTableCell,
     run: (editor, range) => editor.chain().focus().deleteRange(range).setBlockquote().run(),
   },
   {
@@ -95,6 +138,7 @@ export const SLASH_COMMANDS: readonly SlashCommandItem[] = [
     hint: 'A highlighted note block',
     glyph: 'NOTE',
     keywords: ['callout', 'note', 'alert', 'warning', 'tip', 'info'],
+    available: outsideTableCell,
     run: (editor, range) => editor.chain().focus().deleteRange(range).setCallout('NOTE').run(),
   },
   {
@@ -103,7 +147,29 @@ export const SLASH_COMMANDS: readonly SlashCommandItem[] = [
     hint: 'A horizontal line',
     glyph: 'HR',
     keywords: ['divider', 'rule', 'line', 'separator', 'hr'],
-    run: (editor, range) => editor.chain().focus().deleteRange(range).setHorizontalRule().run(),
+    available: outsideTableCell,
+    run: (editor, range) => {
+      // A rule written inside an item is indented under its marker, which reads back as
+      // part of the item. It belongs after the whole list.
+      const { $from } = editor.state.selection;
+      const after = afterEnclosingList($from);
+      const width = range.to - range.from;
+      // The command was the whole item, so the item goes away with it.
+      if (after === null || $from.parent.content.size === width) {
+        const chain = editor.chain().focus().deleteRange(range);
+        for (let depth = listDepth($from); depth > 0; depth -= 1) {
+          chain.liftListItem('listItem').liftListItem('taskItem');
+        }
+        chain.setHorizontalRule().run();
+        return;
+      }
+      editor
+        .chain()
+        .focus()
+        .deleteRange(range)
+        .insertContentAt(after - width, { type: 'horizontalRule' })
+        .run();
+    },
   },
   {
     id: 'table',
@@ -111,6 +177,7 @@ export const SLASH_COMMANDS: readonly SlashCommandItem[] = [
     hint: 'A three by three table',
     glyph: 'TABLE',
     keywords: ['table', 'grid', 'rows', 'columns'],
+    available: outsideTableCell,
     run: (editor, range) =>
       editor
         .chain()
@@ -131,6 +198,30 @@ export const SLASH_COMMANDS: readonly SlashCommandItem[] = [
     },
   },
   {
+    id: 'video',
+    title: 'Video',
+    hint: 'Embed a YouTube, Vimeo or Loom link',
+    glyph: 'PLAY',
+    keywords: ['video', 'embed', 'youtube', 'vimeo', 'loom', 'player', 'movie'],
+    available: outsideTableCell,
+    run: (editor, range, options) => {
+      editor.chain().focus().deleteRange(range).run();
+      options.onPickVideo();
+    },
+  },
+  {
+    id: 'page',
+    title: 'Page',
+    hint: 'Show another page inside this one',
+    glyph: 'PAGE',
+    keywords: ['page', 'embed', 'include', 'transclude', 'doc', 'link'],
+    available: outsideTableCell,
+    run: (editor, range, options) => {
+      editor.chain().focus().deleteRange(range).run();
+      options.onPickPage();
+    },
+  },
+  {
     id: 'emoji',
     title: 'Emoji',
     hint: 'Insert an emoji',
@@ -144,14 +235,20 @@ export const SLASH_COMMANDS: readonly SlashCommandItem[] = [
 ];
 
 /** Case-insensitive prefix and substring match over the title and keywords. */
-export function filterSlashCommands(query: string): SlashCommandItem[] {
+export function filterSlashCommands(query: string, editor?: Editor): SlashCommandItem[] {
+  const offered = SLASH_COMMANDS.filter((item) => isAvailable(item, editor));
   const needle = query.trim().toLowerCase();
-  if (needle.length === 0) return [...SLASH_COMMANDS];
-  return SLASH_COMMANDS.filter(
+  if (needle.length === 0) return offered;
+  return offered.filter(
     (item) =>
       item.title.toLowerCase().includes(needle) ||
       item.keywords.some((keyword) => keyword.startsWith(needle)),
   );
+}
+
+function isAvailable(item: SlashCommandItem, editor: Editor | undefined): boolean {
+  if (editor === undefined || item.available === undefined) return true;
+  return item.available(editor);
 }
 
 export const slashMenuPluginKey = new PluginKey('gitdocsSlashMenu');
@@ -160,7 +257,12 @@ export const SlashMenuExtension = Extension.create<SlashMenuOptions>({
   name: 'gitdocsSlashMenu',
 
   addOptions() {
-    return { onPickImage: () => undefined, onPickEmoji: () => undefined };
+    return {
+      onPickImage: () => undefined,
+      onPickEmoji: () => undefined,
+      onPickVideo: () => undefined,
+      onPickPage: () => undefined,
+    };
   },
 
   addProseMirrorPlugins() {
@@ -172,8 +274,11 @@ export const SlashMenuExtension = Extension.create<SlashMenuOptions>({
         pluginKey: slashMenuPluginKey,
         startOfLine: false,
         allowedPrefixes: [' '],
-        items: ({ query }) => filterSlashCommands(query),
-        command: ({ editor, range, props }) => props.run(editor, range, options),
+        items: ({ editor, query }) => filterSlashCommands(query, editor),
+        command: ({ editor, range, props }) => {
+          if (!isAvailable(props, editor)) return;
+          props.run(editor, range, options);
+        },
         render: createSuggestionRenderer<SlashCommandItem>(SlashMenu),
       }),
     ];

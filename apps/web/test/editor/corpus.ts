@@ -34,6 +34,16 @@ export const CORPUS: Record<string, string> = {
 
   'inline marks': 'A *slanted*, a **heavy**, a ~~struck~~ and a `literal` run.\n',
 
+  'suspect char before a mark': 'Use 2 * 3 in **bold** text\n',
+
+  'bracket before a mark': 'see [1] and **b**\n',
+
+  'bold text opening with a number marker': '**1. a**\n',
+
+  'italic text opening with a bullet': '*- a*\n',
+
+  'link label opening with a bullet': '[- a](/b)\n',
+
   'underscore emphasis': 'An _alternate_ and an __alternate heavy__ run.\n',
 
   'intraword underscores': 'The value snake_case_name stays intact.\n',
@@ -41,6 +51,12 @@ export const CORPUS: Record<string, string> = {
   'inline code with asterisks': 'Compute `a * b * c` and `**not bold**` verbatim.\n',
 
   'inline code with backticks': 'Write ``a ` b`` when the span holds a backtick.\n',
+
+  'double space after a full stop': 'One sentence.  Two sentences.\n',
+
+  'code span with two spaces': 'Run `git  log` now.\n',
+
+  'code span of one space': 'Type ` ` to select.\n',
 
   'escaped punctuation': 'A literal \\* star and a \\_ score and a \\# hash.\n',
 
@@ -63,7 +79,55 @@ export const CORPUS: Record<string, string> = {
 
   'ordered list paren delimiter': '1) one\n2) two\n',
 
+  'ordered list all ones': '1. one\n1. two\n1. three\n',
+
+  'ordered list zero based': '0. zero\n0. one\n',
+
+  'ordered list descending numbers': '3. three\n2. two\n1. one\n',
+
+  'ordered list with gaps in numbering': '1. one\n5. five\n9. nine\n',
+
+  'ordered task list all ones': '1. [ ] a\n1. [x] b\n',
+
+  'blockquote with an all-ones ordered list': '> 1. one\n> 1. two\n',
+
+  'indented code under a single-digit item': '9. nine\n\n       code\n\n10. ten\n',
+
+  'nested bullet under a single-digit item':
+    '1. a\n2. b\n3. c\n4. d\n5. e\n6. f\n7. g\n8. h\n9. i\n   - deep\n10. j\n',
+
+  'empty bullet item': '-\n',
+
+  'empty ordered item': '1.\n',
+
+  'empty item mid-list': '- one\n-\n- three\n',
+
+  'task item labelled with a wikilink': '- [ ] [[a]]\n',
+
+  'task item labelled with an image': '- [ ] ![alt](/a.png)\n',
+
+  'task item labelled with a break': '- [ ] <br>\n',
+
+  'two lists differing in delimiter': '1. one\n2) two\n',
+
+  'two lists differing in marker': '- a\n* b\n',
+
+  'paragraph then bullet list': 'Do the following:\n- one\n',
+
+  'paragraph then numbered list': 'Do the following:\n1. one\n2. two\n',
+
+  'paragraph then list starting at two': 'A paragraph.\n2. two\n',
+
+  'paragraph then blockquote': 'Before.\n> q\n',
+
+  'paragraph then table': 'Intro.\n| a | b |\n| --- | --- |\n| 1 | 2 |\n',
+
+  'paragraph then html block': 'Before.\n<div>x</div>\n',
+
   'loose list': '- first item\n\n- second item\n',
+
+  // One blank line in a list makes every item loose, so the first pair must not close up.
+  'partially loose list': '- one\n- two\n\n- three\n',
 
   'task list': '- [ ] unchecked\n- [x] checked\n- [X] shouting\n',
 
@@ -76,6 +140,12 @@ export const CORPUS: Record<string, string> = {
   'blockquote with list': '> - first\n> - second\n',
 
   'blockquote with heading': '> ## Quoted heading\n>\n> And a body.\n',
+
+  'tight heading and body in a blockquote': '> # H\n> body\n',
+
+  'tight heading and body in a callout': '> [!TIP]\n> # H\n> body\n',
+
+  'two blank quote lines': '> a\n>\n>\n> b\n',
 
   'nested blockquote': '> outer\n>\n> > inner\n',
 
@@ -104,7 +174,15 @@ export const CORPUS: Record<string, string> = {
 
   'indented code': '    indented code line\n    second line\n',
 
+  'tab-indented code': '\tcode with tab\n',
+
+  'indented code past the fourth column': '      six spaces\n',
+
   'horizontal rules': '---\n\n***\n\n___\n',
+
+  'spaced thematic breaks': '- - -\n\n* * *\n\n_ _ _\n',
+
+  'thematic break in a blockquote': '> * * *\n',
 
   'gfm table': '| Name | Count |\n| --- | --- |\n| alpha | 1 |\n| beta | 2 |\n',
 
@@ -123,7 +201,13 @@ export const CORPUS: Record<string, string> = {
 
   'link relative': 'See [the deploy page](../eng/deploy.md).\n',
 
+  'link with balanced parens in the destination': '[a](https://en.wikipedia.org/wiki/X_(y))\n',
+
   autolink: 'Ping <https://example.com/status> for uptime.\n',
+
+  'inline link whose text is its destination': 'go to [https://e.com](https://e.com) now\n',
+
+  'bold autolink': '[**https://example.com**](https://example.com)\n',
 
   'image plain': '![A diagram](/_assets/pg_1/diagram.png)\n',
 
@@ -148,6 +232,22 @@ export const CORPUS: Record<string, string> = {
   'html block': '<div align="center">\n  <b>raw</b>\n</div>\n',
 
   'html block details': '<details>\n<summary>More</summary>\n\nBody text.\n\n</details>\n',
+
+  'video embed iframe':
+    '<iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ" title="YouTube" allow="accelerometer; autoplay; clipboard-write; encrypted-media; picture-in-picture" allowfullscreen></iframe>\n',
+
+  'video embed file': '<div class="gd-video"><video src="/_assets/pg_1/clip.mp4" controls></video></div>\n',
+
+  'video embed between paragraphs':
+    'Before.\n\n<iframe src="https://player.vimeo.com/video/76979871" title="Vimeo" allowfullscreen></iframe>\n\nAfter.\n',
+
+  'page embed': '![[eng/deploy]]\n',
+
+  'page embed between paragraphs': 'Before.\n\n![[eng/deploy]]\n\nAfter.\n',
+
+  'page embed pair': '![[eng/deploy]]\n![[eng/rollback]]\n',
+
+  'page embed above a heading': '![[eng/deploy]]\n\n# Next\n',
 
   'html inline tag': 'Press <kbd>Esc</kbd> to close.\n',
 
@@ -213,6 +313,41 @@ export const CORPUS: Record<string, string> = {
   'nested list with a fenced child':
     '- one\n  - two\n\n    ```sh\n    ls\n    ```\n\n    - three\n',
 
+  // Markdown lets any block open an item, not just a paragraph.
+  'bullet item opening with a heading': '- # heading\n',
+
+  'bullet item opening with a quote': '- > quoted\n',
+
+  'bullet item opening with a fence': '- ```sh\n  ls\n  ```\n',
+
+  'ordered item opening with a fence': '1. ```sh\n   ls\n   ```\n',
+
+  'ordered item opening with a nested ordered list': '1. 2023. Founded\n2. 2024. Series A\n',
+
+  'bullet item opening with a table': '- | a | b |\n  | --- | --- |\n  | 1 | 2 |\n',
+
+  'item holding only a nested list': '- - inner\n',
+
+  'setext heading in a list item': '- Title\n  =====\n',
+
+  // No item holds a paragraph, so the tight and the loose form render the same HTML.
+  'loose list of headings': '- # H\n\n- # H2\n',
+
+  // A tight list still separates the blocks inside one item with no blank line.
+  'tight fence in an ordered item': '1. one\n   ```sh\n   ls\n   ```\n2. two\n',
+
+  'tight fence in a bullet item': '- one\n  ```sh\n  ls\n  ```\n- two\n',
+
+  'tight heading and body in a list item': '- one\n  # H\n  body\n',
+
+  'tight rule and body in a list item': '- one\n  ***\n  after\n',
+
+  'tight blocks in a quoted list item': '> - one\n>   # H\n>   body\n',
+
+  'two blank lines between list items': '- one\n\n\n- two\n',
+
+  'loose heading and body in a list item': '- one\n\n  # H\n  body\n',
+
   'task list three levels': '- [ ] a\n  - [x] b\n    - [ ] c\n',
 
   'task list star marker': '* [ ] a\n* [x] b\n',
@@ -233,6 +368,16 @@ export const CORPUS: Record<string, string> = {
 
   'task item with no label': '- [ ]\n',
 
+  // The checkbox has already opened the line, so none of these can start a block.
+  'task label opening with a hash': '- [ ] # not a heading\n',
+
+  'task label opening with a number marker': '- [ ] 1. not a list\n',
+
+  'task label opening with a bullet': '- [ ] - not a list\n',
+
+  // GFM needs a paragraph for the checkbox, so the underline kills it and both must survive.
+  'task label under a setext underline': '- [ ] one\n  ---\n',
+
   'empty callout as the last block': '> [!NOTE]\n',
 
   'empty callout followed by a paragraph': '> [!NOTE]\n\nAfter.\n',
@@ -246,6 +391,15 @@ export const CORPUS: Record<string, string> = {
 
   'gfm table with a wikilink': '| a | b |\n| --- | --- |\n| [[x/y]] | 1 |\n',
 
+  'gfm table with an aliased wikilink': '| a | b |\n| --- | --- |\n| [[x/y\\|Z]] | 2 |\n',
+
+  'gfm table with a piped link': '| a | b |\n| --- | --- |\n| [x](/y\\|z) | 2 |\n',
+
+  'gfm table with a piped image': '| a | b |\n| --- | --- |\n| ![a\\|b](/y.png) | 2 |\n',
+
+  'gfm table with a piped html attribute':
+    '| a | b |\n| --- | --- |\n| <span t="a\\|b">x</span> | 2 |\n',
+
   'gfm table with ragged widths': '| name | count |\n| --- | --- |\n| a very long value | 1 |\n',
 
   'gfm table with a short delimiter row': '| L | C | R |\n| :-- | :-: | --: |\n| a | b | c |\n',
@@ -253,6 +407,32 @@ export const CORPUS: Record<string, string> = {
   'gfm table with a wide delimiter row': '| a | b |\n| ----- | ----- |\n| 1 | 2 |\n',
 
   'gfm table with no outer pipes': 'a | b\n--- | ---\n1 | 2\n',
+
+  'table in a blockquote': '> | a | b |\n> | :-- | --: |\n> | 1 | 2 |\n',
+
+  'table in a blockquote with no outer pipes': '> a | b\n> --- | ---\n> 1 | 2\n',
+
+  'column-aligned table':
+    '| Name  | Count |\n| ----- | ----- |\n| alpha |     1 |\n| beta  |     2 |\n',
+
+  'unpadded table': '|a|b|\n|---|---|\n|1|2|\n',
+
+  // Leading and trailing pipes are independent: one side may be absent.
+  'table with leading pipes only': '| a | b\n| --- | ---\n| 1 | 2\n',
+
+  'table with trailing pipes only': 'a | b |\n--- | --- |\n1 | 2 |\n',
+
+  'one-column table with trailing pipes': 'a |\n--- |\n1 |\n',
+
+  'table header with trailing spaces': '| a | b |  \n| --- | --- |\n| 1 | 2 |\n',
+
+  'table row with trailing spaces': '| a | b |\n| --- | --- |\n| 1 | 2 |   \n',
+
+  // The parser drops the extra cell and pads the short row out to the header width.
+  // Neither change belongs in the file, so both rows replay their own source line.
+  'table row with an extra cell': '| a | b |\n| --- | --- |\n| 1 | 2 | 3 |\n',
+
+  'table row with a missing cell': '| a | b |\n| --- | --- |\n| 1 |\n',
 
   // --- code -----------------------------------------------------------------
   'fenced code with a bare rule': '```\n---\n```\n',
@@ -270,6 +450,15 @@ export const CORPUS: Record<string, string> = {
 
   'fenced code holding a bare triple backtick': '```\na ``` b\n```\n',
 
+  'fenced code ending in a blank line': '```\ncode\n\n```\n',
+
+  'fence in a blockquote with a blank line': '> ```\n> code\n>\n> ```\n',
+
+  // The quote marker here is code, so the blank-line trim must not reach it.
+  'fence in a blockquote holding a quote marker': '> ```\n> > quoted\n> ```\n',
+
+  'bare blockquote marker': '>\n',
+
   'inline code with underscores': 'Literal `_not em_` here.\n',
 
   'inline code with a pipe': 'Use `a | b` here.\n',
@@ -279,6 +468,12 @@ export const CORPUS: Record<string, string> = {
   'inline code with a backslash': 'Use `a\\b` here.\n',
 
   'inline code with a tag': 'Use `<div>` here.\n',
+
+  'code span inside a link': '[`a`](/b)\n',
+
+  'code span inside bold': '**run `make` now**\n',
+
+  'code span inside strike': '~~`a`~~\n',
 
   // --- quotes and callouts --------------------------------------------------
   'blockquote with nested bullets': '> - one\n>   - two\n>     - three\n',
@@ -302,6 +497,10 @@ export const CORPUS: Record<string, string> = {
   'callout written in lower case': '> [!note]\n> lower.\n',
 
   'callout with a title on the marker line': '> [!NOTE] Title here\n> Body.\n',
+
+  'blockquote with a bold title on the marker line': '> [!NOTE] **Bold** title\n> body\n',
+
+  'blockquote with a code title on the marker line': '> [!NOTE] `code` title\n> body\n',
 
   // --- images and links -----------------------------------------------------
   'image with a bracketed destination': '![d](</my path/a.png> "T")\n',
@@ -375,6 +574,10 @@ export const CORPUS: Record<string, string> = {
   'setext heading with marks': '**Bold** title\n=====\n',
 
   'setext h2 followed by a list': 'Title\n-----\n- one\n',
+
+  'setext h1 in a blockquote': '> Title\n> =====\n',
+
+  'setext h2 in a blockquote': '> Title\n> -----\n',
 
   // --- whitespace -----------------------------------------------------------
   'trailing blank lines at end of file': 'A paragraph.\n\n\n',

@@ -4,7 +4,7 @@ import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import type { Page } from '@gitdocs/shared';
 import { PageEditor } from '../../src/editor';
 import { fakeId, node, page, space } from '../fixtures';
-import { installFetch, type MockServer } from '../mockFetch';
+import { installFetch, type MockServer, type Routes } from '../mockFetch';
 import { renderApp } from '../render';
 
 let server: MockServer | null = null;
@@ -48,9 +48,10 @@ interface Mounted {
   setPage: (next: Page) => void;
 }
 
-async function mount(initial: Page): Promise<Mounted> {
+async function mount(initial: Page, routes: Routes = {}): Promise<Mounted> {
   server = installFetch({
     'GET /api/v1/tree': { spaces: [space('eng', [node('eng/deploy', { title: 'Deploy' })])] },
+    ...routes,
   });
   const spies: Spies = { onChange: vi.fn(), onTitleChange: vi.fn() };
   let setPage: ((next: Page) => void) | null = null;
@@ -87,6 +88,38 @@ describe('PageEditor', () => {
     expect(spies.onTitleChange).toHaveBeenCalledWith('Deploy v2');
     expect(screen.getByLabelText('Page title')).toHaveValue('Deploy v2');
     expect(spies.onChange).not.toHaveBeenCalled();
+  });
+
+  it('offers emoji in the title when a colon is typed', async () => {
+    const { spies } = await mount(page({ title: 'Deploy' }));
+
+    fireEvent.change(screen.getByLabelText('Page title'), { target: { value: 'Deploy :roc' } });
+
+    fireEvent.click(await screen.findByRole('option', { name: /rocket/ }));
+
+    await waitFor(() => expect(screen.getByLabelText('Page title')).toHaveValue('Deploy 🚀'));
+    expect(spies.onTitleChange).toHaveBeenLastCalledWith('Deploy 🚀');
+  });
+
+  it('picks a title emoji with the arrow keys and Enter', async () => {
+    await mount(page({ title: 'Deploy' }));
+    const field = screen.getByLabelText('Page title');
+
+    fireEvent.change(field, { target: { value: ':cha' } });
+    await screen.findByRole('option', { name: /chart up/ });
+    fireEvent.keyDown(field, { key: 'ArrowDown' });
+    fireEvent.keyDown(field, { key: 'Enter' });
+
+    await waitFor(() => expect(field).toHaveValue('📉'));
+  });
+
+  it('leaves a colon in the title alone when it names no emoji', async () => {
+    await mount(page({ title: 'Deploy' }));
+
+    fireEvent.change(screen.getByLabelText('Page title'), { target: { value: 'Ship at 10:30' } });
+
+    expect(screen.queryByRole('option')).toBeNull();
+    expect(screen.getByLabelText('Page title')).toHaveValue('Ship at 10:30');
   });
 
   it('keeps a title on one line', async () => {
@@ -132,6 +165,125 @@ describe('PageEditor', () => {
 
     expect(screen.getByLabelText('Page icon').textContent).toBe('🚀');
     expect(document.querySelector('.save-indicator')?.textContent).toContain('Saved to git');
+  });
+
+  it('plays a video embed instead of showing its markup', async () => {
+    const frame =
+      '<iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ" title="YouTube" allowfullscreen></iframe>';
+    const { spies } = await mount(page({ markdown: `${frame}\n` }));
+
+    await waitFor(() => expect(document.querySelector('.gd-editor-embed__player')).not.toBeNull());
+    const player = document.querySelector('.gd-editor-embed__player');
+    expect(player?.tagName).toBe('IFRAME');
+    expect(player?.getAttribute('src')).toBe('https://www.youtube.com/embed/dQw4w9WgXcQ');
+    expect(spies.onChange).not.toHaveBeenCalled();
+  });
+
+  it('leaves other raw HTML as its own source', async () => {
+    await mount(page({ markdown: '<div align="center">raw</div>\n' }));
+
+    await waitFor(() =>
+      expect(document.querySelector('.gd-editor-html--block')?.textContent).toBe(
+        '<div align="center">raw</div>',
+      ),
+    );
+    expect(document.querySelector('.gd-editor-embed__player')).toBeNull();
+  });
+
+  it('shows an embedded page as its icon and title', async () => {
+    const embedded = page({
+      id: fakeId('runbook'),
+      path: 'eng/deploy',
+      title: 'Deploy runbook',
+      icon: '🚀',
+      markdown: '# Steps\n\nPull, then push.\n',
+    });
+    const { spies } = await mount(page({ path: 'eng/plan', markdown: '![[eng/deploy]]\n' }), {
+      'GET /api/v1/pages': () => ({ page: embedded }),
+    });
+
+    await waitFor(() =>
+      expect(document.querySelector('.gd-editor-pageembed__title')?.textContent).toBe(
+        'Deploy runbook',
+      ),
+    );
+    expect(document.querySelector('.gd-editor-pageembed__icon')?.textContent).toBe('🚀');
+    // The body of the other page stays out of this document.
+    expect(body().textContent).not.toContain('Pull, then push.');
+    expect(spies.onChange).not.toHaveBeenCalled();
+  });
+
+  it('opens the embedded page when it is clicked', async () => {
+    const embedded = page({ id: fakeId('runbook'), path: 'eng/deploy', title: 'Deploy runbook' });
+    await mount(page({ path: 'eng/plan', markdown: '![[eng/deploy]]\n' }), {
+      'GET /api/v1/pages': () => ({ page: embedded }),
+    });
+
+    await waitFor(() => expect(document.querySelector('.gd-editor-pageembed__link')).not.toBeNull());
+    fireEvent.click(document.querySelector('.gd-editor-pageembed__link') as HTMLElement);
+
+    await waitFor(() =>
+      expect(screen.getByTestId('location').textContent).toBe('/p/eng/deploy'),
+    );
+  });
+
+  it('marks a target with no page behind it', async () => {
+    await mount(page({ path: 'eng/plan', markdown: '![[eng/gone]]\n' }));
+
+    await waitFor(() =>
+      expect(document.querySelector('.gd-editor-pageembed__link')?.className).toContain(
+        'is-missing',
+      ),
+    );
+    expect(document.querySelector('.gd-editor-pageembed__title')?.textContent).toBe('eng/gone');
+  });
+
+  it('keeps the block handles up while the pointer travels to them', async () => {
+    await mount(page({ markdown: 'One line.\n' }));
+    await waitFor(() => expect(body().textContent).toContain('One line.'));
+
+    fireEvent.mouseMove(body().querySelector('p') as HTMLElement);
+    await waitFor(() => expect(document.querySelector('.gd-editor-handles')).not.toBeNull());
+
+    // Both the gutter and the buttons themselves sit outside the editable box.
+    fireEvent.mouseMove(document.querySelector('.editor__canvas') as HTMLElement);
+    fireEvent.mouseMove(document.querySelector('.gd-editor-handles__btn--grip') as HTMLElement);
+
+    expect(document.querySelector('.gd-editor-handles')).not.toBeNull();
+  });
+
+  it('raises the block handles from beside the block', async () => {
+    await mount(page({ markdown: 'One line.\n' }));
+    await waitFor(() => expect(body().textContent).toContain('One line.'));
+
+    // Beside the text, not on it: the pointer lands on the editable box itself.
+    fireEvent.mouseMove(body());
+
+    await waitFor(() => expect(document.querySelector('.gd-editor-handles')).not.toBeNull());
+  });
+
+  it('shows the block handles on a table', async () => {
+    await mount(page({ markdown: '| Name | Count |\n| --- | --- |\n| alpha | 1 |\n' }));
+    await waitFor(() => expect(body().querySelector('table')).not.toBeNull());
+
+    fireEvent.mouseMove(body().querySelector('table') as HTMLElement);
+
+    await waitFor(() => expect(document.querySelector('.gd-editor-handles')).not.toBeNull());
+    // The table hangs its own row grips in the same gutter, so these stack clear of them.
+    expect(document.querySelector('.gd-editor-handles')?.className).toContain(
+      'gd-editor-handles--stacked',
+    );
+  });
+
+  it('drops the block handles when the pointer goes away from the document', async () => {
+    await mount(page({ markdown: 'One line.\n' }));
+    await waitFor(() => expect(body().textContent).toContain('One line.'));
+
+    fireEvent.mouseMove(body().querySelector('p') as HTMLElement);
+    await waitFor(() => expect(document.querySelector('.gd-editor-handles')).not.toBeNull());
+    fireEvent.mouseMove(document.body, { clientX: 5000, clientY: 5000 });
+
+    await waitFor(() => expect(document.querySelector('.gd-editor-handles')).toBeNull());
   });
 
   it('offers the slash prompt on an empty page', async () => {

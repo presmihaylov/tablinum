@@ -1,5 +1,7 @@
 import { Node, mergeAttributes } from '@tiptap/core';
 import type { Attributes } from '@tiptap/core';
+import { ReactNodeViewRenderer } from '@tiptap/react';
+import { HtmlBlockView } from '../ui/HtmlBlockView';
 import { DATA, decodeRaw, encodeRaw } from '../markdown';
 
 /**
@@ -49,6 +51,17 @@ export const HtmlBlock = Node.create({
     return typeof node.attrs['raw'] === 'string' ? node.attrs['raw'] : '';
   },
 });
+
+/** The node view turns an embed block into a player; the markdown is the same either way. */
+const HtmlBlockWithPlayer = HtmlBlock.extend({
+  addNodeView() {
+    return ReactNodeViewRenderer(HtmlBlockView);
+  },
+});
+
+export function createHtmlBlock(interactive: boolean) {
+  return interactive ? HtmlBlockWithPlayer : HtmlBlock;
+}
 
 export const HtmlInline = Node.create({
   name: 'htmlInline',

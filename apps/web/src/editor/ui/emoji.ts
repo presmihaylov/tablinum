@@ -91,12 +91,57 @@ export const EMOJI: readonly EmojiEntry[] = [
   { char: '🧑‍💻', name: 'developer', keywords: ['engineer', 'code', 'work'] },
 ];
 
+/** Higher is worse. `MISS` drops the entry. */
+const MISS = 9;
+
+function rank(entry: EmojiEntry, needle: string): number {
+  if (entry.name === needle) return 0;
+  if (entry.name.startsWith(needle)) return 1;
+  if (entry.name.split(' ').some((word) => word.startsWith(needle))) return 2;
+  if (entry.name.includes(needle)) return 3;
+  if (entry.keywords.includes(needle)) return 4;
+  if (entry.keywords.some((keyword) => keyword.startsWith(needle))) return 5;
+  return MISS;
+}
+
+/**
+ * Best match first: the whole name, then its start, then a word of it, then a
+ * keyword. A tie keeps the order of the list above, and the sort is stable.
+ */
 export function filterEmoji(query: string): EmojiEntry[] {
   const needle = query.trim().toLowerCase();
   if (needle.length === 0) return [...EMOJI];
-  return EMOJI.filter(
-    (entry) =>
-      entry.name.includes(needle) ||
-      entry.keywords.some((keyword) => keyword.startsWith(needle)),
-  );
+  return EMOJI.map((entry) => ({ entry, score: rank(entry, needle) }))
+    .filter((row) => row.score < MISS)
+    .sort((a, b) => a.score - b.score)
+    .map((row) => row.entry);
+}
+
+/** A colon must open the token, so `10:30` and `https://` never start a query. */
+const TRIGGER = /(?:^|\s)(:([^\s:]+):?)$/;
+
+/** How many letters a `:` needs behind it before it counts as a query. */
+const MIN_QUERY = 1;
+const LIMIT = 12;
+
+export interface EmojiTrigger {
+  /** Where the token starts, as an index into the text that was searched. */
+  from: number;
+  query: string;
+}
+
+/** The `:emoji` token the caret sits at the end of, read from the text before it. */
+export function findEmojiTrigger(before: string): EmojiTrigger | null {
+  const match = TRIGGER.exec(before);
+  const token = match?.[1];
+  const query = match?.[2];
+  if (token === undefined || query === undefined) return null;
+  return { from: before.length - token.length, query };
+}
+
+/** The emoji a typed `:query` offers. One letter is enough. `:fire:` also works. */
+export function matchEmoji(query: string): EmojiEntry[] {
+  const needle = query.replace(/:$/, '');
+  if (needle.length < MIN_QUERY) return [];
+  return filterEmoji(needle).slice(0, LIMIT);
 }

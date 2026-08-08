@@ -9,7 +9,6 @@ import {
   loadConfig,
   redactConfig,
   relFileToPagePath,
-  parentPath,
   type Backlink,
   type Config,
   type CreatePageBody,
@@ -80,10 +79,6 @@ class CoreStoreAdapter implements ContentStore {
     return this.core.listPages();
   }
 
-  async listChildren(path: PagePath): Promise<PageSummary[]> {
-    const pages = await this.core.listPages();
-    return pages.filter((page) => parentPath(page.path) === path);
-  }
 
   getPageByPath(path: PagePath): Promise<Page | null> {
     return orNull(this.core.getPageByPath(path));

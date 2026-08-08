@@ -7,6 +7,7 @@ import { escapeHtml, markdownToPlainText } from './plaintext.js';
 import { buildMatchExpressions, isFtsQueryError } from './query.js';
 
 export { escapeHtml, markdownToPlainText } from './plaintext.js';
+export type { PlainTextOptions } from './plaintext.js';
 export { buildMatchExpressions, parseQuery, toMatchExpression } from './query.js';
 export type { Phrase } from './query.js';
 
@@ -16,7 +17,7 @@ type Db = Database.Database;
 export const SEARCH_DB_FILENAME = 'search.db';
 
 /** The index is a rebuildable cache; bump this to force a rebuild on the next boot. */
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 /** bm25 column weights, in the declared order of pages_fts: title, body, path. */
 const TITLE_WEIGHT = 3;
@@ -41,10 +42,7 @@ const MARK_CLOSE = '\u0002';
  * The index never stores the whole content repo, only what a result row needs.
  * A full `Page` satisfies this, so callers can pass one straight through.
  */
-export type IndexablePage = Pick<
-  Page,
-  'id' | 'path' | 'space' | 'title' | 'tags' | 'updated' | 'markdown'
->;
+export type IndexablePage = Pick<Page, 'id' | 'path' | 'space' | 'title' | 'updated' | 'markdown'>;
 
 export interface SearchIndexOptions {
   /** Absolute path of the SQLite file, or ":memory:" for a throwaway index. */
@@ -56,8 +54,6 @@ export interface SearchIndexOptions {
 export interface SearchOptions {
   /** Restrict to one space slug. */
   space?: string;
-  /** Restrict to pages carrying this tag. Case-insensitive. */
-  tag?: string;
   /** 1..200, default 20. */
   limit?: number;
 }
@@ -85,15 +81,6 @@ interface IdRow {
 /** Standard path of the index: a sibling of the content repo, so git never sees it. */
 export function defaultDbPath(contentDir: string): string {
   return resolve(contentDir, '..', SEARCH_DB_FILENAME);
-}
-
-/** Tags are stored as `|a|b|` so a filter is a plain substring test. */
-function encodeTags(tags: readonly string[]): string {
-  const cleaned = tags
-    .map((tag) => tag.trim().toLowerCase())
-    .filter((tag) => tag.length > 0 && !tag.includes('|'));
-  if (cleaned.length === 0) return '';
-  return `|${[...new Set(cleaned)].join('|')}|`;
 }
 
 function clampLimit(limit: number | undefined): number {
@@ -159,7 +146,6 @@ export class SearchIndex {
         path    TEXT NOT NULL,
         space   TEXT NOT NULL,
         title   TEXT NOT NULL DEFAULT '',
-        tags    TEXT NOT NULL DEFAULT '',
         updated TEXT NOT NULL DEFAULT ''
       );
       CREATE INDEX IF NOT EXISTS pages_space_idx ON pages(space);
@@ -306,14 +292,13 @@ export class SearchIndex {
     write: (page: IndexablePage) => void;
     drop: (id: string) => boolean;
   } {
-    const upsertPage = db.prepare<[string, string, string, string, string, string]>(
-      `INSERT INTO pages (id, path, space, title, tags, updated)
-       VALUES (?, ?, ?, ?, ?, ?)
+    const upsertPage = db.prepare<[string, string, string, string, string]>(
+      `INSERT INTO pages (id, path, space, title, updated)
+       VALUES (?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
          path = excluded.path,
          space = excluded.space,
          title = excluded.title,
-         tags = excluded.tags,
          updated = excluded.updated`,
     );
     const selectRowId = db.prepare<[string], RowIdRow>(
@@ -332,7 +317,6 @@ export class SearchIndex {
           page.path,
           page.space,
           page.title ?? '',
-          encodeTags(page.tags ?? []),
           page.updated ?? '',
         );
 
@@ -372,12 +356,6 @@ export class SearchIndex {
     if (space !== undefined && space.length > 0) {
       conditions.push('p.space = @space');
       params.space = space;
-    }
-
-    const tag = opts.tag?.trim().toLowerCase();
-    if (tag !== undefined && tag.length > 0) {
-      conditions.push('instr(p.tags, @tag) > 0');
-      params.tag = `|${tag}|`;
     }
 
     const sql = `

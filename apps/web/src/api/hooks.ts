@@ -33,8 +33,6 @@ import type {
   SpacesResponse,
   TreeResponse,
   UpdatePageBody,
-  ViewsQuery,
-  ViewsResponse,
 } from '@gitdocs/shared';
 import { ApiError, api } from './client';
 import { contentPrefixes, qk } from './keys';
@@ -150,19 +148,6 @@ export function useRevision(
   });
 }
 
-export function useViews(
-  query: ViewsQuery | undefined,
-): UseQueryResult<ViewsResponse, ApiError> {
-  return useQuery({
-    queryKey: qk.views(query ?? { dir: '' }),
-    queryFn: ({ signal }) => {
-      if (!query) throw new ApiError(400, 'VALIDATION', 'Missing view directory');
-      return api.views(query, signal);
-    },
-    enabled: Boolean(query?.dir),
-    placeholderData: keepPreviousData,
-  });
-}
 
 export function useGitStatus(pollMs = 20_000): UseQueryResult<GitStatusResponse, ApiError> {
   return useQuery({

@@ -13,7 +13,7 @@ import { mkdir, readdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-import type { Frontmatter, PagePath, PropValue } from '@gitdocs/shared';
+import type { Frontmatter, PagePath } from '@gitdocs/shared';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -46,14 +46,13 @@ const {
 } = await loadShared();
 
 // ---------------------------------------------------------------------------
-// YAML emitter - small on purpose, the seed only writes scalars, string lists
-// and one flat props map.
+// YAML emitter - small on purpose, the seed only writes scalars and string lists.
 // ---------------------------------------------------------------------------
 
 const PLAIN_SCALAR_RE = /^[A-Za-z][A-Za-z0-9 ._/-]*$/;
 const RESERVED_WORDS = new Set(['true', 'false', 'null', 'yes', 'no', 'on', 'off', 'y', 'n']);
 
-function yamlValue(value: PropValue): string {
+function yamlValue(value: string | number | boolean | null | string[]): string {
   if (value === null) return 'null';
   if (typeof value === 'boolean' || typeof value === 'number') return String(value);
   if (Array.isArray(value)) return `[${value.map(yamlValue).join(', ')}]`;
@@ -65,17 +64,10 @@ function yamlValue(value: PropValue): string {
 function frontmatterYaml(fm: Frontmatter): string {
   const lines = [`id: ${fm.id}`, `title: ${yamlValue(fm.title)}`];
   if (fm.icon !== undefined) lines.push(`icon: ${yamlValue(fm.icon)}`);
-  if (fm.tags !== undefined && fm.tags.length > 0) lines.push(`tags: ${yamlValue(fm.tags)}`);
   if (fm.order !== undefined) lines.push(`order: ${fm.order}`);
   // Quoted, so every YAML parser hands back a string instead of a Date.
   lines.push(`created: ${JSON.stringify(fm.created)}`);
   lines.push(`updated: ${JSON.stringify(fm.updated)}`);
-  const props = fm.props ?? {};
-  const keys = Object.keys(props);
-  if (keys.length > 0) {
-    lines.push('props:');
-    for (const key of keys) lines.push(`  ${key}: ${yamlValue(props[key] ?? null)}`);
-  }
   return lines.join('\n');
 }
 
@@ -87,9 +79,7 @@ interface SeedPage {
   path: PagePath;
   title: string;
   icon?: string;
-  tags?: string[];
   order?: number;
-  props?: Record<string, PropValue>;
   /** Days before "now" the page was created. Higher = older. */
   age: number;
   markdown: string;
@@ -108,7 +98,6 @@ const DOCS_PAGES: SeedPage[] = [
     path: 'docs',
     title: 'Product Docs',
     icon: '📘',
-    tags: ['handbook'],
     order: 1,
     age: 30,
     markdown: `
@@ -134,10 +123,8 @@ file in a git repo, so the docs review like code and roll back like code.
     path: 'docs/getting-started',
     title: 'Getting started',
     icon: '🚀',
-    tags: ['handbook', 'intro'],
     order: 1,
     age: 29,
-    props: { status: 'published', owner: 'ana', audience: 'everyone' },
     markdown: `
 ## Write your first page
 
@@ -178,7 +165,7 @@ The four ideas that explain the whole product.
 | --- | --- |
 | Space | A top-level section. One directory. |
 | Page | One markdown file. Gains children by becoming a directory. |
-| Properties | Typed fields in the header that power table views. |
+| Frontmatter | A YAML header the app owns: id, title, icon and sort order. |
 | Wikilinks | Double-bracket links that produce backlinks automatically. |
 
 - [[docs/concepts/pages-and-spaces]]
@@ -189,10 +176,8 @@ The four ideas that explain the whole product.
   {
     path: 'docs/concepts/pages-and-spaces',
     title: 'Pages and spaces',
-    tags: ['concepts'],
     order: 1,
     age: 27,
-    props: { status: 'published', owner: 'ana', reviewed: '2026-07-14' },
     markdown: `
 A **space** is a top-level section. On disk it is one directory with a
 \`_space.yml\` file that holds its name, its icon and its sort order.
@@ -219,10 +204,8 @@ id stays the same, so every link and every bookmark keeps working.
   {
     path: 'docs/concepts/frontmatter',
     title: 'Frontmatter and properties',
-    tags: ['concepts', 'reference'],
     order: 2,
     age: 26,
-    props: { status: 'published', owner: 'ravi', reviewed: '2026-07-21' },
     markdown: `
 Every page starts with a YAML header. The editor writes it for you, but you can
 edit it in git and the app picks the change up.
@@ -232,13 +215,9 @@ edit it in git and the app picks the change up.
 id: pg_01J8XYZQ7M4K2C9V0R5T3B6H8N
 title: Deploy runbook
 icon: "🚀"
-tags: [ops, deploy]
 order: 10
 created: "2026-08-01T10:00:00.000Z"
 updated: "2026-08-06T09:12:44.000Z"
-props:
-  status: live
-  owner: platform
 ---
 \`\`\`
 
@@ -247,13 +226,11 @@ props:
 | \`id\` | yes | Stable forever. Never edit it. |
 | \`title\` | yes | Shown in the sidebar and in search. |
 | \`icon\` | no | One emoji. |
-| \`tags\` | no | Flat list, used by search filters. |
 | \`order\` | no | Sorts siblings. Missing sorts by title. |
 | \`created\` / \`updated\` | yes | ISO 8601, UTC. |
-| \`props\` | no | Your own fields. This is what table views read. |
 
-Anything under \`props\` is yours. Keep the key names stable across sibling
-pages and the table view lines up into real columns.
+The app owns every key. Write the body, and let gitdocs keep the header
+correct.
 
 See [[docs/concepts/pages-and-spaces]] for where the file lives.
 `,
@@ -261,10 +238,8 @@ See [[docs/concepts/pages-and-spaces]] for where the file lives.
   {
     path: 'docs/concepts/wikilinks',
     title: 'Wikilinks and backlinks',
-    tags: ['concepts'],
     order: 3,
     age: 25,
-    props: { status: 'in-review', owner: 'ana', reviewed: '2026-08-02' },
     markdown: `
 Link to another page by its path:
 
@@ -307,10 +282,8 @@ Short, task-shaped pages. Each one answers a single question.
   {
     path: 'docs/guides/keyboard-shortcuts',
     title: 'Keyboard shortcuts',
-    tags: ['guide'],
     order: 1,
     age: 23,
-    props: { status: 'published', owner: 'ravi', audience: 'everyone' },
     markdown: `
 | Shortcut | Action |
 | --- | --- |
@@ -329,10 +302,8 @@ Learn the first three and the rest can wait. More basics in
   {
     path: 'docs/guides/working-with-agents',
     title: 'Working with coding agents',
-    tags: ['guide', 'automation'],
     order: 2,
     age: 22,
-    props: { status: 'draft', owner: 'ravi', audience: 'engineering' },
     markdown: `
 Agents edit the same files you do. They reach the content three ways:
 
@@ -362,7 +333,6 @@ const ENGINEERING_PAGES: SeedPage[] = [
     path: 'engineering',
     title: 'Engineering',
     icon: '🛠️',
-    tags: ['engineering'],
     order: 1,
     age: 30,
     markdown: `
@@ -383,8 +353,7 @@ How the service is built and how to operate it.
     order: 1,
     age: 29,
     markdown: `
-One page per procedure. Every child carries \`status\`, \`owner\` and
-\`priority\`, so the table view over this page is the on-call index.
+One page per procedure. This page is the on-call index.
 
 - [[engineering/runbooks/deploy]]
 - [[engineering/runbooks/incident-response]]
@@ -395,10 +364,8 @@ One page per procedure. Every child carries \`status\`, \`owner\` and
     path: 'engineering/runbooks/deploy',
     title: 'Deploy runbook',
     icon: '🚀',
-    tags: ['ops', 'deploy'],
     order: 1,
     age: 20,
-    props: { status: 'live', owner: 'platform', priority: 'P1', rehearsed: '2026-07-30' },
     markdown: `
 ## Before you start
 
@@ -435,10 +402,8 @@ Background on the commit loop: [[engineering/architecture/git-engine]].
     path: 'engineering/runbooks/incident-response',
     title: 'Incident response',
     icon: '🚨',
-    tags: ['ops', 'oncall'],
     order: 2,
     age: 19,
-    props: { status: 'live', owner: 'oncall', priority: 'P0', rehearsed: '2026-08-04' },
     markdown: `
 ## First five minutes
 
@@ -466,10 +431,8 @@ person lands on it directly.
     path: 'engineering/runbooks/restore-from-backup',
     title: 'Restore from backup',
     icon: '♻️',
-    tags: ['ops', 'backup'],
     order: 3,
     age: 18,
-    props: { status: 'draft', owner: 'platform', priority: 'P2', rehearsed: '2026-06-11' },
     markdown: `
 The backup is a git remote. Restoring is a clone.
 
@@ -519,10 +482,8 @@ packages/mcp        the same operations, as agent tools
   {
     path: 'engineering/architecture/content-store',
     title: 'Content store',
-    tags: ['architecture'],
     order: 1,
     age: 17,
-    props: { status: 'stable', owner: 'core', priority: 'P2', reviewed: '2026-07-28' },
     markdown: `
 The store owns the mapping between a page path and a file:
 
@@ -547,10 +508,8 @@ Details of the header: [[docs/concepts/frontmatter]]. Path rules:
   {
     path: 'engineering/architecture/git-engine',
     title: 'Git engine',
-    tags: ['architecture', 'git'],
     order: 2,
     age: 16,
-    props: { status: 'stable', owner: 'platform', priority: 'P2', reviewed: '2026-08-01' },
     markdown: `
 Every write is committed. Writes are debounced, so a burst of keystrokes turns
 into one commit and not into forty.
@@ -577,12 +536,10 @@ Used by [[engineering/runbooks/deploy]] and
   {
     path: 'engineering/architecture/search-index',
     title: 'Search index',
-    tags: ['architecture', 'search'],
     order: 3,
     age: 15,
-    props: { status: 'in-review', owner: 'core', priority: 'P3', reviewed: '2026-08-05' },
     markdown: `
-Search is SQLite FTS5 over the page title, the body and the tags. The index is
+Search is SQLite FTS5 over the page title, the body and the path. The index is
 derived data: delete the file and it rebuilds from the markdown on the next
 boot.
 
@@ -691,9 +648,7 @@ function buildFrontmatter(page: SeedPage, now: number, index: number): Frontmatt
     updated,
   };
   if (page.icon !== undefined) frontmatter.icon = page.icon;
-  if (page.tags !== undefined) frontmatter.tags = page.tags;
   if (page.order !== undefined) frontmatter.order = page.order;
-  if (page.props !== undefined) frontmatter.props = page.props;
   return parseOrThrow(FrontmatterSchema, frontmatter, `frontmatter of ${page.path}`);
 }
 
@@ -816,11 +771,8 @@ async function main(): Promise<number> {
 
   if (options.git) await initRepo(options.dir, log);
 
-  const propPages = pages.filter((page) => page.props !== undefined).length;
   process.stdout.write(
-    `\nSeeded ${pages.length} pages in ${SPACES.length} spaces at ${options.dir}` +
-      ` (${propPages} carry properties).\n` +
-      'Table views: engineering/runbooks, engineering/architecture, docs/concepts, docs/guides\n',
+    `\nSeeded ${pages.length} pages in ${SPACES.length} spaces at ${options.dir}.\n`,
   );
   return 0;
 }

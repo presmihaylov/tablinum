@@ -15,7 +15,6 @@ export {
   frontmatterEqual,
   normalizeBody,
   normalizeIcon,
-  normalizeTags,
   parse,
   serialize,
   serializePreserving,
@@ -45,14 +44,6 @@ export {
 } from './links.js';
 
 export {
-  filtersFromRecord,
-  queryView,
-  type ViewFilter,
-  type ViewQuery,
-  type ViewResult,
-} from './views.js';
-
-export {
   shouldIgnore,
   watchContent,
   type ContentChange,
@@ -75,11 +66,4 @@ export { consoleLogger, silentLogger, type Logger } from './logger.js';
 
 export { resolveInside } from './fs-utils.js';
 
-export {
-  emitFlowSequence,
-  emitKey,
-  emitNumber,
-  emitString,
-  needsQuotes,
-  quoteString,
-} from './yaml-emit.js';
+export { emitNumber, emitString, needsQuotes, quoteString } from './yaml-emit.js';

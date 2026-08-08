@@ -30,7 +30,6 @@ export interface ParsedPageFile {
 /** Filters accepted by the full-text index. */
 export interface SearchOptions {
   space?: string;
-  tag?: string;
   limit?: number;
 }
 
@@ -61,8 +60,6 @@ export interface ContentStore {
   /** Every page in the repo, flat, without bodies. */
   listPages(): Promise<PageSummary[]>;
 
-  /** Direct children of a page path, without bodies. Powers the table view. */
-  listChildren(path: PagePath): Promise<PageSummary[]>;
 
   getPageByPath(path: PagePath): Promise<Page | null>;
   getPageById(id: PageId): Promise<Page | null>;

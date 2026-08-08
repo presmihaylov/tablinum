@@ -61,7 +61,7 @@ describe('GitdocsClient requests', () => {
   it('drops empty query parameters', async () => {
     const { mock, client } = clientWith({ 'GET /api/v1/search': { hits: [] } });
 
-    await client.search({ q: 'deploy', space: undefined, tag: undefined, limit: 5 });
+    await client.search({ q: 'deploy', space: undefined, limit: 5 });
 
     expect(mock.last().query).toEqual({ q: 'deploy', limit: '5' });
   });

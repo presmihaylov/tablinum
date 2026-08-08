@@ -11,9 +11,7 @@ import {
   SearchQuerySchema,
   TreeResponseSchema,
   UpdatePageBodySchema,
-  ViewsQuerySchema,
   parseOrThrow,
-  parseWhere,
 } from '../src/schemas.js';
 
 const id = newPageId();
@@ -21,16 +19,14 @@ const frontmatter = {
   id,
   title: 'Deploy runbook',
   icon: '\u{1F680}',
-  tags: ['ops', 'deploy'],
   order: 10,
   created: '2026-08-08T10:00:00.000Z',
   updated: '2026-08-08T10:00:00.000Z',
-  props: { status: 'draft', weight: 3, live: true, owners: ['pm'], due: null },
 };
 
 describe('FrontmatterSchema', () => {
   it('accepts the documented shape', () => {
-    expect(FrontmatterSchema.parse(frontmatter).props?.status).toBe('draft');
+    expect(FrontmatterSchema.parse(frontmatter).title).toBe('Deploy runbook');
   });
 
   it('accepts the minimal shape', () => {
@@ -40,7 +36,7 @@ describe('FrontmatterSchema', () => {
         title: 'T',
         created: '2026-08-08T10:00:00.000Z',
         updated: '2026-08-08T10:00:00.000Z',
-      }).tags,
+      }).icon,
     ).toBeUndefined();
   });
 
@@ -49,12 +45,6 @@ describe('FrontmatterSchema', () => {
     expect(FrontmatterSchema.safeParse({ ...frontmatter, created: 'yesterday' }).success).toBe(false);
     expect(FrontmatterSchema.safeParse({ ...frontmatter, title: '' }).success).toBe(false);
   });
-
-  it('validates prop values', () => {
-    expect(FrontmatterSchema.safeParse({ ...frontmatter, props: { a: { b: 1 } } }).success).toBe(false);
-    expect(FrontmatterSchema.safeParse({ ...frontmatter, props: { a: [1, 2] } }).success).toBe(false);
-    expect(FrontmatterSchema.safeParse({ ...frontmatter, props: { a: null } }).success).toBe(true);
-  });
 });
 
 describe('PageSchema', () => {
@@ -62,7 +52,6 @@ describe('PageSchema', () => {
     ...frontmatter,
     path: 'eng/deploy',
     space: 'eng',
-    tags: ['ops'],
     filePath: '/abs/content/eng/deploy.md',
     hasChildren: false,
     markdown: '# Deploy\n',
@@ -132,27 +121,6 @@ describe('query params', () => {
     expect(SearchQuerySchema.safeParse({ q: 'a', limit: '0' }).success).toBe(false);
     expect(SearchQuerySchema.safeParse({ q: 'a', limit: '9999' }).success).toBe(false);
     expect(SearchQuerySchema.safeParse({ q: '' }).success).toBe(false);
-  });
-
-  it('validates the views query', () => {
-    expect(ViewsQuerySchema.parse({ dir: 'eng', order: 'desc' }).order).toBe('desc');
-    expect(ViewsQuerySchema.safeParse({ dir: 'eng', order: 'sideways' }).success).toBe(false);
-  });
-});
-
-describe('parseWhere', () => {
-  it('splits key:value pairs', () => {
-    expect(parseWhere('status:draft,owner:pm')).toEqual({ status: 'draft', owner: 'pm' });
-  });
-
-  it('keeps colons inside the value', () => {
-    expect(parseWhere('url:https://example.com')).toEqual({ url: 'https://example.com' });
-  });
-
-  it('ignores empty and malformed clauses', () => {
-    expect(parseWhere(undefined)).toEqual({});
-    expect(parseWhere('')).toEqual({});
-    expect(parseWhere('novalue,:x,status:done')).toEqual({ status: 'done' });
   });
 });
 

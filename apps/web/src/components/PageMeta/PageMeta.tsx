@@ -1,24 +1,19 @@
 import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import type { Page, PropValue, UpdatePageBody } from '@gitdocs/shared';
+import type { Page } from '@gitdocs/shared';
 import { useBacklinks } from '../../api/hooks';
 import { absoluteTime, relativeTime } from '../../lib/format';
 import { pageHref } from '../../lib/href';
 import { ChevronRight } from '../ui/Icon';
 import { HistoryPanel } from './HistoryPanel';
-import { PropsTable } from './PropsTable';
-import { TagsEditor } from './TagsEditor';
 import './pagemeta.css';
 
 interface PageMetaProps {
   page: Page;
-  onPatch: (patch: UpdatePageBody) => void;
 }
 
-export function PageMeta({ page, onPatch }: PageMetaProps) {
+export function PageMeta({ page }: PageMetaProps) {
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
-    props: true,
-    tags: true,
     backlinks: true,
     history: false,
   });
@@ -38,18 +33,6 @@ export function PageMeta({ page, onPatch }: PageMetaProps) {
           <code className="pagemeta__path">{page.path}</code>
         </dd>
       </dl>
-
-      <Section id="props" label="Properties" open={openSections['props'] ?? false} onToggle={toggle}>
-        <PropsTable
-          value={page.props}
-          resetKey={page.id}
-          onChange={(props: Record<string, PropValue>) => onPatch({ props })}
-        />
-      </Section>
-
-      <Section id="tags" label="Tags" open={openSections['tags'] ?? false} onToggle={toggle}>
-        <TagsEditor tags={page.tags} resetKey={page.id} onChange={(tags) => onPatch({ tags })} />
-      </Section>
 
       <Section id="backlinks" label="Backlinks" open={openSections['backlinks'] ?? false} onToggle={toggle}>
         <Backlinks pageId={page.id} enabled={openSections['backlinks'] ?? false} />

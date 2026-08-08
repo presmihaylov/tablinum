@@ -1,8 +1,6 @@
 import {
   IconSchema,
   PagePathSchema,
-  PropsSchema,
-  TagsSchema,
   assertValidPagePath,
   notFound,
   parseOrThrow,
@@ -20,7 +18,6 @@ import {
   formatPageLine,
   formatSearchHits,
   formatTreeOutline,
-  formatViewTable,
 } from './format.js';
 import { resolvePage, resolvePageId } from './refs.js';
 
@@ -79,16 +76,7 @@ const pathArg = z
 
 const pageRefShape = { id: idArg, path: pathArg };
 
-const tagsArg = TagsSchema.optional().describe(
-  'Short lowercase labels, e.g. ["ops","deploy"]. Replaces the whole tag list.',
-);
-
 const iconArg = IconSchema.optional().describe('A single emoji shown next to the page title.');
-
-const propsArg = PropsSchema.optional().describe(
-  'User properties stored in the page frontmatter, e.g. {"status":"draft","owner":"ana"}. ' +
-    'These power gitdocs_query_view. Values are string, number, boolean, string array or null.',
-);
 
 // ---------------------------------------------------------------------------
 // tools
@@ -101,8 +89,8 @@ const searchTool = defineTool({
     'Full text search over every gitdocs page. This is the fastest way to find the path or id of a page.',
     'Run it BEFORE gitdocs_create_page so you do not create a duplicate of a page that already exists.',
     'Returns ranked hits: title, path, id, score and a one line snippet. It does not return page bodies,',
-    'so follow a promising hit with gitdocs_get_page. Narrow the result with "space" (the first path',
-    'segment, such as "eng") or with "tag". If nothing matches, use fewer words or call gitdocs_list_tree.',
+    'so follow a promising hit with gitdocs_get_page. Narrow the result with "space", the first path',
+    'segment, such as "eng". If nothing matches, use fewer words or call gitdocs_list_tree.',
   ].join(' '),
   annotations: { readOnlyHint: true, openWorldHint: false, title: 'Search pages' },
   inputShape: {
@@ -112,7 +100,6 @@ const searchTool = defineTool({
       .min(1)
       .optional()
       .describe('Restrict the search to one space slug, e.g. "eng".'),
-    tag: z.string().min(1).optional().describe('Restrict the search to pages carrying this tag.'),
     limit: z
       .number()
       .int()
@@ -122,12 +109,7 @@ const searchTool = defineTool({
       .describe('Maximum number of hits, 1 to 200. The server default is used when omitted.'),
   },
   run: async (client, args) => {
-    const hits = await client.search({
-      q: args.query,
-      space: args.space,
-      tag: args.tag,
-      limit: args.limit,
-    });
+    const hits = await client.search({ q: args.query, space: args.space, limit: args.limit });
     return formatSearchHits(hits, args.query);
   },
 });
@@ -137,9 +119,9 @@ const getPageTool = defineTool({
   title: 'Read a page',
   description: [
     'Read one page in full. Give either "path" or "id"; giving neither is an error.',
-    'The result is a metadata header (path, id, title, icon, tags, order, timestamps, props) followed by',
+    'The result is a metadata header (path, id, title, icon, order, timestamps) followed by',
     'the markdown body, verbatim and unchanged. Always read a page with this tool before you rewrite it,',
-    'so you know the exact current body and the exact current props.',
+    'so you know the exact current body.',
   ].join(' '),
   annotations: { readOnlyHint: true, openWorldHint: false, title: 'Read a page' },
   inputShape: pageRefShape,
@@ -186,7 +168,7 @@ const createPageTool = defineTool({
     'Parent pages are promoted automatically, so you do not have to create them by hand.',
     'Fails with CONFLICT when a page already exists at that path; search first.',
     'Do NOT write YAML frontmatter into "markdown": the server owns id, created and updated, and it writes',
-    'title, icon, tags, order and props from these arguments. Do not repeat the title as a level 1 heading',
+    'title, icon and order from these arguments. Do not repeat the title as a level 1 heading',
     'in the body either; start the body with a short summary paragraph.',
   ].join(' '),
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, title: 'Create a page' },
@@ -201,8 +183,6 @@ const createPageTool = defineTool({
         'The page body in CommonMark + GFM. No frontmatter. Headings start at "##". Link to another page with [[page-path]] or [[page-path|alias]]. Pass "" for an empty page.',
       ),
     icon: iconArg,
-    tags: tagsArg,
-    props: propsArg,
     order: z
       .number()
       .optional()
@@ -211,8 +191,6 @@ const createPageTool = defineTool({
   run: async (client, args) => {
     const body: CreatePageBody = { path: args.path, title: args.title, markdown: args.markdown };
     if (args.icon !== undefined) body.icon = args.icon;
-    if (args.tags !== undefined) body.tags = args.tags;
-    if (args.props !== undefined) body.props = args.props;
     if (args.order !== undefined) body.order = args.order;
     const page = await client.createPage(body);
     return `Created page.\n${formatPageLine(page)}`;
@@ -226,11 +204,10 @@ const updatePageTool = defineTool({
     'Update an existing page. Identify it with "id" or "path".',
     'EVERY CONTENT FIELD IS OPTIONAL AND ONLY THE FIELDS YOU SEND ARE CHANGED.',
     'If you omit "markdown" the body is left exactly as it is and only the metadata changes, so this is the',
-    'safe way to set a title, an icon, tags or props without touching the text.',
+    'safe way to set a title, an icon or an order without touching the text.',
     'Send "markdown" only when you hold the COMPLETE new body; it replaces the whole body. To add text to',
     'the end of a page use gitdocs_append_page instead, and to move a page use gitdocs_move_page.',
-    '"props" and "tags" each replace the whole map or list, so read the page first and resend the entries',
-    'you want to keep. Pass icon: null or order: null to clear that field.',
+    'Pass icon: null or order: null to clear that field.',
   ].join(' '),
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, title: 'Update a page' },
   inputShape: {
@@ -245,8 +222,6 @@ const updatePageTool = defineTool({
     icon: IconSchema.nullable()
       .optional()
       .describe('New emoji icon, or null to remove the icon. Omit to keep it.'),
-    tags: tagsArg,
-    props: propsArg,
     order: z
       .number()
       .nullable()
@@ -258,12 +233,10 @@ const updatePageTool = defineTool({
     if (args.title !== undefined) patch.title = args.title;
     if (args.markdown !== undefined) patch.markdown = args.markdown;
     if (args.icon !== undefined) patch.icon = args.icon;
-    if (args.tags !== undefined) patch.tags = args.tags;
-    if (args.props !== undefined) patch.props = args.props;
     if (args.order !== undefined) patch.order = args.order;
     if (Object.keys(patch).length === 0) {
       throw validation(
-        'Nothing to update. Send at least one of "title", "markdown", "icon", "tags", "props" or "order".',
+        'Nothing to update. Send at least one of "title", "markdown", "icon" or "order".',
       );
     }
     const id = await resolvePageId(client, args);
@@ -341,7 +314,7 @@ const deletePageTool = defineTool({
     'A page that has children is refused unless you pass recursive: true, which deletes the whole subtree.',
     'Returns the list of deleted paths. The deletion is written to the content git repository, so an',
     'operator can still restore it from history, but this tool cannot undo it. Prefer gitdocs_move_page',
-    'or an archive tag when you are not certain.',
+    'to an archive path when you are not certain.',
   ].join(' '),
   annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, title: 'Delete a page' },
   inputShape: {
@@ -430,40 +403,6 @@ const gitSyncTool = defineTool({
   },
 });
 
-const queryViewTool = defineTool({
-  name: 'gitdocs_query_view',
-  title: 'Query a props table',
-  description: [
-    'Build a table over the frontmatter props of the pages under one directory page.',
-    'This is the structured query tool: use it for trackers such as a list of runbooks by owner, or of',
-    'decisions by status, where each child page carries props like status, owner or due.',
-    '"dir" is the parent page path, e.g. "eng/runbooks". "where" filters with comma separated key:value',
-    'pairs, e.g. "status:draft,owner:ana". "sort" names a prop key, and "order" is asc or desc.',
-    'The result is a markdown table plus the page id of every row, so you can follow up with',
-    'gitdocs_get_page or gitdocs_update_page.',
-  ].join(' '),
-  annotations: { readOnlyHint: true, openWorldHint: false, title: 'Query a props table' },
-  inputShape: {
-    dir: PagePathSchema.describe('Parent page path whose child pages become the rows, e.g. "eng/runbooks".'),
-    where: z
-      .string()
-      .min(1)
-      .optional()
-      .describe('Comma separated prop filters, e.g. "status:draft,owner:ana". Each clause is key:value.'),
-    sort: z.string().min(1).optional().describe('Prop key, or "title" or "path", to sort the rows by.'),
-    order: z.enum(['asc', 'desc']).optional().describe('Sort direction. Default asc.'),
-  },
-  run: async (client, args) => {
-    const view = await client.views({
-      dir: args.dir,
-      where: args.where,
-      sort: args.sort,
-      order: args.order,
-    });
-    return formatViewTable(view, args.dir);
-  },
-});
-
 /** Every tool this MCP server exposes, in the order a model should discover them. */
 export const TOOL_SPECS: readonly ToolSpec[] = [
   searchTool,
@@ -476,7 +415,6 @@ export const TOOL_SPECS: readonly ToolSpec[] = [
   deletePageTool,
   pageHistoryTool,
   gitSyncTool,
-  queryViewTool,
 ];
 
 /** Look one tool up by name. Used by tests and by any embedder that drives tools directly. */

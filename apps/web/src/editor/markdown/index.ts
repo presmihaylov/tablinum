@@ -13,6 +13,14 @@ export { DATA, CALLOUT_TYPES, isCalloutType, toCalloutType } from './dialect';
 export type { CalloutType } from './dialect';
 export { decodeRaw, encodeRaw, escapeHtml } from './html';
 
+/**
+ * ProseMirror collapses HTML whitespace by default, which rewrites every run of two
+ * or more spaces and every tab markdown-it produced. `true`, not `'full'`: `'full'`
+ * also keeps the newlines markdown-it writes between block tags, which reopens the
+ * document as a wall of hard breaks.
+ */
+export const PARSE_OPTIONS = { preserveWhitespace: true } as const;
+
 /** Everything the editor needs to reproduce the file it loaded. */
 export interface MarkdownSource {
   /** Block content with the outer blank lines removed, ready for the parser. */

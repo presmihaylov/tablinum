@@ -4,19 +4,14 @@ export type PageId = string;
 /** Slash-joined page path, e.g. "eng/runbooks/deploy". No leading or trailing slash. */
 export type PagePath = string;
 
-/** A user-defined frontmatter property value. Powers the table view. */
-export type PropValue = string | number | boolean | string[] | null;
-
 /** YAML frontmatter block at the top of every page file. */
 export interface Frontmatter {
   id: PageId;
   title: string;
   icon?: string;
-  tags?: string[];
   order?: number;
   created: string; // ISO
   updated: string; // ISO
-  props?: Record<string, PropValue>;
 }
 
 /** A page: its frontmatter, its body and where it lives on disk. */
@@ -26,17 +21,15 @@ export interface Page {
   space: string; // first path segment
   title: string;
   icon?: string;
-  tags: string[];
   order?: number;
   created: string;
   updated: string;
-  props: Record<string, PropValue>;
   markdown: string; // body WITHOUT frontmatter
   filePath: string; // absolute path on disk
   hasChildren: boolean;
 }
 
-/** A page without its body. Used by list, tree and table endpoints. */
+/** A page without its body. Used by the list and tree endpoints. */
 export type PageSummary = Omit<Page, 'markdown'>;
 
 /** One node of the sidebar page tree. */

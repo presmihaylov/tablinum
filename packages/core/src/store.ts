@@ -31,7 +31,6 @@ import {
   type PageId,
   type PagePath,
   type PageSummary,
-  type PropValue,
   type Space,
   type TreeNode,
 } from '@gitdocs/shared';
@@ -39,7 +38,6 @@ import {
   frontmatterEqual,
   normalizeBody,
   normalizeIcon,
-  normalizeTags,
   parse,
   serialize,
   serializePreserving,
@@ -65,7 +63,6 @@ import { consoleLogger, type Logger } from './logger.js';
 import { Mutex } from './mutex.js';
 import { listSpaceSlugs } from './scan.js';
 import { parseSpaceFile, serializeSpaceFile } from './space-file.js';
-import { queryView as runViewQuery, type ViewQuery, type ViewResult } from './views.js';
 
 const INDEX_FILE = `${INDEX_BASENAME}${PAGE_EXT}`;
 
@@ -107,8 +104,6 @@ export interface CreatePageInput {
   title: string;
   markdown?: string;
   icon?: string;
-  tags?: string[];
-  props?: Record<string, PropValue>;
   order?: number;
 }
 
@@ -117,8 +112,6 @@ export interface UpdatePageInput {
   markdown?: string;
   /** null clears the icon. */
   icon?: string | null;
-  tags?: string[];
-  props?: Record<string, PropValue>;
   /** null clears the manual sort order. */
   order?: number | null;
   /** A new path moves or renames the page and carries its children along. */
@@ -127,9 +120,7 @@ export interface UpdatePageInput {
 
 interface NewPageFields {
   icon?: string;
-  tags?: string[];
   order?: number;
-  props?: Record<string, PropValue>;
 }
 
 function compareSpaces(a: Space, b: Space): number {
@@ -195,10 +186,8 @@ function toSummary(page: IndexedPage): PageSummary {
     path: page.path,
     space: spaceOf(page.path),
     title: frontmatter.title,
-    tags: frontmatter.tags ?? [],
     created: frontmatter.created,
     updated: frontmatter.updated,
-    props: frontmatter.props ?? {},
     filePath: page.filePath,
     hasChildren: page.hasChildren,
   };
@@ -446,11 +435,7 @@ export class ContentStore {
     const now = this.#nowIso();
     const frontmatter: Frontmatter = { id: newPageId(), title, created: now, updated: now };
     if (fields.icon !== undefined) frontmatter.icon = fields.icon;
-    if (fields.tags !== undefined && fields.tags.length > 0) frontmatter.tags = fields.tags;
     if (fields.order !== undefined) frontmatter.order = fields.order;
-    if (fields.props !== undefined && Object.keys(fields.props).length > 0) {
-      frontmatter.props = fields.props;
-    }
     const file = path.join(this.contentDir, this.#relFileFor(pagePath, hasChildren));
     await writeText(file, serialize(frontmatter, markdown));
     this.#index.markStale();
@@ -527,9 +512,7 @@ export class ContentStore {
     const fields: NewPageFields = {};
     const icon = body.icon === undefined ? null : normalizeIcon(body.icon);
     if (icon !== null) fields.icon = icon;
-    if (body.tags !== undefined) fields.tags = normalizeTags(body.tags);
     if (body.order !== undefined) fields.order = body.order;
-    if (body.props !== undefined) fields.props = body.props;
 
     const file = await this.#writeNewPage(target, body.title, body.markdown ?? '', false, fields);
     await this.#index.rebuild();
@@ -563,17 +546,8 @@ export class ContentStore {
       if (icon === null) delete next.icon;
       if (icon !== null) next.icon = icon;
     }
-    if (body.tags !== undefined) {
-      const tags = normalizeTags(body.tags);
-      if (tags.length === 0) delete next.tags;
-      if (tags.length > 0) next.tags = tags;
-    }
     if (body.order === null) delete next.order;
     if (typeof body.order === 'number') next.order = body.order;
-    if (body.props !== undefined) {
-      if (Object.keys(body.props).length === 0) delete next.props;
-      else next.props = { ...body.props };
-    }
 
     const nextBody = body.markdown === undefined ? current.body : normalizeBody(body.markdown);
     const wantsMove = body.path !== undefined && body.path !== record.path;
@@ -709,7 +683,7 @@ export class ContentStore {
   }
 
   // -------------------------------------------------------------------------
-  // links and views
+  // links
   // -------------------------------------------------------------------------
 
   async #linkedPages(): Promise<LinkedPage[]> {
@@ -755,11 +729,4 @@ export class ContentStore {
     });
   }
 
-  /** A table over the direct children of `query.dir`. */
-  async queryView(query: ViewQuery): Promise<ViewResult> {
-    const dir = assertValidPagePath(query.dir, 'dir');
-    await this.#index.ensureBuilt();
-    if (!this.#index.has(dir)) throw notFound(`No page at path ${dir}`);
-    return runViewQuery(await this.listPages(), { ...query, dir });
-  }
 }

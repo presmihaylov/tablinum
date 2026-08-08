@@ -1,0 +1,27 @@
+# Keep the build context small and never let host artifacts overwrite the
+# dependency tree that pnpm installs inside the image.
+node_modules
+**/node_modules
+dist
+**/dist
+.data
+.git
+.github
+.vscode
+.idea
+coverage
+**/coverage
+*.tsbuildinfo
+**/*.tsbuildinfo
+*.log
+**/*.log
+
+# Secrets must never enter the build context.
+.env
+**/.env
+**/.env.local
+deploy/ssh
+!.env.example
+!deploy/.env.example
+
+.DS_Store

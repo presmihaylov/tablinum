@@ -1,0 +1,758 @@
+/*
+ * The block editor. Every colour comes from src/styles/tokens.css, so both
+ * themes follow the shell. Class names are prefixed `editor__` for the page
+ * chrome and `gd-editor-` for anything rendered inside or above the document.
+ */
+
+.editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 100%;
+}
+
+.editor__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.editor__title-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  flex: 1;
+  min-width: 0;
+}
+
+.editor__icon {
+  font-size: var(--text-2xl);
+  line-height: var(--leading-tight);
+  flex: none;
+  user-select: none;
+}
+
+.editor__title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-strong);
+  font-family: var(--font-sans);
+  font-size: var(--text-3xl);
+  font-weight: var(--weight-bold);
+  letter-spacing: -0.02em;
+  line-height: var(--leading-tight);
+  outline: none;
+  overflow: hidden;
+  resize: none;
+}
+
+.editor__title::placeholder {
+  color: var(--text-faint);
+}
+
+.editor__canvas {
+  position: relative;
+  flex: 1;
+  min-height: 50vh;
+}
+
+.editor__file {
+  display: none;
+}
+
+/* ------------------------------------------------------------------ */
+/* the document surface                                                */
+/* ------------------------------------------------------------------ */
+
+.gd-editor-surface {
+  outline: none;
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--leading-relaxed);
+  padding-bottom: var(--space-8);
+  caret-color: var(--text-strong);
+}
+
+.gd-editor-surface > * + * {
+  margin-top: var(--space-2);
+}
+
+.gd-editor-surface p {
+  margin: 0;
+  min-height: 1.5em;
+}
+
+.gd-editor-surface h1,
+.gd-editor-surface h2,
+.gd-editor-surface h3,
+.gd-editor-surface h4,
+.gd-editor-surface h5,
+.gd-editor-surface h6 {
+  margin: var(--space-5) 0 var(--space-1);
+  color: var(--text-strong);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-tight);
+  letter-spacing: -0.01em;
+}
+
+.gd-editor-surface > :first-child {
+  margin-top: 0;
+}
+
+.gd-editor-surface h1 {
+  font-size: var(--text-2xl);
+}
+
+.gd-editor-surface h2 {
+  font-size: var(--text-xl);
+}
+
+.gd-editor-surface h3 {
+  font-size: var(--text-lg);
+}
+
+.gd-editor-surface h4,
+.gd-editor-surface h5,
+.gd-editor-surface h6 {
+  font-size: var(--text-md);
+}
+
+.gd-editor-surface ul,
+.gd-editor-surface ol {
+  margin: 0;
+  padding-left: var(--space-5);
+}
+
+.gd-editor-surface li {
+  margin: 0;
+}
+
+.gd-editor-surface li > p {
+  margin: 0;
+}
+
+.gd-editor-surface blockquote {
+  margin: 0;
+  padding-left: var(--space-4);
+  border-left: 3px solid var(--border-strong);
+  color: var(--text);
+}
+
+.gd-editor-surface hr {
+  margin: var(--space-5) 0;
+  border: 0;
+  border-top: 1px solid var(--border-strong);
+}
+
+.gd-editor-surface a,
+.gd-editor-link {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 3px;
+  cursor: text;
+}
+
+.gd-editor-wikilink {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid var(--accent-soft);
+  padding: 0 1px;
+  cursor: pointer;
+}
+
+.gd-editor-surface code {
+  padding: 0.15em 0.35em;
+  border-radius: var(--radius-sm);
+  background: var(--code-bg);
+  color: var(--code-text);
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+}
+
+.gd-editor-image {
+  display: inline-block;
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-md);
+}
+
+.gd-editor-image.ProseMirror-selectednode {
+  outline: 2px solid var(--accent);
+}
+
+.gd-editor-surface .ProseMirror-selectednode {
+  background: var(--bg-selected);
+  border-radius: var(--radius-sm);
+}
+
+/* placeholder */
+.gd-editor-surface .is-empty::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  color: var(--text-faint);
+  pointer-events: none;
+}
+
+/* ------------------------------------------------------------------ */
+/* task lists                                                          */
+/* ------------------------------------------------------------------ */
+
+.gd-editor-tasks {
+  list-style: none;
+  padding-left: var(--space-1);
+}
+
+.gd-editor-task {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.gd-editor-task > label {
+  flex: none;
+  margin-top: 0.28em;
+  user-select: none;
+}
+
+.gd-editor-task > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.gd-editor-task input[type='checkbox'] {
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.gd-editor-task[data-checked='true'] > div {
+  color: var(--text-muted);
+}
+
+/* ------------------------------------------------------------------ */
+/* callouts                                                            */
+/* ------------------------------------------------------------------ */
+
+.gd-editor-callout {
+  margin: var(--space-3) 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--text-muted);
+  border-radius: var(--radius-md);
+  background: var(--bg-subtle);
+}
+
+.gd-editor-callout::before {
+  content: attr(data-callout);
+  display: block;
+  margin-bottom: var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.08em;
+}
+
+.gd-editor-callout[data-callout='NOTE'] {
+  border-left-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.gd-editor-callout[data-callout='NOTE']::before {
+  color: var(--accent);
+}
+
+.gd-editor-callout[data-callout='TIP'] {
+  border-left-color: var(--success);
+  background: var(--success-soft);
+}
+
+.gd-editor-callout[data-callout='TIP']::before {
+  color: var(--success);
+}
+
+.gd-editor-callout[data-callout='IMPORTANT'] {
+  border-left-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.gd-editor-callout[data-callout='IMPORTANT']::before {
+  color: var(--accent);
+}
+
+.gd-editor-callout[data-callout='WARNING'] {
+  border-left-color: var(--warning);
+  background: var(--warning-soft);
+}
+
+.gd-editor-callout[data-callout='WARNING']::before {
+  color: var(--warning);
+}
+
+.gd-editor-callout[data-callout='CAUTION'] {
+  border-left-color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.gd-editor-callout[data-callout='CAUTION']::before {
+  color: var(--danger);
+}
+
+/* ------------------------------------------------------------------ */
+/* code blocks                                                         */
+/* ------------------------------------------------------------------ */
+
+.gd-editor-codeblock {
+  position: relative;
+  margin: var(--space-3) 0;
+}
+
+.gd-editor-codeblock__lang {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  z-index: 2;
+  max-width: 9rem;
+  padding: 2px var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-raised);
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: var(--text-2xs);
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.gd-editor-codeblock:hover .gd-editor-codeblock__lang,
+.gd-editor-codeblock__lang:focus {
+  opacity: 1;
+}
+
+.gd-editor-codeblock__pre,
+.gd-editor-surface pre {
+  margin: var(--space-3) 0;
+  padding: var(--space-4);
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-inset);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  tab-size: 2;
+}
+
+.gd-editor-codeblock__pre {
+  margin: 0;
+}
+
+.gd-editor-surface pre code {
+  padding: 0;
+  background: none;
+  color: inherit;
+  font-size: inherit;
+}
+
+/* syntax colours, driven by the shared palette */
+.gd-editor-surface .hljs-comment,
+.gd-editor-surface .hljs-quote {
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+.gd-editor-surface .hljs-keyword,
+.gd-editor-surface .hljs-selector-tag,
+.gd-editor-surface .hljs-literal,
+.gd-editor-surface .hljs-doctag {
+  color: var(--code-text);
+}
+
+.gd-editor-surface .hljs-string,
+.gd-editor-surface .hljs-regexp,
+.gd-editor-surface .hljs-addition {
+  color: var(--success);
+}
+
+.gd-editor-surface .hljs-number,
+.gd-editor-surface .hljs-symbol,
+.gd-editor-surface .hljs-bullet {
+  color: var(--warning);
+}
+
+.gd-editor-surface .hljs-title,
+.gd-editor-surface .hljs-name,
+.gd-editor-surface .hljs-section,
+.gd-editor-surface .hljs-attr {
+  color: var(--accent);
+}
+
+.gd-editor-surface .hljs-type,
+.gd-editor-surface .hljs-built_in,
+.gd-editor-surface .hljs-attribute {
+  color: var(--text-strong);
+}
+
+.gd-editor-surface .hljs-deletion {
+  color: var(--danger);
+}
+
+/* ------------------------------------------------------------------ */
+/* tables                                                              */
+/* ------------------------------------------------------------------ */
+
+.gd-editor-table {
+  width: 100%;
+  margin: var(--space-3) 0;
+  border-collapse: collapse;
+  table-layout: fixed;
+  overflow: hidden;
+  font-size: var(--text-sm);
+}
+
+.gd-editor-table td,
+.gd-editor-table th {
+  position: relative;
+  min-width: 4rem;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-strong);
+  vertical-align: top;
+}
+
+.gd-editor-table th {
+  background: var(--bg-subtle);
+  color: var(--text-strong);
+  font-weight: var(--weight-semibold);
+  text-align: left;
+}
+
+.gd-editor-table .selectedCell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--bg-selected);
+  pointer-events: none;
+}
+
+/* ------------------------------------------------------------------ */
+/* raw HTML atoms                                                      */
+/* ------------------------------------------------------------------ */
+
+.gd-editor-html {
+  border-radius: var(--radius-sm);
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  white-space: pre-wrap;
+}
+
+.gd-editor-html--block {
+  display: block;
+  margin: var(--space-3) 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px dashed var(--border-strong);
+  overflow-x: auto;
+}
+
+.gd-editor-html--inline {
+  padding: 0 var(--space-1);
+}
+
+/* ------------------------------------------------------------------ */
+/* block handles                                                       */
+/* ------------------------------------------------------------------ */
+
+.gd-editor-handles {
+  position: absolute;
+  left: calc(var(--space-6) * -1 - var(--space-2));
+  display: flex;
+  gap: 2px;
+  padding-top: 2px;
+  opacity: 0.75;
+}
+
+.gd-editor-handles__btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-faint);
+  font-family: var(--font-sans);
+  font-size: var(--text-md);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.gd-editor-handles__btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-muted);
+}
+
+.gd-editor-handles__btn--grip {
+  cursor: grab;
+}
+
+@media (max-width: 900px) {
+  .gd-editor-handles {
+    display: none;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* floating menus                                                      */
+/* ------------------------------------------------------------------ */
+
+.gd-editor-menu {
+  width: 17.5rem;
+  max-height: 19rem;
+  overflow-y: auto;
+  padding: var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-lg);
+}
+
+.gd-editor-menu--empty {
+  padding: var(--space-3);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.gd-editor-menu__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-2);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--text);
+  font-family: var(--font-sans);
+  text-align: left;
+  cursor: pointer;
+}
+
+.gd-editor-menu__item.is-active {
+  background: var(--bg-hover);
+}
+
+.gd-editor-menu__glyph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 2.25rem;
+  height: 1.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.03em;
+}
+
+.gd-editor-menu__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.gd-editor-menu__title {
+  color: var(--text-strong);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+}
+
+.gd-editor-menu__hint {
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------------ */
+/* selection and table toolbars                                        */
+/* ------------------------------------------------------------------ */
+
+.gd-editor-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-md);
+}
+
+.gd-editor-bar__btn {
+  min-width: 1.75rem;
+  height: 1.75rem;
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.gd-editor-bar__btn:hover {
+  background: var(--bg-hover);
+}
+
+.gd-editor-bar__btn.is-active {
+  color: var(--accent);
+}
+
+.gd-editor-bar__btn--wide {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.gd-editor-bar__btn.is-bold {
+  font-weight: var(--weight-bold);
+}
+
+.gd-editor-bar__btn.is-italic {
+  font-family: var(--font-serif);
+  font-style: italic;
+}
+
+.gd-editor-bar__btn.is-strike {
+  text-decoration: line-through;
+}
+
+.gd-editor-bar__btn.is-code {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.gd-editor-bar__sep {
+  width: 1px;
+  height: 1.25rem;
+  margin: 0 var(--space-1);
+  background: var(--border);
+}
+
+.gd-editor-bar__input {
+  width: 15rem;
+  height: 1.75rem;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  outline: none;
+}
+
+.gd-editor-bar__input:focus {
+  border-color: var(--border-focus);
+}
+
+/* ------------------------------------------------------------------ */
+/* emoji popover                                                       */
+/* ------------------------------------------------------------------ */
+
+.gd-editor-emoji {
+  position: fixed;
+  z-index: 60;
+  width: 16.5rem;
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-lg);
+}
+
+.gd-editor-emoji__search {
+  width: 100%;
+  height: 1.75rem;
+  margin-bottom: var(--space-2);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  outline: none;
+}
+
+.gd-editor-emoji__search:focus {
+  border-color: var(--border-focus);
+}
+
+.gd-editor-emoji__grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 2px;
+  max-height: 12rem;
+  overflow-y: auto;
+}
+
+.gd-editor-emoji__item {
+  height: 1.9rem;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  font-size: var(--text-md);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.gd-editor-emoji__item:hover {
+  background: var(--bg-hover);
+}
+
+.gd-editor-emoji__empty {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+/* ------------------------------------------------------------------ */
+/* save indicator (shared component, styled here)                      */
+/* ------------------------------------------------------------------ */
+
+.save-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+  padding-top: var(--space-2);
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.save-indicator--error {
+  color: var(--warning);
+}
+
+.save-indicator--saved {
+  color: var(--success);
+}

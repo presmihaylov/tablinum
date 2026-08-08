@@ -1,0 +1,35 @@
+{
+  "name": "@gitdocs/search",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "SQLite FTS5 full-text search index for gitdocs pages.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b && tsc -p tsconfig.test.json",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@gitdocs/shared": "workspace:*",
+    "better-sqlite3": "^11.10.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.15.3",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.2"
+  }
+}

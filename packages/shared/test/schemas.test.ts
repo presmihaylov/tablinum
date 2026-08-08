@@ -1,0 +1,192 @@
+import { describe, expect, it } from 'vitest';
+import { AppError } from '../src/errors.js';
+import { newPageId } from '../src/ids.js';
+import {
+  CreatePageBodySchema,
+  CreateSpaceBodySchema,
+  DeletePageQuerySchema,
+  FrontmatterSchema,
+  GitStatusResponseSchema,
+  PageSchema,
+  SearchQuerySchema,
+  TreeResponseSchema,
+  UpdatePageBodySchema,
+  ViewsQuerySchema,
+  parseOrThrow,
+  parseWhere,
+} from '../src/schemas.js';
+
+const id = newPageId();
+const frontmatter = {
+  id,
+  title: 'Deploy runbook',
+  icon: '\u{1F680}',
+  tags: ['ops', 'deploy'],
+  order: 10,
+  created: '2026-08-08T10:00:00.000Z',
+  updated: '2026-08-08T10:00:00.000Z',
+  props: { status: 'draft', weight: 3, live: true, owners: ['pm'], due: null },
+};
+
+describe('FrontmatterSchema', () => {
+  it('accepts the documented shape', () => {
+    expect(FrontmatterSchema.parse(frontmatter).props?.status).toBe('draft');
+  });
+
+  it('accepts the minimal shape', () => {
+    expect(
+      FrontmatterSchema.parse({
+        id,
+        title: 'T',
+        created: '2026-08-08T10:00:00.000Z',
+        updated: '2026-08-08T10:00:00.000Z',
+      }).tags,
+    ).toBeUndefined();
+  });
+
+  it('rejects a bad id, bad dates and an empty title', () => {
+    expect(FrontmatterSchema.safeParse({ ...frontmatter, id: 'nope' }).success).toBe(false);
+    expect(FrontmatterSchema.safeParse({ ...frontmatter, created: 'yesterday' }).success).toBe(false);
+    expect(FrontmatterSchema.safeParse({ ...frontmatter, title: '' }).success).toBe(false);
+  });
+
+  it('validates prop values', () => {
+    expect(FrontmatterSchema.safeParse({ ...frontmatter, props: { a: { b: 1 } } }).success).toBe(false);
+    expect(FrontmatterSchema.safeParse({ ...frontmatter, props: { a: [1, 2] } }).success).toBe(false);
+    expect(FrontmatterSchema.safeParse({ ...frontmatter, props: { a: null } }).success).toBe(true);
+  });
+});
+
+describe('PageSchema', () => {
+  const page = {
+    ...frontmatter,
+    path: 'eng/deploy',
+    space: 'eng',
+    tags: ['ops'],
+    filePath: '/abs/content/eng/deploy.md',
+    hasChildren: false,
+    markdown: '# Deploy\n',
+  };
+
+  it('accepts a full page', () => {
+    expect(PageSchema.parse(page).markdown).toBe('# Deploy\n');
+  });
+
+  it('rejects a traversing path', () => {
+    expect(PageSchema.safeParse({ ...page, path: '../secrets' }).success).toBe(false);
+    expect(PageSchema.safeParse({ ...page, space: 'eng/sub' }).success).toBe(false);
+  });
+});
+
+describe('TreeResponseSchema', () => {
+  it('parses a recursive tree', () => {
+    const parsed = TreeResponseSchema.parse({
+      spaces: [
+        {
+          slug: 'eng',
+          name: 'Engineering',
+          tree: [
+            {
+              id,
+              path: 'eng/runbooks',
+              title: 'Runbooks',
+              children: [{ id, path: 'eng/runbooks/deploy', title: 'Deploy', children: [] }],
+            },
+          ],
+        },
+      ],
+    });
+    expect(parsed.spaces[0]?.tree[0]?.children[0]?.path).toBe('eng/runbooks/deploy');
+  });
+});
+
+describe('request bodies', () => {
+  it('validates page creation', () => {
+    expect(CreatePageBodySchema.parse({ path: 'eng/x', title: 'X' }).markdown).toBeUndefined();
+    expect(CreatePageBodySchema.safeParse({ path: 'eng/x' }).success).toBe(false);
+    expect(CreatePageBodySchema.safeParse({ path: '/eng/x', title: 'X' }).success).toBe(false);
+  });
+
+  it('requires at least one field on update', () => {
+    expect(UpdatePageBodySchema.safeParse({}).success).toBe(false);
+    expect(UpdatePageBodySchema.parse({ path: 'ops/x' }).path).toBe('ops/x');
+    expect(UpdatePageBodySchema.parse({ order: null }).order).toBeNull();
+  });
+
+  it('validates space creation', () => {
+    expect(CreateSpaceBodySchema.parse({ slug: 'eng', name: 'Engineering' }).slug).toBe('eng');
+    expect(CreateSpaceBodySchema.safeParse({ slug: 'eng/sub', name: 'x' }).success).toBe(false);
+    expect(CreateSpaceBodySchema.safeParse({ slug: '_assets', name: 'x' }).success).toBe(false);
+  });
+});
+
+describe('query params', () => {
+  it('coerces strings', () => {
+    expect(DeletePageQuerySchema.parse({ recursive: 'true' }).recursive).toBe(true);
+    expect(DeletePageQuerySchema.parse({ recursive: 'false' }).recursive).toBe(false);
+    expect(DeletePageQuerySchema.parse({}).recursive).toBeUndefined();
+    expect(SearchQuerySchema.parse({ q: 'deploy', limit: '25' }).limit).toBe(25);
+  });
+
+  it('bounds the limit', () => {
+    expect(SearchQuerySchema.safeParse({ q: 'a', limit: '0' }).success).toBe(false);
+    expect(SearchQuerySchema.safeParse({ q: 'a', limit: '9999' }).success).toBe(false);
+    expect(SearchQuerySchema.safeParse({ q: '' }).success).toBe(false);
+  });
+
+  it('validates the views query', () => {
+    expect(ViewsQuerySchema.parse({ dir: 'eng', order: 'desc' }).order).toBe('desc');
+    expect(ViewsQuerySchema.safeParse({ dir: 'eng', order: 'sideways' }).success).toBe(false);
+  });
+});
+
+describe('parseWhere', () => {
+  it('splits key:value pairs', () => {
+    expect(parseWhere('status:draft,owner:pm')).toEqual({ status: 'draft', owner: 'pm' });
+  });
+
+  it('keeps colons inside the value', () => {
+    expect(parseWhere('url:https://example.com')).toEqual({ url: 'https://example.com' });
+  });
+
+  it('ignores empty and malformed clauses', () => {
+    expect(parseWhere(undefined)).toEqual({});
+    expect(parseWhere('')).toEqual({});
+    expect(parseWhere('novalue,:x,status:done')).toEqual({ status: 'done' });
+  });
+});
+
+describe('responses', () => {
+  it('parses git status', () => {
+    const parsed = GitStatusResponseSchema.parse({
+      status: {
+        branch: 'main',
+        ahead: 0,
+        behind: 0,
+        dirtyFiles: ['eng/deploy.md'],
+        remote: null,
+        lastCommit: null,
+      },
+    });
+    expect(parsed.status.branch).toBe('main');
+  });
+});
+
+describe('parseOrThrow', () => {
+  it('returns parsed data', () => {
+    expect(parseOrThrow(CreatePageBodySchema, { path: 'eng/x', title: 'X' }).path).toBe('eng/x');
+  });
+
+  it('throws a VALIDATION AppError naming the field', () => {
+    try {
+      parseOrThrow(CreatePageBodySchema, { path: '../x' }, 'body');
+      expect.unreachable('should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(AppError);
+      expect((err as AppError).code).toBe('VALIDATION');
+      expect((err as AppError).status).toBe(400);
+      expect((err as AppError).message).toContain('path');
+      expect((err as AppError).message).toContain('title');
+    }
+  });
+});

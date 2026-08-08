@@ -1,0 +1,59 @@
+# gitdocs behind Caddy, for a hostname that only resolves on your VPN.
+# Copy to deploy/Caddyfile and keep exactly ONE of the three site blocks below.
+#
+#   cp deploy/Caddyfile.example deploy/Caddyfile
+#
+# All three assume the gitdocs service listens on port 4000 inside the compose
+# network, and that docs.vpn.example.com resolves to this host on the VPN only.
+
+# ---------------------------------------------------------------------------
+# OPTION A - Caddy's built-in internal CA (simplest, no public DNS needed).
+# Caddy mints its own root CA and signs the certificate itself. Install the root
+# once per client from the caddy-data volume:
+#   docker compose cp caddy:/data/caddy/pki/authorities/local/root.crt .
+# Then trust root.crt on every machine that opens the site.
+# ---------------------------------------------------------------------------
+{$GITDOCS_HOSTNAME} {
+	tls internal
+
+	encode zstd gzip
+
+	# Uploads go through POST /api/v1/assets; keep the limit generous.
+	request_body {
+		max_size 64MB
+	}
+
+	reverse_proxy gitdocs:4000 {
+		header_up X-Forwarded-Proto {scheme}
+	}
+}
+
+# ---------------------------------------------------------------------------
+# OPTION B - your own internal CA. Use this when your company already has one
+# and its root is on every laptop. Mount the cert and the key read-only.
+# ---------------------------------------------------------------------------
+# {$GITDOCS_HOSTNAME} {
+# 	tls /etc/caddy/certs/docs.crt /etc/caddy/certs/docs.key
+# 	encode zstd gzip
+# 	reverse_proxy gitdocs:4000
+# }
+
+# ---------------------------------------------------------------------------
+# OPTION C - Let's Encrypt over DNS-01. Use this when you want certificates
+# that every device trusts already, WITHOUT exposing port 80 or 443 publicly.
+# DNS-01 proves control of the domain through a TXT record, so the host never
+# needs an inbound path from the internet.
+#
+# Requires a Caddy build that contains the DNS provider module, for example:
+#   docker build --build-arg PLUGINS=github.com/caddy-dns/cloudflare ...
+# or the caddy-dns image of your provider. The public DNS zone holds only the
+# TXT record; the A record stays on your internal resolver.
+# ---------------------------------------------------------------------------
+# {$GITDOCS_HOSTNAME} {
+# 	tls {$ACME_EMAIL} {
+# 		dns cloudflare {$CLOUDFLARE_API_TOKEN}
+# 		resolvers 1.1.1.1
+# 	}
+# 	encode zstd gzip
+# 	reverse_proxy gitdocs:4000
+# }

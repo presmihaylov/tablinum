@@ -1,0 +1,318 @@
+import { pathToFileURL } from 'node:url';
+import type { FastifyBaseLogger } from 'fastify';
+import { ContentStore as CoreContentStore, parse } from '@gitdocs/core';
+import { GitEngine as CoreGitEngine } from '@gitdocs/git-sync';
+import { SearchIndex as CoreSearchIndex, defaultDbPath } from '@gitdocs/search';
+import {
+  OPEN_MODE_WARNING,
+  isAppError,
+  loadConfig,
+  redactConfig,
+  relFileToPagePath,
+  parentPath,
+  type Backlink,
+  type Config,
+  type CreatePageBody,
+  type CreateSpaceBody,
+  type GitStatus,
+  type Page,
+  type PageId,
+  type PagePath,
+  type PageSummary,
+  type Revision,
+  type SearchHit,
+  type Space,
+  type UpdatePageBody,
+} from '@gitdocs/shared';
+import { buildApp } from './app.js';
+import { contextOf } from './context.js';
+import type {
+  ContentStore,
+  GitEngine,
+  ParsedPageFile,
+  SearchIndex,
+  SearchOptions,
+  ServerDeps,
+  SpaceTree,
+} from './deps.js';
+import { VERSION } from './version.js';
+import { startContentWatcher, type ContentWatcher } from './wiring.js';
+
+/** A NOT_FOUND from a package becomes a null here; the routes turn null into a 404. */
+async function orNull<T>(work: Promise<T>): Promise<T | null> {
+  try {
+    return await work;
+  } catch (err) {
+    if (isAppError(err) && err.code === 'NOT_FOUND') return null;
+    throw err;
+  }
+}
+
+/** Adapts @gitdocs/core onto the store interface the routes use. */
+class CoreStoreAdapter implements ContentStore {
+  constructor(private readonly core: CoreContentStore) {}
+
+  get contentDir(): string {
+    return this.core.contentDir;
+  }
+
+  async init(): Promise<void> {
+    await this.core.init();
+  }
+
+  async rebuild(): Promise<void> {
+    await this.core.rebuild();
+  }
+
+  listSpaces(): Promise<Space[]> {
+    return this.core.listSpaces();
+  }
+
+  createSpace(input: CreateSpaceBody): Promise<Space> {
+    return this.core.createSpace(input.slug, input.name, input.icon, input.order);
+  }
+
+  getTree(): Promise<SpaceTree[]> {
+    return this.core.getTree();
+  }
+
+  listPages(): Promise<PageSummary[]> {
+    return this.core.listPages();
+  }
+
+  async listChildren(path: PagePath): Promise<PageSummary[]> {
+    const pages = await this.core.listPages();
+    return pages.filter((page) => parentPath(page.path) === path);
+  }
+
+  getPageByPath(path: PagePath): Promise<Page | null> {
+    return orNull(this.core.getPageByPath(path));
+  }
+
+  getPageById(id: PageId): Promise<Page | null> {
+    return orNull(this.core.getPageById(id));
+  }
+
+  createPage(input: CreatePageBody): Promise<Page> {
+    return this.core.createPage(input);
+  }
+
+  updatePage(id: PageId, patch: UpdatePageBody): Promise<Page> {
+    return this.core.updatePage(id, patch);
+  }
+
+  deletePage(id: PageId, recursive: boolean): Promise<PagePath[]> {
+    return this.core.deletePage(id, recursive);
+  }
+
+  getBacklinks(id: PageId): Promise<Backlink[]> {
+    return this.core.getBacklinks(id);
+  }
+
+  async reloadFile(relFile: string): Promise<Page | null> {
+    await this.core.rebuild();
+    return orNull(this.core.getPageByPath(relFileToPagePath(relFile)));
+  }
+
+  async forgetFile(relFile: string): Promise<PageId | null> {
+    // Read the id before the rescan, because the rescan is what forgets the file.
+    const record = this.core.index.byPath(relFileToPagePath(relFile));
+    const id = record?.id ?? null;
+    await this.core.rebuild();
+    return id;
+  }
+
+  parsePageFile(raw: string): ParsedPageFile {
+    const parsed = parse(raw);
+    return { frontmatter: parsed.frontmatter, markdown: parsed.body };
+  }
+}
+
+/** Adapts @gitdocs/git-sync onto the git interface the routes use. */
+class CoreGitAdapter implements GitEngine {
+  constructor(private readonly core: CoreGitEngine) {}
+
+  async init(): Promise<void> {
+    await this.core.init();
+  }
+
+  status(): Promise<GitStatus> {
+    return this.core.status();
+  }
+
+  async pull(): Promise<{ status: GitStatus; pulled: number }> {
+    const result = await this.core.pull();
+    return { status: await this.core.status(), pulled: result.pulled };
+  }
+
+  async push(): Promise<{ status: GitStatus; pushed: boolean }> {
+    const result = await this.core.push();
+    return { status: await this.core.status(), pushed: result.pushed };
+  }
+
+  commit(message?: string): Promise<string | null> {
+    return this.core.commitAll(message);
+  }
+
+  scheduleCommit(message?: string): void {
+    this.core.scheduleCommit(message);
+  }
+
+  history(relFile: string, limit: number): Promise<Revision[]> {
+    return this.core.history(relFile, limit);
+  }
+
+  readFileAt(relFile: string, sha: string): Promise<string | null> {
+    return orNull(this.core.showAtRevision(relFile, sha));
+  }
+
+  startAutoPull(intervalMs: number): void {
+    this.core.startAutoPull(intervalMs);
+  }
+
+  async stop(): Promise<void> {
+    await this.core.close();
+  }
+}
+
+/** Adapts @gitdocs/search, which is synchronous, onto the async index interface. */
+class CoreSearchAdapter implements SearchIndex {
+  constructor(private readonly core: CoreSearchIndex) {}
+
+  async init(): Promise<void> {
+    this.core.init();
+  }
+
+  async reindexAll(pages: Iterable<Page>): Promise<number> {
+    return this.core.reindexAll(pages);
+  }
+
+  async indexPage(page: Page): Promise<void> {
+    this.core.upsert(page);
+  }
+
+  async removePage(id: PageId): Promise<void> {
+    this.core.remove(id);
+  }
+
+  search(query: string, options?: SearchOptions): Promise<SearchHit[]> {
+    return this.core.search(query, options ?? {});
+  }
+
+  async close(): Promise<void> {
+    this.core.close();
+  }
+}
+
+export interface RunningServer {
+  close(): Promise<void>;
+}
+
+/**
+ * Commit anything the working tree still carries at boot. A crash between a write and its
+ * debounced commit leaves the edit uncommitted for good: the watcher only reports changes made
+ * after it starts, so nothing else would ever pick it up.
+ */
+export async function commitOrphanedWrites(
+  deps: Pick<ServerDeps, 'git'>,
+  log: FastifyBaseLogger,
+): Promise<string | null> {
+  try {
+    const status = await deps.git.status();
+    if (status.dirtyFiles.length === 0) return null;
+    const sha = await deps.git.commit('Commit content changed while gitdocs was stopped');
+    log.info({ sha, files: status.dirtyFiles.length }, 'committed content left over from a crash');
+    return sha;
+  } catch (err) {
+    // A repo the server cannot commit to is still a repo it can serve pages from.
+    log.warn({ err }, 'could not commit leftover content at boot');
+    return null;
+  }
+}
+
+/**
+ * Build every real dependency, wire them together and listen.
+ * Order matters: the store must exist before git initializes the repo around it, the index
+ * is built from the store, and the watcher only starts once the index is consistent.
+ */
+export async function start(config: Config = loadConfig()): Promise<RunningServer> {
+  const coreStore = new CoreContentStore({ contentDir: config.contentDir });
+  const coreGit = CoreGitEngine.fromConfig(config);
+  const coreSearch = new CoreSearchIndex({ dbPath: defaultDbPath(config.contentDir) });
+
+  const deps: ServerDeps = {
+    config,
+    store: new CoreStoreAdapter(coreStore),
+    git: new CoreGitAdapter(coreGit),
+    search: new CoreSearchAdapter(coreSearch),
+    version: VERSION,
+  };
+
+  await deps.store.init();
+  await deps.git.init();
+  await deps.search.init();
+
+  const app = await buildApp(deps);
+  app.log.info(redactConfig(config), 'gitdocs configuration');
+  if (config.openMode) app.log.warn(OPEN_MODE_WARNING);
+
+  const ctx = contextOf(app);
+  if (ctx === null) throw new Error('buildApp did not register a route context');
+
+  const indexed = await ctx.wiring.reindexAll();
+  app.log.info({ pages: indexed }, 'search index built');
+
+  // A crash between a write and its debounced commit leaves the edit uncommitted, and nothing
+  // else would ever notice: the watcher only sees changes made after it starts.
+  await commitOrphanedWrites(deps, app.log);
+
+  let watcher: ContentWatcher | null = startContentWatcher(deps, ctx.wiring, app.log);
+  await watcher.whenReady();
+  deps.git.startAutoPull(config.autopullMs);
+
+  await app.listen({ port: config.port, host: '0.0.0.0' });
+
+  let closing: Promise<void> | null = null;
+  const close = async (): Promise<void> => {
+    if (closing !== null) return closing;
+    closing = (async (): Promise<void> => {
+      app.log.info('shutting down');
+      if (watcher !== null) {
+        await watcher.close();
+        watcher = null;
+      }
+      await app.close();
+      // close() stops the timers and commits whatever the last writes scheduled.
+      await coreGit.flushPendingCommit().catch((err: unknown) => {
+        app.log.error({ err }, 'final commit failed');
+        return null;
+      });
+      await deps.git.stop();
+      await deps.search.close();
+      app.log.info('shutdown complete');
+    })();
+    return closing;
+  };
+
+  for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+    process.once(signal, () => {
+      void close().then(
+        () => process.exit(0),
+        () => process.exit(1),
+      );
+    });
+  }
+
+  return { close };
+}
+
+// Only bootstrap when this file is the entry point, so importing it stays side-effect free.
+const entry = process.argv[1];
+const invokedDirectly = entry !== undefined && import.meta.url === pathToFileURL(entry).href;
+
+if (invokedDirectly) {
+  start().catch((err: unknown) => {
+    console.error(err);
+    process.exitCode = 1;
+  });
+}

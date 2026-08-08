@@ -1,0 +1,109 @@
+import { useEffect, useRef, useState } from 'react';
+import type { Editor } from '@tiptap/core';
+import { CellSelection } from '@tiptap/pm/tables';
+import { FloatingBar } from './FloatingBar';
+
+const MARKS = [
+  { name: 'bold', label: 'B', title: 'Bold  Cmd+B', className: 'is-bold' },
+  { name: 'italic', label: 'i', title: 'Italic  Cmd+I', className: 'is-italic' },
+  { name: 'strike', label: 'S', title: 'Strikethrough  Cmd+Shift+X', className: 'is-strike' },
+  { name: 'code', label: '<>', title: 'Inline code  Cmd+E', className: 'is-code' },
+] as const;
+
+function hasTextSelection(editor: Editor): boolean {
+  const { from, to } = editor.state.selection;
+  if (from === to) return false;
+  if (editor.isActive('codeBlock')) return false;
+  // A whole-cell selection belongs to the table toolbar, not to this one.
+  return !(editor.state.selection instanceof CellSelection);
+}
+
+/** The selection toolbar: the inline marks markdown can express. */
+export function MarkMenu({ editor }: { editor: Editor }) {
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [href, setHref] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (linkOpen) inputRef.current?.focus();
+  }, [linkOpen]);
+
+  const openLink = (): void => {
+    const current = editor.getAttributes('link')['href'];
+    setHref(typeof current === 'string' ? current : '');
+    setLinkOpen(true);
+  };
+
+  const applyLink = (): void => {
+    const value = href.trim();
+    setLinkOpen(false);
+    if (value.length === 0) {
+      editor.chain().focus().unsetLink().run();
+      return;
+    }
+    editor.chain().focus().extendMarkRange('link').setLink({ href: value }).run();
+  };
+
+  return (
+    <FloatingBar editor={editor} shouldShow={hasTextSelection} label="Text formatting">
+      {linkOpen ? (
+        <>
+          <input
+            ref={inputRef}
+            className="gd-editor-bar__input"
+            value={href}
+            placeholder="Paste a link, or a page path"
+            aria-label="Link address"
+            onChange={(event) => setHref(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                applyLink();
+              }
+              if (event.key === 'Escape') {
+                event.preventDefault();
+                setLinkOpen(false);
+              }
+            }}
+          />
+          <button type="button" className="gd-editor-bar__btn" onClick={applyLink}>
+            Apply
+          </button>
+        </>
+      ) : (
+        <>
+          {MARKS.map((mark) => (
+            <button
+              key={mark.name}
+              type="button"
+              title={mark.title}
+              aria-label={mark.title}
+              aria-pressed={editor.isActive(mark.name)}
+              className={`gd-editor-bar__btn ${mark.className}${
+                editor.isActive(mark.name) ? ' is-active' : ''
+              }`}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => editor.chain().focus().toggleMark(mark.name).run()}
+            >
+              {mark.label}
+            </button>
+          ))}
+          <span className="gd-editor-bar__sep" />
+          <button
+            type="button"
+            title="Link"
+            aria-label="Link"
+            aria-pressed={editor.isActive('link')}
+            className={`gd-editor-bar__btn${editor.isActive('link') ? ' is-active' : ''}`}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={openLink}
+          >
+            Link
+          </button>
+        </>
+      )}
+    </FloatingBar>
+  );
+}
+
+export default MarkMenu;

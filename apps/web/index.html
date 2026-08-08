@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="description" content="gitdocs - self-hosted docs backed by markdown files in git." />
+    <title>gitdocs</title>
+    <script>
+      // Paint the stored theme before first paint so the app never flashes the wrong palette.
+      (function () {
+        try {
+          var mode = localStorage.getItem('gitdocs.theme');
+          if (mode === 'light' || mode === 'dark') {
+            document.documentElement.setAttribute('data-theme', mode);
+          }
+        } catch (err) {
+          /* private mode: fall back to the system palette */
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

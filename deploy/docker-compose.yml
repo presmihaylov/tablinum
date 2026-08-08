@@ -1,0 +1,92 @@
+name: gitdocs
+
+services:
+  gitdocs:
+    image: gitdocs:latest
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: gitdocs
+    restart: unless-stopped
+    init: true
+
+    # Copy deploy/.env.example to deploy/.env and edit it. Every variable is
+    # documented there and in README.md.
+    env_file:
+      - .env
+
+    # These win over .env on purpose: inside the container the content repo and
+    # the search index always live on the /data volume.
+    environment:
+      GITDOCS_CONTENT_DIR: /data/content
+      GITDOCS_SEARCH_DB: /data/search.db
+      GITDOCS_PORT: "4000"
+
+    ports:
+      # Reachable on the host's VPN address. Put a reverse proxy in front and
+      # change this to "127.0.0.1:4000:4000" so only the proxy can reach it.
+      - "4000:4000"
+
+    volumes:
+      # content repo -> /data/content, search index -> /data/search.db
+      - gitdocs-data:/data
+      # A read-only SSH key lets the container push to a private git remote.
+      # Create ./ssh with an id_ed25519 (chmod 600) and a known_hosts file.
+      # - ./ssh:/home/node/.ssh:ro
+
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:4000/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      start_period: 25s
+      retries: 3
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  # ---------------------------------------------------------------------------
+  # OPTIONAL: TLS termination for a VPN-internal hostname.
+  #
+  # gitdocs speaks plain HTTP. Put Caddy in front to get https://docs.vpn.example.com
+  # for machines on the VPN only. Do NOT publish 80/443 to the public internet:
+  # gitdocs has a single shared password and shared bearer tokens, which is not
+  # an authentication model for the open web.
+  #
+  # To enable:
+  #   1. Uncomment this service and the "caddy-data"/"caddy-config" volumes.
+  #   2. Change the gitdocs "ports" entry above to "127.0.0.1:4000:4000".
+  #   3. Write deploy/Caddyfile (see README.md, "Serve it inside a VPN").
+  #   4. Point the internal DNS record for GITDOCS_HOSTNAME at this host.
+  # ---------------------------------------------------------------------------
+  # caddy:
+  #   image: caddy:2-alpine
+  #   container_name: gitdocs-caddy
+  #   restart: unless-stopped
+  #   depends_on:
+  #     - gitdocs
+  #   environment:
+  #     # Internal hostname served over TLS, e.g. docs.vpn.example.com
+  #     GITDOCS_HOSTNAME: ${GITDOCS_HOSTNAME:?set GITDOCS_HOSTNAME in deploy/.env}
+  #     # Only used by the Let's Encrypt DNS-01 variant in the Caddyfile.
+  #     ACME_EMAIL: ${ACME_EMAIL:-}
+  #     CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN:-}
+  #   ports:
+  #     # Bind these to the VPN interface address, not to 0.0.0.0.
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - ./Caddyfile:/etc/caddy/Caddyfile:ro
+  #     - caddy-data:/data     # holds the issued certs and the internal CA root
+  #     - caddy-config:/config
+
+volumes:
+  gitdocs-data:
+  # caddy-data:
+  # caddy-config:

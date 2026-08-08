@@ -1,0 +1,113 @@
+.palette {
+  display: flex;
+  flex-direction: column;
+  width: min(38rem, 100%);
+  max-height: 60vh;
+  border-radius: var(--radius-lg);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+
+.palette__search {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-faint);
+}
+
+.palette__input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font-size: var(--text-md);
+  outline: none;
+}
+
+.palette__input::placeholder {
+  color: var(--text-faint);
+}
+
+.palette__results {
+  flex: 1;
+  min-height: 0;
+  padding: var(--space-1);
+}
+
+.palette__group {
+  padding: var(--space-2) var(--space-2) var(--space-1);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.palette__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  height: 2rem;
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--text);
+  font-size: var(--text-sm);
+  text-align: left;
+}
+
+.palette__row--active {
+  background: var(--bg-active);
+}
+
+.palette__icon {
+  display: inline-flex;
+  flex: none;
+  color: var(--text-faint);
+}
+
+.palette__label {
+  flex: none;
+  max-width: 55%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.palette__hint {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+}
+
+.palette__empty {
+  padding: var(--space-4);
+  text-align: center;
+  color: var(--text-faint);
+  font-size: var(--text-sm);
+}
+
+.palette__foot {
+  display: flex;
+  gap: var(--space-4);
+  padding: var(--space-2) var(--space-4);
+  border-top: 1px solid var(--border);
+  background: var(--bg-inset);
+  color: var(--text-faint);
+  font-size: var(--text-2xs);
+}
+
+.palette__foot .kbd {
+  margin-right: 2px;
+}

@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLogout } from '../../api/hooks';
 import { useAuth } from '../../lib/auth';
-import { Bot, People, SignOut, UserIcon } from '../ui/Icon';
+import { Bot, People, SignOut, Smiley, UserIcon } from '../ui/Icon';
 import { AgentsDialog } from './AgentsDialog';
 import { Avatar } from './Avatar';
+import { EmojiDialog } from './EmojiDialog';
 import { PeopleDialog } from './PeopleDialog';
 import { ProfileDialog } from './ProfileDialog';
 import './account.css';
 
-type OpenDialog = 'none' | 'profile' | 'people' | 'agents';
+type OpenDialog = 'none' | 'profile' | 'people' | 'agents' | 'emoji';
 
 /** The avatar in the top bar: your profile, the roster, and the way out. */
 export function AccountMenu() {
@@ -80,6 +81,11 @@ export function AccountMenu() {
             Your account
           </button>
 
+          <button type="button" role="menuitem" className="account-menu__item" onClick={() => choose('emoji')}>
+            <Smiley />
+            Custom emoji
+          </button>
+
           {user.role === 'admin' ? (
             <button type="button" role="menuitem" className="account-menu__item" onClick={() => choose('people')}>
               <People />
@@ -107,6 +113,7 @@ export function AccountMenu() {
       )}
 
       <ProfileDialog user={user} open={dialog === 'profile'} onClose={() => setDialog('none')} />
+      <EmojiDialog user={user} open={dialog === 'emoji'} onClose={() => setDialog('none')} />
       <PeopleDialog me={user} open={dialog === 'people'} onClose={() => setDialog('none')} />
       <AgentsDialog open={dialog === 'agents'} onClose={() => setDialog('none')} />
     </div>

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Route, Routes } from 'react-router-dom';
+import { useCustomEmoji } from './api/hooks';
 import { CommandPalette } from './components/CommandPalette/CommandPalette';
 import { Sidebar } from './components/Sidebar/Sidebar';
 import { TopBar } from './components/TopBar/TopBar';
@@ -41,6 +42,10 @@ function AuthGate() {
 
 function WorkspaceScope() {
   const { current } = useWorkspace();
+  // The markdown parser asks the registry whether `:name:` is an emoji while it runs, so the
+  // set has to be here before the first page is parsed.
+  const emoji = useCustomEmoji();
+  if (!emoji.isFetched) return null;
   return (
     // The key throws away the tree on a switch: no page, no editor and no socket survives it.
     <ContentProvider key={current?.id ?? 'none'}>

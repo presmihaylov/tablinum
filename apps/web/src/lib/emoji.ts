@@ -1,7 +1,10 @@
 export interface EmojiEntry {
+  /** What picking this entry inserts: the character itself, or `:shortcode:` for a custom one. */
   char: string;
   name: string;
   keywords: readonly string[];
+  /** Set only for a custom emoji: where its image is served from. */
+  src?: string;
 }
 
 /**

@@ -178,6 +178,14 @@
   font-size: 1.125rem;
 }
 
+.space-dialog__section {
+  margin: var(--space-2) 0 var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 .space-dialog__grid {
   display: grid;
   grid-template-columns: repeat(10, 1fr);

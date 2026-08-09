@@ -26,6 +26,7 @@ export const DATA = {
   alias: 'data-gd-alias',
   embed: 'data-gd-embed',
   mention: 'data-gd-mention',
+  emoji: 'data-gd-emoji',
   callout: 'data-callout',
 } as const;
 

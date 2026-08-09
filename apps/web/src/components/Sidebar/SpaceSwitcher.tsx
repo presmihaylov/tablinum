@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { pageHref } from '../../lib/href';
 import { useContent } from '../../lib/content';
+import { EmojiGlyph } from '../ui/EmojiGlyph';
 import { ChevronDown, Pencil, Plus } from '../ui/Icon';
 
 export function SpaceSwitcher() {
@@ -31,7 +32,9 @@ export function SpaceSwitcher() {
         aria-haspopup="menu"
         aria-expanded={open}
       >
-        <span className="space-switcher__icon">{active?.icon ?? '◆'}</span>
+        <span className="space-switcher__icon">
+          <EmojiGlyph value={active?.icon ?? '◆'} />
+        </span>
         <span className="space-switcher__name">{active?.name ?? 'tablinum'}</span>
         <ChevronDown size={12} className="space-switcher__caret" />
       </button>
@@ -53,7 +56,9 @@ export function SpaceSwitcher() {
                 navigate(pageHref(first ? first.path : space.slug));
               }}
             >
-              <span className="space-switcher__icon">{space.icon ?? '◆'}</span>
+              <span className="space-switcher__icon">
+                <EmojiGlyph value={space.icon ?? '◆'} />
+              </span>
               <span className="space-switcher__name">{space.name}</span>
             </button>
           ))}

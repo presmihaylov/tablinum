@@ -159,6 +159,16 @@
   white-space: nowrap;
 }
 
+.emoji-row__glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 1.75rem;
+  height: 1.75rem;
+  font-size: 1.25rem;
+}
+
 .invite-link {
   display: flex;
   gap: var(--space-2);

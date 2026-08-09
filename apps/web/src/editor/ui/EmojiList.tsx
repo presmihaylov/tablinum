@@ -1,3 +1,4 @@
+import { EmojiGlyph } from '../../components/ui/EmojiGlyph';
 import type { EmojiEntry } from './emoji';
 
 export interface EmojiListProps {
@@ -19,7 +20,7 @@ export function EmojiList({ items, active, onHover, onPick, className }: EmojiLi
     >
       {items.map((entry, index) => (
         <button
-          key={entry.name}
+          key={entry.src ?? entry.char}
           type="button"
           role="option"
           aria-selected={index === active}
@@ -29,7 +30,7 @@ export function EmojiList({ items, active, onHover, onPick, className }: EmojiLi
           onClick={() => onPick(entry)}
         >
           <span className="gd-editor-menu__emoji" aria-hidden="true">
-            {entry.char}
+            <EmojiGlyph value={entry.char} />
           </span>
           <span className="gd-editor-menu__text">
             <span className="gd-editor-menu__title">{entry.name}</span>

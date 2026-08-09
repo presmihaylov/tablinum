@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { EmojiGlyph } from './EmojiGlyph';
 import { Modal } from './Overlay';
 
 export interface SpaceOption {
@@ -71,7 +72,9 @@ export function SpacePickerDialog({ request, onClose }: SpacePickerDialogProps) 
               onClick={() => setSlug(option.slug)}
               onDoubleClick={submit}
             >
-              <span className="picker__icon">{option.icon ?? '#'}</span>
+              <span className="picker__icon">
+                <EmojiGlyph value={option.icon ?? '#'} />
+              </span>
               <span className="picker__label">{option.name}</span>
             </button>
           ))}

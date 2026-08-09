@@ -330,6 +330,10 @@ function nodeSerializers(scratch: Scratch): NodeSerializers {
       state.write(`@${stringAttr(node.attrs['handle']) ?? ''}`);
     },
 
+    customEmoji: (state, node) => {
+      state.write(`:${stringAttr(node.attrs['shortcode']) ?? ''}:`);
+    },
+
     wikilink: (state, node) => {
       const target = stringAttr(node.attrs['target']) ?? '';
       const alias = rawStringAttr(node.attrs['alias']);

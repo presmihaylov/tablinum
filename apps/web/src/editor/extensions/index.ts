@@ -15,6 +15,7 @@ import { Markdown } from 'tiptap-markdown';
 import { Callout } from './callout';
 import { MarkdownCopy } from './clipboard';
 import { createCodeBlock } from './codeBlock';
+import { CustomEmoji } from './customEmoji';
 import { MarkdownDialect } from './dialect';
 import { EmojiSuggestion } from './emojiSuggestion';
 import { createHtmlBlock, HtmlInline } from './htmlNodes';
@@ -113,6 +114,7 @@ export function buildExtensions(overrides: Partial<EditorExtensionOptions> = {})
     Callout,
     Wikilink,
     Mention,
+    CustomEmoji,
     createHtmlBlock(options.interactive),
     HtmlInline,
     createPageEmbed(options.interactive, { load: options.loadPage, open: options.openPage }),
@@ -154,6 +156,7 @@ export function buildExtensions(overrides: Partial<EditorExtensionOptions> = {})
   ];
 }
 
+export { insertEmoji } from './customEmoji';
 export type { WikilinkItem } from './wikilinkSuggestion';
 export type { MentionItem } from './mentionSuggestion';
 export type { EmbeddedPage } from './pageEmbed';

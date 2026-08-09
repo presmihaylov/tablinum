@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { filterCustomEmoji, useCustomEmojiEntries } from '../../lib/customEmoji';
 import { filterEmoji } from '../../lib/emoji';
+import type { EmojiEntry } from '../../lib/emoji';
+import { EmojiGlyph } from './EmojiGlyph';
 import { Modal } from './Overlay';
 
 export interface SpaceDraft {
@@ -44,6 +47,8 @@ export function SpaceDialog({ request, onClose }: SpaceDialogProps) {
     return () => clearTimeout(timer);
   }, [request]);
 
+  const uploaded = useCustomEmojiEntries();
+  const custom = useMemo(() => filterCustomEmoji(query, uploaded), [query, uploaded]);
   const choices = useMemo(() => filterEmoji(query).slice(0, GRID_LIMIT), [query]);
 
   if (!request) return null;
@@ -97,7 +102,7 @@ export function SpaceDialog({ request, onClose }: SpaceDialogProps) {
         <span className="field__label">Icon</span>
         <div className="space-dialog__row">
           <span className="space-dialog__preview" aria-label="Selected icon">
-            {icon ?? '◆'}
+            <EmojiGlyph value={icon ?? '◆'} />
           </span>
           <input
             className="input"
@@ -115,25 +120,55 @@ export function SpaceDialog({ request, onClose }: SpaceDialogProps) {
             Clear
           </button>
         </div>
+        {custom.length === 0 ? null : (
+          <>
+            <p className="space-dialog__section">Custom</p>
+            <div className="space-dialog__grid" role="listbox" aria-label="Custom icon">
+              {custom.map((entry) => (
+                <IconChoice
+                  key={entry.src}
+                  entry={entry}
+                  selected={entry.char === icon}
+                  onPick={setIcon}
+                />
+              ))}
+            </div>
+            <p className="space-dialog__section">Emoji</p>
+          </>
+        )}
         <div className="space-dialog__grid" role="listbox" aria-label="Icon">
           {choices.map((entry) => (
-            <button
+            <IconChoice
               key={entry.char}
-              type="button"
-              role="option"
-              aria-selected={entry.char === icon}
-              aria-label={entry.name}
-              title={entry.name}
-              className={
-                entry.char === icon ? 'space-dialog__emoji is-on' : 'space-dialog__emoji'
-              }
-              onClick={() => setIcon(entry.char)}
-            >
-              {entry.char}
-            </button>
+              entry={entry}
+              selected={entry.char === icon}
+              onPick={setIcon}
+            />
           ))}
         </div>
       </div>
     </Modal>
+  );
+}
+
+interface IconChoiceProps {
+  entry: EmojiEntry;
+  selected: boolean;
+  onPick: (icon: string) => void;
+}
+
+function IconChoice({ entry, selected, onPick }: IconChoiceProps) {
+  return (
+    <button
+      type="button"
+      role="option"
+      aria-selected={selected}
+      aria-label={entry.name}
+      title={entry.name}
+      className={selected ? 'space-dialog__emoji is-on' : 'space-dialog__emoji'}
+      onClick={() => onPick(entry.char)}
+    >
+      <EmojiGlyph value={entry.char} />
+    </button>
   );
 }

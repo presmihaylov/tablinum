@@ -1,4 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { EmojiGlyph } from '../../components/ui/EmojiGlyph';
+import { filterCustomEmoji, useCustomEmojiEntries } from '../../lib/customEmoji';
+import type { EmojiEntry } from '../../lib/emoji';
 import { filterEmoji } from './emoji';
 
 export interface EmojiAnchor {
@@ -25,7 +28,10 @@ const GAP = 6;
 export function EmojiPicker({ anchor, onPick, onClose, wide, label, onRemove }: EmojiPickerProps) {
   const [query, setQuery] = useState('');
   const boxRef = useRef<HTMLDivElement>(null);
+  const uploaded = useCustomEmojiEntries();
+  const custom = useMemo(() => filterCustomEmoji(query, uploaded), [query, uploaded]);
   const items = useMemo(() => filterEmoji(query), [query]);
+  const first = custom[0] ?? items[0];
 
   useEffect(() => {
     const onDown = (event: MouseEvent): void => {
@@ -62,7 +68,6 @@ export function EmojiPicker({ anchor, onPick, onClose, wide, label, onRemove }: 
             }
             if (event.key !== 'Enter') return;
             event.preventDefault();
-            const first = items[0];
             if (first) onPick(first.char);
           }}
         />
@@ -72,23 +77,48 @@ export function EmojiPicker({ anchor, onPick, onClose, wide, label, onRemove }: 
           </button>
         ) : null}
       </div>
+
+      {custom.length === 0 ? null : (
+        <>
+          <p className="gd-editor-emoji__section">Custom</p>
+          <div className="gd-editor-emoji__grid">
+            {custom.map((entry) => (
+              <EmojiButton key={entry.src} entry={entry} onPick={onPick} />
+            ))}
+          </div>
+          <p className="gd-editor-emoji__section">Emoji</p>
+        </>
+      )}
+
       <div className="gd-editor-emoji__grid">
         {items.map((entry) => (
-          <button
-            key={entry.name}
-            type="button"
-            className="gd-editor-emoji__item"
-            title={entry.name}
-            aria-label={entry.name}
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => onPick(entry.char)}
-          >
-            {entry.char}
-          </button>
+          <EmojiButton key={entry.char} entry={entry} onPick={onPick} />
         ))}
-        {items.length === 0 ? <p className="gd-editor-emoji__empty">No emoji found</p> : null}
+        {items.length === 0 && custom.length === 0 ? (
+          <p className="gd-editor-emoji__empty">No emoji found</p>
+        ) : null}
       </div>
     </div>
+  );
+}
+
+interface EmojiButtonProps {
+  entry: EmojiEntry;
+  onPick: (emoji: string) => void;
+}
+
+function EmojiButton({ entry, onPick }: EmojiButtonProps) {
+  return (
+    <button
+      type="button"
+      className="gd-editor-emoji__item"
+      title={entry.name}
+      aria-label={entry.name}
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={() => onPick(entry.char)}
+    >
+      <EmojiGlyph value={entry.char} />
+    </button>
   );
 }
 

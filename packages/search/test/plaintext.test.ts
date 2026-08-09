@@ -211,6 +211,45 @@ describe('markdownToPlainText', () => {
   });
 });
 
+// These inputs take 3 ms and 135 ms here, and about 500 ms under a loaded runner. The
+// quadratic patterns they replace took 49 s and 16 s on the same bytes, so a budget in
+// seconds leaves room for a slow machine and still fails loudly on a regression. The long
+// per-test timeout keeps that failure an assertion with a number in it.
+const SLOW_TEST_MS = 60_000;
+
+describe('bounded work', () => {
+  it(
+    'reads a long run of backticks in linear time',
+    () => {
+      const backticks = `a${'`'.repeat(2_000_000)}`;
+      const start = performance.now();
+      markdownToPlainText(backticks);
+      expect(performance.now() - start).toBeLessThan(2000);
+    },
+    SLOW_TEST_MS,
+  );
+
+  it(
+    'reads a long run of emphasis markers in linear time',
+    () => {
+      const emphasis = ' _a'.repeat(200_000);
+      const start = performance.now();
+      markdownToPlainText(emphasis);
+      expect(performance.now() - start).toBeLessThan(4000);
+    },
+    SLOW_TEST_MS,
+  );
+
+  it('truncates a body past the index budget', () => {
+    expect(markdownToPlainText('x'.repeat(300 * 1024)).length).toBeLessThanOrEqual(256 * 1024);
+  });
+
+  it('keeps the start of a body it truncates', () => {
+    const text = markdownToPlainText(`Intro.\n\n${'x'.repeat(300 * 1024)}`);
+    expect(text.startsWith('Intro.')).toBe(true);
+  });
+});
+
 describe('escapeHtml', () => {
   it('escapes the five significant characters', () => {
     expect(escapeHtml(`<a href="x">&'`)).toBe('&lt;a href=&quot;x&quot;&gt;&amp;&#39;');

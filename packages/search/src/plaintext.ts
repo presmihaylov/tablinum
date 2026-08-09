@@ -32,7 +32,9 @@ const INLINE_LINK_RE = new RegExp(LINK_BODY, 'g');
 const REFERENCE_LINK_RE = /\[([^\]]*)\]\[[^\]]*\]/g;
 const WIKILINK_ALIAS_RE = /\[\[([^\]|\n]+)\|([^\]\n]+)\]\]/g;
 const WIKILINK_RE = /\[\[([^\]\n]+)\]\]/g;
-const INLINE_CODE_RE = /(`+)([^`]|[^`][\s\S]*?[^`])\1(?!`)/g;
+// Bounded on both axes: an unbounded run of backticks backtracks quadratically, and a
+// page body is attacker-supplied. Inline code that spans a line is not indexed as code.
+const INLINE_CODE_RE = /(`{1,3})([^`\n]{1,500}?)\1(?!`)/g;
 
 const LINK_DEFINITION_RE = /^[ \t]{0,3}\[[^\]\n]+\]:[ \t]*\S+.*$/;
 const HORIZONTAL_RULE_RE =
@@ -75,14 +77,16 @@ function stripCodeFences(text: string): string {
   return kept.join('\n');
 }
 
+// Each rule stops at a newline and at a fixed width. `[\s\S]*?` across a whole body
+// backtracks quadratically. Emphasis wrapped over a line break stays in the index verbatim.
 function stripEmphasis(text: string): string {
   return text
-    .replace(/\*\*\*([^\s*][\s\S]*?)\*\*\*/g, '$1')
-    .replace(/\*\*([^\s*][\s\S]*?)\*\*/g, '$1')
-    .replace(/\*([^\s*][\s\S]*?)\*/g, '$1')
-    .replace(/~~([\s\S]+?)~~/g, '$1')
-    .replace(/(?<![\w\\])__([^\s_][\s\S]*?)__(?!\w)/g, '$1')
-    .replace(/(?<![\w\\])_([^\s_][\s\S]*?)_(?!\w)/g, '$1');
+    .replace(/\*\*\*([^\s*][^\n]{0,500}?)\*\*\*/g, '$1')
+    .replace(/\*\*([^\s*][^\n]{0,500}?)\*\*/g, '$1')
+    .replace(/\*([^\s*][^\n]{0,500}?)\*/g, '$1')
+    .replace(/~~([^\n]{1,500}?)~~/g, '$1')
+    .replace(/(?<![\w\\])__([^\s_][^\n]{0,500}?)__(?!\w)/g, '$1')
+    .replace(/(?<![\w\\])_([^\s_][^\n]{0,500}?)_(?!\w)/g, '$1');
 }
 
 /** Remove the per-line markdown scaffolding: headings, quotes, bullets, rules, tables. */
@@ -114,6 +118,9 @@ function collapseWhitespace(text: string): string {
   return out.join('\n');
 }
 
+/** Longest body the indexer reads. A snippet never needs more, and it bounds every regex. */
+const MAX_INDEX_CHARS = 256 * 1024;
+
 export interface PlainTextOptions {
   /**
    * Strip a leading `---` block. Off by default: the indexer passes a stored body that
@@ -126,11 +133,12 @@ export interface PlainTextOptions {
 /**
  * Convert a markdown document to plain prose.
  * Code fences, HTML and link syntax are removed; the visible words survive.
+ * A body longer than MAX_INDEX_CHARS is truncated: the page still saves, only its index is cut.
  */
 export function markdownToPlainText(markdown: string, options: PlainTextOptions = {}): string {
   if (typeof markdown !== 'string' || markdown.length === 0) return '';
 
-  let text = markdown.replace(/\r\n?/g, '\n');
+  let text = markdown.slice(0, MAX_INDEX_CHARS).replace(/\r\n?/g, '\n');
   if (options.stripFrontmatter === true) text = text.replace(FRONTMATTER_RE, '');
   text = stripCodeFences(text);
   text = text.replace(HTML_COMMENT_RE, ' ');

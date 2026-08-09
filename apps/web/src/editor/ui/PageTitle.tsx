@@ -1,10 +1,11 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from 'react';
+import { EmojiGlyph } from '../../components/ui/EmojiGlyph';
 import { Smiley } from '../../components/ui/Icon';
 import { EmojiList } from './EmojiList';
 import { EmojiPicker } from './EmojiPicker';
 import type { EmojiAnchor } from './EmojiPicker';
-import { findEmojiTrigger, matchEmoji } from './emoji';
+import { findEmojiTrigger, matchUnicodeEmoji } from './emoji';
 import type { EmojiEntry, EmojiTrigger } from './emoji';
 
 export interface PageTitleProps {
@@ -29,7 +30,8 @@ export function PageTitle({ value, icon, onChange, onLeave, onIconChange }: Page
   const [active, setActive] = useState(0);
   const [iconAt, setIconAt] = useState<EmojiAnchor | null>(null);
 
-  const items = useMemo(() => (trigger ? matchEmoji(trigger.query) : []), [trigger]);
+  // A title is plain text in frontmatter, so it offers only emoji it can actually hold.
+  const items = useMemo(() => (trigger ? matchUnicodeEmoji(trigger.query) : []), [trigger]);
 
   useLayoutEffect(() => {
     const node = ref.current;
@@ -100,7 +102,7 @@ export function PageTitle({ value, icon, onChange, onLeave, onIconChange }: Page
       if (!icon) return null;
       return (
         <span className="editor__icon" aria-label="Page icon">
-          {icon}
+          <EmojiGlyph value={icon} />
         </span>
       );
     }
@@ -113,7 +115,7 @@ export function PageTitle({ value, icon, onChange, onLeave, onIconChange }: Page
           onMouseDown={holdOpen}
           onClick={openIcons}
         >
-          {icon}
+          <EmojiGlyph value={icon} />
         </button>
       );
     }

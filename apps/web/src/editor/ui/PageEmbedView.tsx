@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { NodeViewWrapper } from '@tiptap/react';
 import type { NodeViewProps } from '@tiptap/react';
+import { EmojiGlyph } from '../../components/ui/EmojiGlyph';
 import type { EmbeddedPage, PageEmbedOptions } from '../extensions/pageEmbed';
 
 type Status = 'loading' | 'ready' | 'missing';
@@ -42,7 +43,7 @@ export function PageEmbedView({ node, extension }: NodeViewProps) {
         onClick={() => options.open(target)}
       >
         <span className="gd-editor-pageembed__icon" aria-hidden="true">
-          {page?.icon ?? '📄'}
+          <EmojiGlyph value={page?.icon ?? '📄'} />
         </span>
         <span className="gd-editor-pageembed__title">{page?.title ?? target}</span>
       </button>

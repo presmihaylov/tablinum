@@ -3,6 +3,7 @@ import type { Workspace } from '@tablinum/shared';
 import { useCreateWorkspace, useImportWorkspace } from '../../api/hooks';
 import { describeError, useToast } from '../../lib/toast';
 import { useWorkspace } from '../../lib/workspaces';
+import { EmojiGlyph } from '../ui/EmojiGlyph';
 import { ChevronDown, Plus, Settings, Upload } from '../ui/Icon';
 import { SpaceDialog, type SpaceDialogRequest } from '../ui/SpaceDialog';
 import { WorkspaceDialog } from './WorkspaceDialog';
@@ -73,7 +74,9 @@ export function WorkspaceSwitcher() {
         aria-expanded={open}
         aria-label="Workspace"
       >
-        <span className="workspace-switcher__mark">{current?.icon ?? initialOf(current)}</span>
+        <span className="workspace-switcher__mark">
+          <EmojiGlyph value={current?.icon ?? initialOf(current)} />
+        </span>
         <span className="workspace-switcher__name">{current?.name ?? 'tablinum'}</span>
         <ChevronDown size={12} className="workspace-switcher__caret" />
       </button>
@@ -95,7 +98,9 @@ export function WorkspaceSwitcher() {
                 switchTo(one.slug);
               }}
             >
-              <span className="workspace-switcher__mark">{one.icon ?? initialOf(one)}</span>
+              <span className="workspace-switcher__mark">
+                <EmojiGlyph value={one.icon ?? initialOf(one)} />
+              </span>
               <span className="workspace-switcher__name">{one.name}</span>
             </button>
           ))}

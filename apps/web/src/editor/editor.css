@@ -277,6 +277,19 @@ button.editor__icon:hover {
   outline: 2px solid var(--accent);
 }
 
+/* An uploaded emoji sits on the line like a letter, not like a picture in its own block. */
+.gd-editor-emoji-inline {
+  display: inline-block;
+  width: 1.25em;
+  height: 1.25em;
+  vertical-align: -0.25em;
+  object-fit: contain;
+}
+
+.gd-editor-emoji-inline.ProseMirror-selectednode {
+  outline: 2px solid var(--accent);
+}
+
 .gd-editor-surface code {
   padding: 0.15em 0.35em;
   border-radius: var(--radius-sm);
@@ -1062,6 +1075,18 @@ button.editor__icon:hover {
   padding: var(--space-2);
   color: var(--text-muted);
   font-size: var(--text-sm);
+}
+
+.gd-editor-emoji__section {
+  margin: var(--space-2) 0 var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.gd-editor-emoji__section:first-of-type {
+  margin-top: 0;
 }
 
 .gd-editor-emoji__remove {

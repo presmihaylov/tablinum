@@ -19,6 +19,8 @@ import type {
   ConnectSlackBody,
   CreatePageBody,
   CreateSpaceBody,
+  CustomEmojiListResponse,
+  CustomEmojiResponse,
   DeletePageResponse,
   GitCommitBody,
   GitCommitResponse,
@@ -62,6 +64,7 @@ import type {
   WorkspaceRole,
   WorkspacesResponse,
 } from '@tablinum/shared';
+import { setCustomEmoji } from '../lib/customEmoji';
 import { ApiError, api } from './client';
 import { contentPrefixes, qk } from './keys';
 
@@ -493,6 +496,46 @@ export function useRotateAgentToken(): UseMutationResult<AgentTokenResponse, Api
   return useMutation({
     mutationFn: (id: string) => api.rotateAgentToken(id),
     onSuccess: () => void client.invalidateQueries({ queryKey: qk.agents }),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// custom emoji
+// ---------------------------------------------------------------------------
+
+/**
+ * The custom emoji set. The query fills the module registry as the answer lands, because the
+ * markdown parser reads it outside React and must not wait for an effect to run.
+ */
+export function useCustomEmoji(): UseQueryResult<CustomEmojiListResponse, ApiError> {
+  return useQuery({
+    queryKey: qk.emoji,
+    queryFn: async ({ signal }) => {
+      const response = await api.listEmoji(signal);
+      setCustomEmoji(response.emoji);
+      return response;
+    },
+  });
+}
+
+export interface UploadEmojiVars {
+  shortcode: string;
+  file: File;
+}
+
+export function useUploadEmoji(): UseMutationResult<CustomEmojiResponse, ApiError, UploadEmojiVars> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ shortcode, file }: UploadEmojiVars) => api.uploadEmoji(shortcode, file),
+    onSuccess: () => void client.invalidateQueries({ queryKey: qk.emoji }),
+  });
+}
+
+export function useDeleteEmoji(): UseMutationResult<OkResponse, ApiError, string> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteEmoji(id),
+    onSuccess: () => void client.invalidateQueries({ queryKey: qk.emoji }),
   });
 }
 

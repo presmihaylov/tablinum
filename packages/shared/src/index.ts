@@ -7,6 +7,7 @@ export * from './config.js';
 export * from './merge.js';
 export * from './live.js';
 export * from './accounts.js';
+export * from './emoji.js';
 export * from './agents.js';
 export * from './workspaces.js';
 export * from './mentions.js';

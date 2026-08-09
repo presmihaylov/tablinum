@@ -4,6 +4,7 @@ import type { PagePath, TreeNode } from '@tablinum/shared';
 import { sortNodes } from '../../lib/tree';
 import type { DropPosition } from '../../lib/treeMove';
 import { useContent } from '../../lib/content';
+import { EmojiGlyph } from '../ui/EmojiGlyph';
 import { ContextMenu, type MenuItem } from '../ui/Overlay';
 import { ChevronRight, Copy, DocIcon, Dots, Link, MoveTo, Pencil, Plus, Trash } from '../ui/Icon';
 
@@ -198,7 +199,9 @@ function TreeItem(props: TreeItemProps) {
           <ChevronRight size={12} className={isOpen ? 'tree-row__chevron tree-row__chevron--open' : 'tree-row__chevron'} />
         </button>
 
-        <span className="tree-row__icon">{node.icon ?? <DocIcon size={13} />}</span>
+        <span className="tree-row__icon">
+          {node.icon ? <EmojiGlyph value={node.icon} /> : <DocIcon size={13} />}
+        </span>
         <span className="tree-row__title">{node.title}</span>
 
         <span className="tree-row__actions">

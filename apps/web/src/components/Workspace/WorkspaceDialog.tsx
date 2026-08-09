@@ -14,6 +14,7 @@ import { describeError, useToast } from '../../lib/toast';
 import { useWorkspace } from '../../lib/workspaces';
 import { Avatar } from '../Account/Avatar';
 import { ConfirmDialog, type ConfirmRequest } from '../ui/ConfirmDialog';
+import { EmojiGlyph } from '../ui/EmojiGlyph';
 import { Download, Trash } from '../ui/Icon';
 import { Modal } from '../ui/Overlay';
 import { SpaceDialog, type SpaceDialogRequest } from '../ui/SpaceDialog';
@@ -102,7 +103,9 @@ export function WorkspaceDialog({ open, onClose }: WorkspaceDialogProps) {
         }
       >
         <div className="workspace-head">
-          <span className="workspace-head__mark">{current.icon ?? '◆'}</span>
+          <span className="workspace-head__mark">
+            <EmojiGlyph value={current.icon ?? '◆'} />
+          </span>
           <div className="workspace-head__who">
             <div className="workspace-head__name">{current.name}</div>
             <div className="workspace-head__slug">{current.slug}</div>

@@ -3,7 +3,8 @@ import type Token from 'markdown-it/lib/token.mjs';
 import type StateBlock from 'markdown-it/lib/rules_block/state_block.mjs';
 import type StateCore from 'markdown-it/lib/rules_core/state_core.mjs';
 import type StateInline from 'markdown-it/lib/rules_inline/state_inline.mjs';
-import { HANDLE_PATTERN } from '@tablinum/shared';
+import { HANDLE_PATTERN, SHORTCODE_PATTERN } from '@tablinum/shared';
+import { isCustomEmoji } from '../../lib/customEmoji';
 import { DATA, isCalloutType } from './dialect';
 import { encodeRaw, escapeHtml } from './html';
 
@@ -15,6 +16,7 @@ const TAB = 0x09;
 const BACKSLASH = 0x5c;
 const BRACKET = 0x5b;
 const AT = 0x40;
+const COLON = 0x3a;
 
 /** markdown-it instances are reused across parses; only configure each one once. */
 const configured = new WeakSet<MarkdownIt>();
@@ -46,6 +48,7 @@ export function configureMarkdownIt(md: MarkdownIt): MarkdownIt {
   md.inline.ruler.before('newline', 'gd_break', breakRule);
   md.inline.ruler.before('link', 'gd_wikilink', wikilinkRule);
   md.inline.ruler.before('link', 'gd_mention', mentionRule);
+  md.inline.ruler.before('link', 'gd_emoji', customEmojiRule);
 
   // No `alt` list, so the rule never interrupts an open paragraph. `Intro:\n![[a]]`
   // stays one paragraph, which is what every other markdown reader sees.
@@ -159,6 +162,32 @@ function mentionRule(state: StateInline, silent: boolean): boolean {
     token.markup = '@';
     token.content = handle;
     token.attrSet(DATA.mention, handle);
+  }
+
+  state.pos += match[0].length;
+  return true;
+}
+
+const EMOJI_RE = new RegExp(`^:(${SHORTCODE_PATTERN}):`);
+
+/**
+ * `:parrot:`, one uploaded image. Only a shortcode somebody has actually uploaded is claimed,
+ * so `ship at 10:30:45` stays a time and a colon in prose stays a colon.
+ */
+function customEmojiRule(state: StateInline, silent: boolean): boolean {
+  if (state.src.charCodeAt(state.pos) !== COLON) return false;
+
+  const match = EMOJI_RE.exec(state.src.slice(state.pos, state.posMax));
+  if (!match) return false;
+
+  const shortcode = match[1] ?? '';
+  if (!isCustomEmoji(shortcode)) return false;
+
+  if (!silent) {
+    const token = state.push('gd_emoji', 'span', 0);
+    token.markup = ':';
+    token.content = shortcode;
+    token.attrSet(DATA.emoji, shortcode);
   }
 
   state.pos += match[0].length;
@@ -654,6 +683,12 @@ function installRenderers(md: MarkdownIt): void {
   rules['gd_mention'] = (tokens, idx) => {
     const handle = tokens[idx]?.attrGet(DATA.mention) ?? '';
     return `<span ${DATA.mention}="${escapeHtml(handle)}">@${escapeHtml(handle)}</span>`;
+  };
+
+  // A span, not an img: the image node would claim the tag on the way into ProseMirror.
+  rules['gd_emoji'] = (tokens, idx) => {
+    const shortcode = tokens[idx]?.attrGet(DATA.emoji) ?? '';
+    return `<span ${DATA.emoji}="${escapeHtml(shortcode)}"></span>`;
   };
 
   rules['gd_wikilink'] = (tokens, idx) => {

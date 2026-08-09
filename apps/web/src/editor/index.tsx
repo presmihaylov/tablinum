@@ -18,7 +18,7 @@ import { PromptDialog } from '../components/ui/PromptDialog';
 import type { PromptRequest } from '../components/ui/PromptDialog';
 import { SaveIndicator } from '../components/ui/SaveIndicator';
 import { EMBED_PROVIDERS, embedHtml, resolveEmbed } from './embeds';
-import { buildExtensions } from './extensions';
+import { buildExtensions, insertEmoji } from './extensions';
 import type { EmbeddedPage, MentionItem, WikilinkItem } from './extensions';
 import { DEFAULT_FRAME, PARSE_OPTIONS, readMarkdown, writeMarkdown } from './markdown';
 import type { MarkdownFrame } from './markdown';
@@ -396,7 +396,7 @@ export function PageEditor({
           onClose={() => setEmojiAt(null)}
           onPick={(emoji) => {
             setEmojiAt(null);
-            editorRef.current?.chain().focus().insertContent(emoji).run();
+            insertEmoji(editorRef.current, emoji);
           }}
         />
       ) : null}

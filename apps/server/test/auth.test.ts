@@ -103,6 +103,8 @@ describe('mutation audit', () => {
     { method: 'DELETE', url: '/api/v1/me/slack' },
     { method: 'PATCH', url: '/api/v1/users/us_00000000000000000000000000' },
     { method: 'DELETE', url: '/api/v1/users/us_00000000000000000000000000' },
+    { method: 'POST', url: '/api/v1/emoji' },
+    { method: 'DELETE', url: '/api/v1/emoji/ce_00000000000000000000000000' },
     { method: 'POST', url: '/api/v1/invites' },
     { method: 'DELETE', url: '/api/v1/invites/iv_00000000000000000000000000' },
     { method: 'POST', url: '/api/v1/agents' },

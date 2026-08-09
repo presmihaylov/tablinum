@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { isAppError, MAX_AVATAR_BYTES } from '@tablinum/shared';
+import {
+  isAppError,
+  MAX_AVATAR_BYTES,
+  MAX_CUSTOM_EMOJI_BYTES,
+  MAX_SHORTCODE_LENGTH,
+} from '@tablinum/shared';
 import { AccountStore } from '../src/store.js';
 
 const open: AccountStore[] = [];
@@ -628,5 +633,98 @@ describe('avatars', () => {
   it('reports no avatar for an account that never had one', () => {
     const accounts = store();
     expect(accounts.getAvatar(admin(accounts).id)).toBeNull();
+  });
+});
+
+// A 1x1 GIF, so a test can prove the type is read from the bytes and not from a declared one.
+const GIF = Buffer.from(
+  'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
+  'base64',
+);
+
+function member(accounts: AccountStore, email = 'grace@example.com') {
+  return accounts.createUser({ email, name: 'Grace Hopper', password: PASSWORD });
+}
+
+describe('custom emoji', () => {
+  it('stores an image, names the uploader and reads the type from the bytes', () => {
+    const accounts = store();
+    const owner = admin(accounts);
+
+    const emoji = accounts.createCustomEmoji({ shortcode: '  PaRRoT ', userId: owner.id, bytes: GIF });
+    expect(emoji.id.startsWith('ce_')).toBe(true);
+    expect(emoji.shortcode).toBe('parrot');
+    expect(emoji.mime).toBe('image/gif');
+    expect(emoji.userId).toBe(owner.id);
+
+    expect(accounts.listCustomEmoji().map((entry) => entry.shortcode)).toEqual(['parrot']);
+    expect(accounts.getCustomEmoji('PARROT')?.id).toBe(emoji.id);
+
+    const image = accounts.getCustomEmojiImage('parrot');
+    expect(image?.mime).toBe('image/gif');
+    expect(image?.bytes.equals(GIF)).toBe(true);
+  });
+
+  it('refuses a shortcode that is already taken', () => {
+    const accounts = store();
+    const owner = admin(accounts);
+    const other = member(accounts);
+    accounts.createCustomEmoji({ shortcode: 'parrot', userId: owner.id, bytes: PNG });
+
+    const again = () => accounts.createCustomEmoji({ shortcode: 'parrot', userId: other.id, bytes: GIF });
+    expect(codeOf(again)).toBe('CONFLICT');
+    expect(accounts.listCustomEmoji()).toHaveLength(1);
+  });
+
+  it('refuses a bad name, an empty upload, an oversized one and bytes that are not an image', () => {
+    const accounts = store();
+    const owner = admin(accounts);
+    const upload = (shortcode: string, bytes: Buffer) =>
+      accounts.createCustomEmoji({ shortcode, userId: owner.id, bytes });
+
+    expect(codeOf(() => upload('Party Parrot', PNG))).toBe('VALIDATION');
+    expect(codeOf(() => upload('', PNG))).toBe('VALIDATION');
+    expect(codeOf(() => upload('a'.repeat(MAX_SHORTCODE_LENGTH + 1), PNG))).toBe('VALIDATION');
+    expect(codeOf(() => upload('empty', Buffer.alloc(0)))).toBe('VALIDATION');
+    expect(codeOf(() => upload('huge', Buffer.alloc(MAX_CUSTOM_EMOJI_BYTES + 1)))).toBe('VALIDATION');
+    expect(codeOf(() => upload('prose', Buffer.from('not an image at all')))).toBe('VALIDATION');
+  });
+
+  it('lets the uploader delete their own and nobody else', () => {
+    const accounts = store();
+    admin(accounts);
+    const owner = member(accounts);
+    const other = member(accounts, 'alan@example.com');
+    const emoji = accounts.createCustomEmoji({ shortcode: 'parrot', userId: owner.id, bytes: PNG });
+
+    const byOther = () => accounts.deleteCustomEmoji(emoji.id, { userId: other.id, admin: false });
+    expect(codeOf(byOther)).toBe('UNAUTHORIZED');
+    expect(accounts.listCustomEmoji()).toHaveLength(1);
+
+    accounts.deleteCustomEmoji(emoji.id, { userId: owner.id, admin: false });
+    expect(accounts.listCustomEmoji()).toHaveLength(0);
+  });
+
+  it('lets an admin delete somebody else, and reports an id that is gone', () => {
+    const accounts = store();
+    const boss = admin(accounts);
+    const owner = member(accounts);
+    const emoji = accounts.createCustomEmoji({ shortcode: 'parrot', userId: owner.id, bytes: PNG });
+
+    accounts.deleteCustomEmoji(emoji.id, { userId: boss.id, admin: true });
+    expect(accounts.getCustomEmoji('parrot')).toBeNull();
+    const again = () => accounts.deleteCustomEmoji(emoji.id, { userId: boss.id, admin: true });
+    expect(codeOf(again)).toBe('NOT_FOUND');
+  });
+
+  it('purges the emoji of an account that is removed', () => {
+    const accounts = store();
+    admin(accounts);
+    const owner = member(accounts);
+    accounts.createCustomEmoji({ shortcode: 'parrot', userId: owner.id, bytes: PNG });
+
+    accounts.deleteUser(owner.id);
+    expect(accounts.listCustomEmoji()).toHaveLength(0);
+    expect(accounts.getCustomEmojiImage('parrot')).toBeNull();
   });
 });

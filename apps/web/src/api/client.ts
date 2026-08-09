@@ -12,6 +12,8 @@ import type {
   ConnectSlackBody,
   CreatePageBody,
   CreateSpaceBody,
+  CustomEmojiListResponse,
+  CustomEmojiResponse,
   DeletePageResponse,
   ErrorBody,
   ErrorCode,
@@ -297,6 +299,18 @@ export const api = {
 
   rotateAgentToken: (id: string): Promise<AgentTokenResponse> =>
     request(`/agents/${encodeURIComponent(id)}/token`, { method: 'POST' }),
+
+  listEmoji: (signal?: AbortSignal): Promise<CustomEmojiListResponse> => request('/emoji', { signal }),
+
+  uploadEmoji: (shortcode: string, file: File): Promise<CustomEmojiResponse> => {
+    const form = new FormData();
+    form.append('shortcode', shortcode);
+    form.append('file', file, file.name);
+    return request('/emoji', { method: 'POST', form });
+  },
+
+  deleteEmoji: (id: string): Promise<OkResponse> =>
+    request(`/emoji/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
   listSpaces: (signal?: AbortSignal): Promise<SpacesResponse> => request('/spaces', { signal }),
 

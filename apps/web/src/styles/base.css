@@ -276,6 +276,15 @@ hr {
   }
 }
 
+/* A custom emoji stands in for one character, so it is sized from the text around it. */
+.emoji-glyph {
+  display: inline-block;
+  width: 1.15em;
+  height: 1.15em;
+  vertical-align: -0.2em;
+  object-fit: contain;
+}
+
 /* ------------------------------------------------------------------ */
 /* app frame                                                            */
 /* ------------------------------------------------------------------ */

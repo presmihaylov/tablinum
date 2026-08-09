@@ -4,22 +4,30 @@ import Database from 'better-sqlite3';
 import {
   AGENT_TOKEN_PREFIX,
   AVATAR_MIME_TYPES,
+  CUSTOM_EMOJI_MIME_TYPES,
   DEFAULT_INVITE_DAYS,
   MAX_AVATAR_BYTES,
+  MAX_CUSTOM_EMOJI_BYTES,
+  MAX_SHORTCODE_LENGTH,
   colorForId,
   conflict,
+  isShortcode,
   newAgentId,
+  newCustomEmojiId,
   newInviteId,
   newUserId,
   newWorkspaceId,
   notFound,
+  sniffImageMime,
   toHandle,
+  unauthorized,
   uniqueHandle,
   validation,
   workspaceSlugOf,
   type Account,
   type AccountRole,
   type Agent,
+  type CustomEmoji,
   type Invite,
   type Workspace,
   type WorkspaceRole,
@@ -33,7 +41,7 @@ type Db = Database.Database;
 export const ACCOUNTS_DB_FILENAME = 'accounts.db';
 
 /** Bumped when the schema below changes in a way an existing file cannot satisfy. */
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 
 /** How long a signed-in browser stays signed in. */
 export const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -142,6 +150,28 @@ export interface Avatar {
   rev: string;
 }
 
+export interface CreateCustomEmojiInput {
+  /** Lower-case `[a-z0-9_-]+`. Unique across the install. */
+  shortcode: string;
+  /** Who uploaded it. */
+  userId: string;
+  /** The image itself. Its type is read from these bytes, never from a declared one. */
+  bytes: Buffer;
+}
+
+/** Who is asking to delete a custom emoji. An admin may delete anybody's. */
+export interface CustomEmojiActor {
+  userId: string;
+  admin: boolean;
+}
+
+/** A stored custom emoji image, ready to be served. */
+export interface CustomEmojiImage {
+  mime: string;
+  bytes: Buffer;
+  rev: string;
+}
+
 interface UserRow {
   id: string;
   email: string;
@@ -202,6 +232,19 @@ interface AvatarRow {
   avatar_rev: string | null;
 }
 
+interface CustomEmojiRow {
+  id: string;
+  shortcode: string;
+  mime: string;
+  user_id: string;
+  created: number;
+}
+
+interface CustomEmojiImageRow {
+  mime: string;
+  bytes: Buffer;
+}
+
 interface CountRow {
   total: number;
 }
@@ -218,6 +261,9 @@ const AGENT_COLUMNS =
   'id, name, handle, identity, workspace_id, disabled, created, updated, last_used';
 
 const WORKSPACE_COLUMNS = 'id, slug, name, icon, dir, created, updated';
+
+/** Never selects `bytes`: a list of emoji is metadata, and the images are fetched one by one. */
+const CUSTOM_EMOJI_COLUMNS = 'id, shortcode, mime, user_id, created';
 
 /** A `last_used` stamp is refreshed at most this often, so a busy agent is not a write loop. */
 const LAST_USED_INTERVAL_MS = 60_000;
@@ -268,6 +314,16 @@ function toWorkspace(row: WorkspaceRow): WorkspaceRecord {
   };
   if (row.icon !== null && row.icon.length > 0) record.icon = row.icon;
   return record;
+}
+
+function toCustomEmoji(row: CustomEmojiRow): CustomEmoji {
+  return {
+    id: row.id,
+    shortcode: row.shortcode,
+    mime: row.mime,
+    userId: row.user_id,
+    created: iso(row.created),
+  };
 }
 
 function toInvite(row: InviteRow): Invite {
@@ -412,6 +468,16 @@ export class AccountStore {
         PRIMARY KEY (workspace_id, user_id)
       );
       CREATE INDEX IF NOT EXISTS members_by_user ON workspace_members(user_id);
+
+      CREATE TABLE IF NOT EXISTS custom_emoji (
+        id        TEXT PRIMARY KEY,
+        shortcode TEXT NOT NULL UNIQUE,
+        mime      TEXT NOT NULL,
+        bytes     BLOB NOT NULL,
+        user_id   TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created   INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS emoji_by_user ON custom_emoji(user_id);
     `);
 
     // Version 1 predates mentions, so its accounts have no handle yet.
@@ -1120,6 +1186,85 @@ export class AccountStore {
   }
 
   // -------------------------------------------------------------------------
+  // custom emoji
+  // -------------------------------------------------------------------------
+
+  /** Every custom emoji on this install, oldest first. Anybody who can read the site sees them. */
+  listCustomEmoji(): CustomEmoji[] {
+    const rows = this.#handle
+      .prepare(`SELECT ${CUSTOM_EMOJI_COLUMNS} FROM custom_emoji ORDER BY created, id`)
+      .all() as CustomEmojiRow[];
+    return rows.map(toCustomEmoji);
+  }
+
+  getCustomEmoji(shortcode: string): CustomEmoji | null {
+    const row = this.#handle
+      .prepare(`SELECT ${CUSTOM_EMOJI_COLUMNS} FROM custom_emoji WHERE shortcode = ?`)
+      .get(shortcode.trim().toLowerCase()) as CustomEmojiRow | undefined;
+    return row === undefined ? null : toCustomEmoji(row);
+  }
+
+  /** The image behind a shortcode, or null when nobody has uploaded that name. */
+  getCustomEmojiImage(shortcode: string): CustomEmojiImage | null {
+    const row = this.#handle
+      .prepare('SELECT mime, bytes FROM custom_emoji WHERE shortcode = ?')
+      .get(shortcode.trim().toLowerCase()) as CustomEmojiImageRow | undefined;
+    if (row === undefined) return null;
+    return { mime: row.mime, bytes: row.bytes, rev: digestOf(row.bytes) };
+  }
+
+  /**
+   * Store one custom emoji. The bytes decide the image type, because a browser is free to
+   * declare whatever content type it likes.
+   */
+  createCustomEmoji(input: CreateCustomEmojiInput, now: number = Date.now()): CustomEmoji {
+    const shortcode = input.shortcode.trim().toLowerCase();
+    if (!isShortcode(shortcode)) {
+      throw validation(
+        `A shortcode uses lower-case letters, digits, "_" and "-", up to ${MAX_SHORTCODE_LENGTH} characters`,
+      );
+    }
+    if (input.bytes.byteLength === 0) throw validation('The emoji upload is empty');
+    if (input.bytes.byteLength > MAX_CUSTOM_EMOJI_BYTES) {
+      throw validation(`A custom emoji must be smaller than ${MAX_CUSTOM_EMOJI_BYTES} bytes`);
+    }
+
+    const mime = sniffImageMime(input.bytes);
+    if (mime === null) {
+      throw validation(`A custom emoji must be one of ${CUSTOM_EMOJI_MIME_TYPES.join(', ')}`);
+    }
+
+    const id = newCustomEmojiId(now);
+    try {
+      this.#handle
+        .prepare(
+          `INSERT INTO custom_emoji (id, shortcode, mime, bytes, user_id, created)
+           VALUES (@id, @shortcode, @mime, @bytes, @userId, @now)`,
+        )
+        .run({ id, shortcode, mime, bytes: input.bytes, userId: input.userId, now });
+    } catch (cause) {
+      if (!isUniqueViolation(cause)) throw cause;
+      throw conflict(`:${shortcode}: is already taken`);
+    }
+
+    const created = this.getCustomEmoji(shortcode);
+    if (created === null) throw new Error('the custom emoji vanished right after it was written');
+    return created;
+  }
+
+  /** Delete one custom emoji. Only its uploader, or an admin, may do it. */
+  deleteCustomEmoji(id: string, actor: CustomEmojiActor): void {
+    const row = this.#handle
+      .prepare(`SELECT ${CUSTOM_EMOJI_COLUMNS} FROM custom_emoji WHERE id = ?`)
+      .get(id) as CustomEmojiRow | undefined;
+    if (row === undefined) throw notFound(`No custom emoji with id ${id}`);
+    if (!actor.admin && row.user_id !== actor.userId) {
+      throw unauthorized('Only the person who uploaded an emoji, or an admin, can delete it');
+    }
+    this.#handle.prepare('DELETE FROM custom_emoji WHERE id = ?').run(id);
+  }
+
+  // -------------------------------------------------------------------------
   // slack
   // -------------------------------------------------------------------------
 
@@ -1143,6 +1288,12 @@ export class AccountStore {
 
 interface ColumnRow {
   name: string;
+}
+
+/** A UNIQUE index refused the write. Two uploads of one shortcode can race, so this is the guard. */
+function isUniqueViolation(cause: unknown): boolean {
+  if (!(cause instanceof Error) || !('code' in cause)) return false;
+  return typeof cause.code === 'string' && cause.code.startsWith('SQLITE_CONSTRAINT');
 }
 
 function addColumn(db: Db, table: string, column: string, type: string): void {

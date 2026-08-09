@@ -1,3 +1,4 @@
+import { filterCustomEmoji } from '../../lib/customEmoji';
 import { filterEmoji, type EmojiEntry } from '../../lib/emoji';
 
 export { EMOJI, filterEmoji, type EmojiEntry } from '../../lib/emoji';
@@ -26,6 +27,14 @@ export function findEmojiTrigger(before: string): EmojiTrigger | null {
 
 /** The emoji a typed `:query` offers. One letter is enough. `:fire:` also works. */
 export function matchEmoji(query: string): EmojiEntry[] {
+  const needle = query.replace(/:$/, '');
+  if (needle.length < MIN_QUERY) return [];
+  // The uploaded ones lead: there are few of them and somebody chose every name.
+  return [...filterCustomEmoji(needle), ...filterEmoji(needle)].slice(0, LIMIT);
+}
+
+/** Unicode only, for a plain-text field like the page title where an image cannot be drawn. */
+export function matchUnicodeEmoji(query: string): EmojiEntry[] {
   const needle = query.replace(/:$/, '');
   if (needle.length < MIN_QUERY) return [];
   return filterEmoji(needle).slice(0, LIMIT);

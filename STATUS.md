@@ -13,11 +13,11 @@ REST API, the MCP server (stdio or remote), or the files themselves.
 | Gate | Command | Result |
 | --- | --- | --- |
 | Typecheck | `pnpm -r typecheck` | PASS — 8 projects, strict + `noUncheckedIndexedAccess`, 0 errors |
-| Build | `pnpm -r build` | PASS — 8 dist outputs, Vite bundle 1,186 kB (382 kB gzip) |
-| Test | `pnpm -r test` | PASS — **1567 tests**, 0 failures |
+| Build | `pnpm -r build` | PASS — 8 dist outputs, Vite bundle 1,192 kB (383 kB gzip) |
+| Test | `pnpm -r test` | PASS — **1597 tests**, 0 failures |
 
-Per-package tests: shared 193, core 166, accounts 69, git-sync 67, search 92, mcp 102, server 207,
-web 671.
+Per-package tests: shared 195, core 166, accounts 75, git-sync 67, search 92, mcp 102, server 218,
+web 682.
 
 `packages/git-sync` cleans a temp repo at the end of every case and occasionally loses a race with
 git's own file handles (`ENOTEMPTY ... rmdir .git`). It passes on a re-run. It is a test-teardown
@@ -283,6 +283,32 @@ Verified by tests, not by a live Slack workspace:
   delivery, with a stub transport: new page, only-the-new-handles on a patch, self-mention, code,
   unknown handle, and a Slack that throws.
 - 13 web tests (`apps/web/test/editor/mention.test.tsx`) plus 16 round-trip corpus entries.
+
+### Custom emoji
+
+Anybody who is signed in uploads an image, names it, and writes `:name:` wherever a unicode emoji
+works: in a page body, in the `:` menu, in the emoji picker, as a page icon and as a space or
+workspace icon. The markdown keeps the plain `:name:` text and the picture is resolved when the
+page is drawn, so the content repo stays a tree of markdown.
+
+- **Storage** is a `custom_emoji` table in `accounts.db`, beside the avatar blobs, at schema
+  version 5. No filename is derived from anything a caller sends, so there is no path to traverse.
+- **Uniqueness** is a `UNIQUE` index on the shortcode. The insert catches the constraint error and
+  answers `CONFLICT`, so two uploads of one name cannot race past a route check.
+- **Permissions** live in `AccountStore.deleteCustomEmoji`: the uploader or an admin, and
+  `UNAUTHORIZED` for anybody else. The route only passes `request.principal.admin` through.
+- **Validation** refuses a name outside `[a-z0-9_-]+` or over 32 characters, an empty upload, more
+  than 256 KB, and any bytes whose magic number is not png, jpeg, webp or gif. The declared content
+  type is never trusted.
+- **The markdown rule** claims a shortcode only when somebody has uploaded it, so `10:30:45` stays
+  a time and a colon in prose stays a colon.
+
+- 6 accounts tests cover the store: storage and sniffing, a taken shortcode, six refusals, delete
+  by the uploader, the admin override, and the purge when an account is deleted.
+- 8 server tests (`apps/server/test/emoji.test.ts`) cover upload, list, image, oversize, non-image
+  bytes, duplicate, delete-own, delete-other as a member and as an admin, and no credential.
+- 11 web tests (`apps/web/test/editor/customEmoji.test.tsx`) cover inline rendering, the round
+  trip, an unknown name, the `:` menu and the picker section.
 
 ### MCP server
 

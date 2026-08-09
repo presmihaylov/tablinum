@@ -25,6 +25,8 @@ export {
 } from './frontmatter.js';
 
 export { IndexMap, type IndexMapOptions, type IndexedPage } from './index-map.js';
+export { RevHistory, DEFAULT_HISTORY_DEPTH, DEFAULT_HISTORY_BYTES } from './rev-history.js';
+export { Mutex } from './mutex.js';
 
 export {
   buildBacklinkIndex,

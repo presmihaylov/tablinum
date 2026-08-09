@@ -164,6 +164,22 @@ interface SequenceMerge {
 }
 
 /**
+ * Whether `change` belongs to the region being grown.
+ *
+ * Two edits that merely meet at a boundary are independent and must not be decided together.
+ * Treating them as one cluster is what made ten people editing ten separate paragraphs conflict
+ * with each other: the run of lines above someone's paragraph ends exactly where theirs begins.
+ * The single exception is a pair of insertions at the same offset, which have no range to
+ * overlap with but still have to be ordered.
+ */
+function joinsRegion(change: Change, start: number, end: number, consumed: boolean): boolean {
+  if (!consumed && change.start === start) return true;
+  if (change.start < end) return true;
+  if (change.start > end) return false;
+  return start === end && change.start === change.end;
+}
+
+/**
  * The merge itself. Both sides are diffed against the base, then the base is walked once and
  * every cluster of overlapping edits is decided together.
  */
@@ -188,25 +204,27 @@ function mergeSequences(
     );
     let end = start;
 
-    // Grow the region while either side still has an edit that touches it. An empty change
-    // (a pure insertion) at the same offset counts as touching, so the two are decided together.
+    // Grow the region while either side still has an edit that overlaps it.
     const firstOurs = a;
     const firstTheirs = b;
+    let consumed = false;
     let grew = true;
     while (grew) {
       grew = false;
       while (a < oursChanges.length) {
         const change = oursChanges[a];
-        if (change === undefined || change.start > end) break;
+        if (change === undefined || !joinsRegion(change, start, end, consumed)) break;
         end = Math.max(end, change.end);
         a += 1;
+        consumed = true;
         grew = true;
       }
       while (b < theirsChanges.length) {
         const change = theirsChanges[b];
-        if (change === undefined || change.start > end) break;
+        if (change === undefined || !joinsRegion(change, start, end, consumed)) break;
         end = Math.max(end, change.end);
         b += 1;
+        consumed = true;
         grew = true;
       }
     }

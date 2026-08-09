@@ -97,6 +97,51 @@ export class RecentWrites {
   }
 }
 
+/**
+ * Bodies this process wrote, by file, as the revs they hashed to.
+ *
+ * The path marks above cover one echo each, but chokidar coalesces: a page saved five times in
+ * one debounce window can raise fewer events than there were writes, or more. Whichever way it
+ * lands, an echo that slips through is broadcast as an out-of-band change, which drops every
+ * open room on the page. A rev is exact, so it does not need the counting to be right.
+ */
+export class RecentRevs {
+  readonly #seen = new Map<string, Map<string, number>>();
+
+  constructor(readonly ttlMs: number) {}
+
+  mark(rel: string, rev: string, now: number = Date.now()): void {
+    const revs = this.#seen.get(rel) ?? new Map<string, number>();
+    this.#seen.set(rel, revs);
+    revs.set(rev, now + this.ttlMs);
+  }
+
+  /** True when this process wrote exactly this body to this file recently. */
+  has(rel: string, rev: string, now: number = Date.now()): boolean {
+    const revs = this.#seen.get(rel);
+    if (revs === undefined) return false;
+    const expiresAt = revs.get(rev);
+    if (expiresAt === undefined) return false;
+    if (expiresAt > now) return true;
+    revs.delete(rev);
+    if (revs.size === 0) this.#seen.delete(rel);
+    return false;
+  }
+
+  prune(now: number = Date.now()): void {
+    for (const [rel, revs] of this.#seen) {
+      for (const [rev, expiresAt] of revs) {
+        if (expiresAt <= now) revs.delete(rev);
+      }
+      if (revs.size === 0) this.#seen.delete(rel);
+    }
+  }
+
+  get size(): number {
+    return this.#seen.size;
+  }
+}
+
 /** What a mutating route did, so the index and git stay in step with the disk. */
 export interface MutationRecord {
   /** Pages to insert or refresh in the full-text index. */
@@ -123,6 +168,7 @@ export interface MutationRecord {
  */
 export class Wiring {
   readonly recentWrites: RecentWrites;
+  readonly recentRevs: RecentRevs;
 
   constructor(
     private readonly deps: ServerDeps,
@@ -130,6 +176,7 @@ export class Wiring {
     private readonly live: LiveHub = new LiveHub(log),
   ) {
     this.recentWrites = new RecentWrites(deps.echoSuppressMs ?? DEFAULT_ECHO_SUPPRESS_MS);
+    this.recentRevs = new RecentRevs(deps.echoSuppressMs ?? DEFAULT_ECHO_SUPPRESS_MS);
   }
 
   /** Mark files as written by this process so the watcher ignores their echo. */
@@ -144,6 +191,9 @@ export class Wiring {
       ...(record.files ?? []),
     ];
     this.markWritten(touched);
+    for (const page of pages) {
+      this.recentRevs.mark(contentRelPath(this.deps.store.contentDir, page.filePath), page.rev);
+    }
 
     for (const page of pages) {
       await this.#indexPage(page);
@@ -251,7 +301,11 @@ export function startContentWatcher(
           const page = await deps.store.reloadFile(rel);
           if (page !== null) {
             await deps.search.indexPage(page);
-            live.pageChanged(page, 'disk', null);
+            // Our own write coming back. Calling it a disk change would drop every room on the
+            // page and send all of its tabs off to re-read what they just wrote.
+            const echo = wiring.recentRevs.has(rel, page.rev);
+            if (!echo) live.pageChanged(page, 'disk', null);
+            if (echo) continue;
           }
         }
         changed = true;

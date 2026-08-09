@@ -150,6 +150,49 @@ describe('mergeText', () => {
     expect(result.text.split('\n')[10]).toBe('ours');
     expect(result.text.split('\n')[3000]).toBe('theirs');
   });
+
+  it('merges edits on lines that merely touch', () => {
+    const base = ['a', 'b', 'c', 'd'].join('\n');
+    // Theirs replaces the run that ends exactly where ours begins.
+    const theirs = ['A', 'B', 'c', 'd'].join('\n');
+    const ours = ['a', 'b', 'C', 'd'].join('\n');
+    const result = mergeText(base, ours, theirs);
+
+    expect(result.clean).toBe(true);
+    expect(result.text).toBe(['A', 'B', 'C', 'd'].join('\n'));
+  });
+
+  it('merges when many writers each change one line of a block', () => {
+    const count = 12;
+    const base = Array.from({ length: count }, (_, i) => `w${i}:`).join('\n');
+    const theirs = base
+      .split('\n')
+      .map((line, i) => (i < count - 1 ? `${line} theirs` : line))
+      .join('\n');
+    const ours = base
+      .split('\n')
+      .map((line, i) => (i === count - 1 ? `${line} ours` : line))
+      .join('\n');
+    const result = mergeText(base, ours, theirs);
+
+    expect(result.clean).toBe(true);
+    expect(result.text.split('\n')[0]).toBe('w0: theirs');
+    expect(result.text.split('\n')[count - 1]).toBe(`w${count - 1}: ours`);
+  });
+
+  it('still conflicts when both replace the same line', () => {
+    const base = ['a', 'b', 'c'].join('\n');
+    const result = mergeText(base, ['a', 'ours', 'c'].join('\n'), ['a', 'theirs', 'c'].join('\n'));
+    expect(result.clean).toBe(false);
+    expect(result.conflicts).toHaveLength(1);
+  });
+
+  it('keeps both insertions when each side adds a different line at the same place', () => {
+    const base = ['a', 'b'].join('\n');
+    const result = mergeText(base, ['a', 'ours', 'b'].join('\n'), ['a', 'theirs', 'b'].join('\n'));
+    // Two people typed a new line at the same point. There is no order to prefer, so it is told.
+    expect(result.clean).toBe(false);
+  });
 });
 
 describe('contentRev', () => {

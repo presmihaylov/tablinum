@@ -42,12 +42,13 @@ interface CacheEntry {
 export class IndexMap {
   readonly contentDir: string;
   readonly #logger: Logger;
-  readonly #byId = new Map<PageId, IndexedPage>();
-  readonly #byPath = new Map<PagePath, IndexedPage>();
+  #byId = new Map<PageId, IndexedPage>();
+  #byPath = new Map<PagePath, IndexedPage>();
   readonly #cache = new Map<string, CacheEntry>();
   #ordered: IndexedPage[] = [];
   #built = false;
   #duplicateIds: PageId[] = [];
+  #inFlight: Promise<void> | null = null;
 
   constructor(options: IndexMapOptions) {
     this.contentDir = options.contentDir;
@@ -73,10 +74,36 @@ export class IndexMap {
 
   async ensureBuilt(): Promise<void> {
     if (this.#built) return;
+    // Join a scan already under way rather than starting a second one over the same tree.
+    if (this.#inFlight !== null) {
+      await this.#inFlight;
+      return;
+    }
     await this.rebuild();
   }
 
   async rebuild(): Promise<void> {
+    // Rebuilds queue. Two overlapping scans would interleave their writes into the maps and
+    // leave the loser's half-built view behind.
+    const previous = this.#inFlight;
+    const mine = (async () => {
+      if (previous !== null) await previous.catch(() => undefined);
+      await this.#scan();
+    })();
+    this.#inFlight = mine;
+    try {
+      await mine;
+    } finally {
+      if (this.#inFlight === mine) this.#inFlight = null;
+    }
+  }
+
+  /**
+   * Scan into fresh maps and swap them in at the end. Mutating the live maps across the awaits
+   * below made every concurrent reader see an empty index, so a page being written answered
+   * 404 to anyone who asked for it mid-rebuild.
+   */
+  async #scan(): Promise<void> {
     const files = await scanPageFiles(this.contentDir);
     const parents = new Set<PagePath>();
     for (const file of files) {
@@ -84,9 +111,9 @@ export class IndexMap {
       if (parent !== null) parents.add(parent);
     }
 
-    this.#byId.clear();
-    this.#byPath.clear();
-    this.#duplicateIds = [];
+    const byId = new Map<PageId, IndexedPage>();
+    const byPath = new Map<PagePath, IndexedPage>();
+    const duplicateIds: PageId[] = [];
     const ordered: IndexedPage[] = [];
     const seenFiles = new Set<string>();
 
@@ -97,16 +124,16 @@ export class IndexMap {
 
       // A shadowed file is dropped outright. Leaving it in `ordered` would show a page the API
       // cannot read, update or delete, because every lookup goes through the id and path maps.
-      const clash = this.#byPath.get(file.path);
+      const clash = byPath.get(file.path);
       if (clash !== undefined) {
         this.#logger.warn(
           `Duplicate page path ${file.path}: keeping ${clash.relFile}, ignoring ${file.relFile}`,
         );
         continue;
       }
-      const existing = this.#byId.get(entry.frontmatter.id);
+      const existing = byId.get(entry.frontmatter.id);
       if (existing !== undefined) {
-        this.#duplicateIds.push(entry.frontmatter.id);
+        duplicateIds.push(entry.frontmatter.id);
         this.#logger.warn(
           `Duplicate page id ${entry.frontmatter.id}: keeping ${existing.relFile}, ignoring ${file.relFile}`,
         );
@@ -124,14 +151,17 @@ export class IndexMap {
         repaired: entry.repaired,
       };
       ordered.push(page);
-      this.#byPath.set(page.path, page);
-      this.#byId.set(page.id, page);
+      byPath.set(page.path, page);
+      byId.set(page.id, page);
     }
 
     for (const key of [...this.#cache.keys()]) {
       if (!seenFiles.has(key)) this.#cache.delete(key);
     }
 
+    this.#byId = byId;
+    this.#byPath = byPath;
+    this.#duplicateIds = duplicateIds;
     this.#ordered = ordered;
     this.#built = true;
   }

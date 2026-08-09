@@ -10,6 +10,7 @@ import {
   depth,
   internal,
   isDescendantOf,
+  mergeText,
   newPageId,
   notFound,
   pagePathToRelFile,
@@ -20,6 +21,7 @@ import {
   spaceOf,
   validation,
 } from '@tablinum/shared';
+import { Mutex, RevHistory } from '@tablinum/core';
 import type {
   Backlink,
   CreatePageBody,
@@ -111,6 +113,8 @@ function buildTree(pages: PageSummary[], space: string): TreeNode[] {
  */
 export class FsContentStore implements ContentStore {
   readonly #idByFile = new Map<string, PageId>();
+  readonly #writes = new Mutex();
+  readonly #history = new RevHistory();
 
   constructor(readonly contentDir: string) {}
 
@@ -259,16 +263,15 @@ export class FsContentStore implements ContentStore {
     return page;
   }
 
+  /** Serialised like the real store, so a test can hold this double to the same promises. */
   async updatePage(id: PageId, patch: UpdatePageBody): Promise<Page> {
+    return this.#writes.runExclusive(() => this.#updatePageUnlocked(id, patch));
+  }
+
+  async #updatePageUnlocked(id: PageId, patch: UpdatePageBody): Promise<Page> {
     const current = await this.getPageById(id);
     if (current === null) throw notFound(`No page with id ${id}`);
-    if (patch.baseRev !== undefined && patch.markdown !== undefined && patch.baseRev !== current.rev) {
-      throw saveConflict('The page changed since this edit started', {
-        markdown: current.markdown,
-        rev: current.rev,
-        updated: current.updated,
-      });
-    }
+    const merged = this.#reconcile(id, patch, current);
 
     let rel = this.#fileOf(current.path);
     if (rel === null) throw notFound(`No file for page ${current.path}`);
@@ -294,12 +297,34 @@ export class FsContentStore implements ContentStore {
     if (order !== undefined) frontmatter.order = order;
 
 
-    const markdown = patch.markdown ?? page.markdown;
+    const markdown = merged ?? page.markdown;
     await writeFile(page.filePath, serializeFrontmatter(frontmatter) + markdown, 'utf8');
 
     const updated = await this.#read(rel);
     if (updated === null) throw internal(`Failed to read back ${rel}`);
+    this.#history.record(id, updated.rev, updated.markdown);
     return updated;
+  }
+
+  /** The real store's rule: merge a stale edit when it can, refuse it when it genuinely clashes. */
+  #reconcile(id: PageId, patch: UpdatePageBody, current: Page): string | null {
+    if (patch.markdown === undefined) return null;
+    if (patch.baseRev === undefined) return patch.markdown;
+
+    this.#history.record(id, current.rev, current.markdown);
+    if (patch.baseRev === current.rev) return patch.markdown;
+
+    const base = this.#history.find(id, patch.baseRev);
+    if (base !== null) {
+      const result = mergeText(base, patch.markdown, current.markdown);
+      if (result.clean) return result.text;
+    }
+
+    throw saveConflict('The page changed since this edit started', {
+      markdown: current.markdown,
+      rev: current.rev,
+      updated: current.updated,
+    });
   }
 
   async deletePage(id: PageId, recursive: boolean): Promise<PagePath[]> {
@@ -437,6 +462,9 @@ export class FsContentStore implements ContentStore {
     };
     if (frontmatter.icon !== undefined) page.icon = frontmatter.icon;
     if (frontmatter.order !== undefined) page.order = frontmatter.order;
+    // Like the real store: every rev a caller can hold was read here, so this is where the
+    // merge base is learnt.
+    this.#history.record(page.id, page.rev, page.markdown);
     return page;
   }
 

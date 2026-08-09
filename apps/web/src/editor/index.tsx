@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { EditorContent, useEditor } from '@tiptap/react';
 import type { Editor } from '@tiptap/core';
+import type { Transaction } from '@tiptap/pm/state';
 import { DIAGRAM_EXT, parseAssetUrl, type Page } from '@tablinum/shared';
 import { api } from '../api/client';
 import { useCreatePage, useTree, useUploadAsset, useUsers } from '../api/hooks';
@@ -375,14 +376,17 @@ export function PageEditor({
   useEffect(() => {
     if (!editor) return undefined;
     let timer: ReturnType<typeof setTimeout> | null = null;
-    const bump = (): void => {
+    // Every doc change counts, not only a typed one. The room replaces the whole document when
+    // its first frame lands, and that emits no `update`, so the highlights would stay wiped.
+    const bump = ({ transaction }: { transaction: Transaction }): void => {
+      if (!transaction.docChanged) return;
       if (timer !== null) clearTimeout(timer);
       timer = setTimeout(() => setDocTick((tick) => tick + 1), REANCHOR_MS);
     };
-    editor.on('update', bump);
+    editor.on('transaction', bump);
     return () => {
       if (timer !== null) clearTimeout(timer);
-      editor.off('update', bump);
+      editor.off('transaction', bump);
     };
   }, [editor]);
 

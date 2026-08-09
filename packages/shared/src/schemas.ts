@@ -32,7 +32,8 @@ export const NewSpaceSlugSchema = SpaceSlugSchema.refine(
   'Expected a lower-case slug like "engineering" or "team-docs"',
 );
 
-export const IconSchema = z.string().min(1).max(16);
+/** A unicode emoji, or a `:shortcode:` naming a custom one. Long enough for the longest code. */
+export const IconSchema = z.string().min(1).max(40);
 
 // ---------------------------------------------------------------------------
 // domain models

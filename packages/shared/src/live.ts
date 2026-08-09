@@ -1,6 +1,14 @@
 import { z } from 'zod';
 import type { GitStatus, PageId, PagePath } from './types.js';
 
+/** A comment thread on a page was written, edited, resolved or removed. */
+export interface CommentsChangedMessage {
+  type: 'comments';
+  pageId: PageId;
+  /** The tab that caused the change, so it does not refetch its own write. */
+  by: string | null;
+}
+
 /** WebSocket endpoint every browser tab holds open while the app is on screen. */
 export const LIVE_PATH = '/api/v1/live';
 
@@ -143,6 +151,7 @@ export type ServerMessage =
   | { type: 'welcome'; clientId: string }
   | PageChangedMessage
   | { type: 'removed'; paths: PagePath[] }
+  | CommentsChangedMessage
   | { type: 'presence'; path: PagePath; users: LivePresence[] }
   | { type: 'git'; status: GitStatus }
   | { type: 'pong' }

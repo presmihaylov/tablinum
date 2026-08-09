@@ -19,6 +19,7 @@ export const qk = {
   pageByPath: (path: PagePath) => ['page', 'path', path] as const,
   search: (query: SearchQuery) => ['search', query.q, query.space ?? ''] as const,
   backlinks: (id: PageId) => ['backlinks', id] as const,
+  comments: (id: PageId) => ['comments', id] as const,
   history: (id: PageId, limit?: number) => ['history', id, limit ?? 0] as const,
   revision: (id: PageId, sha: string) => ['revision', id, sha] as const,
   gitStatus: ['git', 'status'] as const,

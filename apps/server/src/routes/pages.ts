@@ -190,7 +190,7 @@ export function registerPageRoutes(app: FastifyInstance, ctx: RouteContext): voi
   }
 
   app.delete(`${API_PREFIX}/pages/:id`, async (request): Promise<DeletePageResponse> => {
-    const { store, wiring, live } = await partsOf(ctx, request);
+    const { record, store, wiring, live } = await partsOf(ctx, request);
     const { id } = parseOrThrow(IdParamsSchema, request.params, 'params');
     const query = parseOrThrow(DeletePageQuerySchema, request.query, 'query');
     const page = await requirePageIn(store, id);
@@ -203,6 +203,12 @@ export function registerPageRoutes(app: FastifyInstance, ctx: RouteContext): voi
 
     for (const victim of victims) wiring.markWritten(plannedFiles(victim.path));
     const deleted = await store.deletePage(id, query.recursive === true);
+
+    // Comments live in the account database, so no foreign key can take them with the file.
+    ctx.deps.accounts.deleteThreadsForPages(
+      record.id,
+      victims.map((victim) => victim.id),
+    );
 
     const files = new Set<string>();
     for (const victim of victims) {

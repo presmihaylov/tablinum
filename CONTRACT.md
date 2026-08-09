@@ -66,8 +66,8 @@ here may be committed or pushed to a remote.
 <parent of content dir>/
   search.db        # FTS5 index of the default workspace. Derived: delete it and it rebuilds.
   accounts.db      # people, handles, password hashes, sessions, invites, avatar bytes,
-                   # custom emoji bytes, Slack member ids, workspaces and their members.
-                   # NOT derived.
+                   # custom emoji bytes, Slack member ids, workspaces and their members,
+                   # comment threads. NOT derived.
   workspaces/
     handbook/          # a second workspace: a git repo with the same layout as content/
     handbook.search.db # its FTS5 index, a sibling of the directory so the export never holds it
@@ -333,6 +333,51 @@ export interface WorkspaceMember { account: Account; role: WorkspaceRole }
 Helpers in the same file: `workspaceSlugOf(name)`, `workspaceExportName(slug)` -> `<slug>.zip`,
 `newWorkspaceId()`, `isWorkspaceId(value)`.
 
+`packages/shared/src/comments.ts` holds the conversation about a page, never the page itself:
+
+```ts
+export const THREAD_ID_PREFIX = 'ct_';
+export const COMMENT_ID_PREFIX = 'cm_';
+export const MAX_COMMENT_LENGTH = 5000;
+export const MAX_QUOTE_LENGTH = 300;
+export const ANCHOR_CONTEXT_LENGTH = 40;   // context kept on each side of the quote
+
+/** Where a thread sits in the page, as text. A W3C TextQuoteSelector, near enough. */
+export interface CommentAnchor {
+  quote: string;          // the selected text, cut at MAX_QUOTE_LENGTH
+  prefix: string; suffix: string;   // enough to tell two identical quotes apart
+  start: number;          // offset it was taken from. A hint for picking the nearest match only.
+}
+
+export interface Comment {
+  id: string;             // "cm_" + ULID
+  threadId: string;
+  author: string;         // an account id. Agents and API tokens read comments, never write one.
+  body: string;           // CommonMark, rendered with raw HTML OFF
+  created: string; updated: string;   // ISO; equal until the author edits it
+}
+
+export interface CommentThread {
+  id: string;             // "ct_" + ULID
+  pageId: PageId;
+  anchor: CommentAnchor | null;   // null = a comment about the whole page
+  resolved: boolean;
+  resolvedBy: string | null; resolvedAt: string | null;
+  created: string; updated: string;   // ISO
+  comments: Comment[];    // the opening comment first, then the replies in order. Never empty.
+}
+```
+
+Helper in the same file: `unresolvedCount(threads)`, the number the comments button shows.
+
+COMMENTS ARE NOT PAGE CONTENT. Bodies live in `accounts.db`, keyed by workspace and page id, so a
+markdown file read on a git remote carries no comment id, no highlight span and no discussion. The
+browser looks the `quote` up again in the document on every load and draws the highlight as a
+ProseMirror decoration, which is never serialized. A quote the page no longer holds makes the
+thread ORPHANED: it stays readable in the panel with its quote shown, and loses its highlight.
+Nothing is guessed and no fuzzy match is tried, so a comment can never point at a sentence it was
+not written about.
+
 ## REST API
 
 `apps/server`, all under `/api/v1`, JSON in/out.
@@ -354,6 +399,12 @@ everything else is open to any credential.
 
 Every content endpoint answers about ONE workspace, chosen as WORKSPACES above describes. A client
 that names none gets its first workspace, which is what a single-workspace install always sees.
+
+A comment endpoint takes its workspace the same way and every comment query filters on that id, so
+a thread in one workspace stays unreachable from another even when somebody knows its id. A page in
+another workspace answers `NOT_FOUND`, exactly as the page endpoints do. Writing a comment needs an
+account: an agent token and an API token read comments but author none, because a comment names a
+person. Deleting a page deletes its threads.
 
 ```
 GET    /api/v1/health                          -> { ok: true, version, contentDir }
@@ -454,6 +505,20 @@ GET    /api/v1/pages/:id/backlinks             -> { backlinks: Backlink[] }
 GET    /api/v1/pages/:id/history               ?limit= -> { revisions: Revision[] }
 GET    /api/v1/pages/:id/revisions/:sha        -> { markdown, frontmatter: Frontmatter }
 
+GET    /api/v1/pages/:id/comments              ?resolved=true|false -> { threads: CommentThread[] }
+                                               (no query = every thread, oldest first)
+POST   /api/v1/pages/:id/comments              body { body, anchor? } -> 201 { thread: CommentThread }
+                                               (no anchor = a comment about the whole page)
+POST   /api/v1/comment-threads/:id/replies     body { body } -> 201 { thread: CommentThread }
+PATCH  /api/v1/comment-threads/:id             body { resolved } -> { thread: CommentThread }
+                                               (anybody in the workspace may resolve or reopen)
+PATCH  /api/v1/comments/:id                    body { body } -> { thread: CommentThread }
+                                               (the author only, admin included: nobody rewords
+                                                somebody else's remark)
+DELETE /api/v1/comments/:id                    -> { thread: CommentThread | null }
+                                               (the author or an admin; deleting the opening
+                                                comment takes the thread with it and answers null)
+
 GET    /api/v1/views                           ?dir=<PagePath>&where=<k:v,k:v>&sort=<key>&order=asc|desc
                                                -> { columns: string[], rows: PageSummary[] }
                                                (a table over child pages' frontmatter props)
@@ -530,6 +595,7 @@ type ServerMessage =
   | { type: 'presence'; path: PagePath;
       users: Array<LiveUser & { editing: boolean; agent: LiveAgent | null }> }
   | { type: 'git'; status: GitStatus }
+  | { type: 'comments'; pageId: PageId; by: string | null }   // threads changed, read them again
   | { type: 'pong' }
   | { type: 'doc-init'; path: PagePath; baseline: { markdown, title, rev };
       baseVersion: number; steps: DocStep[]; writer: string | null }

@@ -1,4 +1,11 @@
-import type { GitStatus, Page, Revision, SearchHit, TreeNode } from '@tablinum/shared';
+import type {
+  CommentThread,
+  GitStatus,
+  Page,
+  Revision,
+  SearchHit,
+  TreeNode,
+} from '@tablinum/shared';
 import type { SpaceTree } from './client.js';
 
 const SNIPPET_MAX = 240;
@@ -101,6 +108,47 @@ export function formatPageLine(page: Page): string {
   if (page.order !== undefined) bits.push(`order=${page.order}`);
   bits.push(`updated=${page.updated}`);
   return bits.join('  ');
+}
+
+// ---------------------------------------------------------------------------
+// comments
+// ---------------------------------------------------------------------------
+
+const QUOTE_MAX = 120;
+
+/**
+ * Comment threads on one page, newest business first: the quoted text a thread is about, then
+ * every remark in order. A thread whose quote is no longer in the page is called out, because
+ * acting on it means finding the new home of that sentence first.
+ */
+export function formatComments(
+  threads: CommentThread[],
+  page: Pick<Page, 'path' | 'id' | 'markdown'>,
+  nameOf: (userId: string) => string,
+): string {
+  if (threads.length === 0) {
+    return `Nobody has commented on ${page.path} yet.`;
+  }
+
+  const lines = [`${count(threads.length, 'comment thread')} on ${page.path} (${page.id}):`, ''];
+  for (const thread of threads) {
+    const state = thread.resolved ? 'resolved' : 'open';
+    lines.push(`[${state}] thread ${thread.id}`);
+    if (thread.anchor === null) lines.push('  about: the whole page');
+    if (thread.anchor !== null) {
+      const found = page.markdown.includes(thread.anchor.quote);
+      const note = found ? '' : '  (this text is no longer in the page)';
+      lines.push(`  about: ${JSON.stringify(clip(thread.anchor.quote, QUOTE_MAX))}${note}`);
+    }
+    for (const comment of thread.comments) {
+      const edited = comment.updated === comment.created ? '' : ' (edited)';
+      lines.push(`  ${nameOf(comment.author)}  ${comment.created}${edited}`);
+      for (const line of comment.body.split('\n')) lines.push(`    ${line}`);
+    }
+    lines.push('');
+  }
+  lines.push('Comments are not part of the page. Editing the page does not answer them.');
+  return lines.join('\n').trim();
 }
 
 // ---------------------------------------------------------------------------

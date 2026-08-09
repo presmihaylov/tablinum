@@ -8,12 +8,16 @@ import type {
   AuthStateResponse,
   AvatarResponse,
   BacklinksResponse,
+  CommentThreadResponse,
+  CommentThreadsResponse,
   ConflictInfo,
   ConnectSlackBody,
   CreatePageBody,
   CreateSpaceBody,
+  CreateThreadBody,
   CustomEmojiListResponse,
   CustomEmojiResponse,
+  DeleteCommentResponse,
   DeletePageResponse,
   ErrorBody,
   ErrorCode,
@@ -42,6 +46,8 @@ import type {
   PagePath,
   PageResponse,
   RegisterBody,
+  ReplyBody,
+  ResolveThreadBody,
   RevisionContentResponse,
   SearchQuery,
   SearchResponse,
@@ -51,6 +57,7 @@ import type {
   SpacesResponse,
   TreeResponse,
   UpdateAgentBody,
+  UpdateCommentBody,
   UpdateMeBody,
   UpdatePageBody,
   UpdateSpaceBody,
@@ -356,6 +363,24 @@ export const api = {
 
   revision: (id: PageId, sha: string, signal?: AbortSignal): Promise<RevisionContentResponse> =>
     request(`/pages/${encodeURIComponent(id)}/revisions/${encodeURIComponent(sha)}`, { signal }),
+
+  comments: (id: PageId, signal?: AbortSignal): Promise<CommentThreadsResponse> =>
+    request(`/pages/${encodeURIComponent(id)}/comments`, { signal }),
+
+  createThread: (id: PageId, body: CreateThreadBody): Promise<CommentThreadResponse> =>
+    request(`/pages/${encodeURIComponent(id)}/comments`, { method: 'POST', body }),
+
+  replyToThread: (threadId: string, body: ReplyBody): Promise<CommentThreadResponse> =>
+    request(`/comment-threads/${encodeURIComponent(threadId)}/replies`, { method: 'POST', body }),
+
+  resolveThread: (threadId: string, body: ResolveThreadBody): Promise<CommentThreadResponse> =>
+    request(`/comment-threads/${encodeURIComponent(threadId)}`, { method: 'PATCH', body }),
+
+  updateComment: (commentId: string, body: UpdateCommentBody): Promise<CommentThreadResponse> =>
+    request(`/comments/${encodeURIComponent(commentId)}`, { method: 'PATCH', body }),
+
+  deleteComment: (commentId: string): Promise<DeleteCommentResponse> =>
+    request(`/comments/${encodeURIComponent(commentId)}`, { method: 'DELETE' }),
 
 
   gitStatus: (signal?: AbortSignal): Promise<GitStatusResponse> => request('/git/status', { signal }),

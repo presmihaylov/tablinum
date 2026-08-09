@@ -678,12 +678,14 @@ export class AccountStore {
       .prepare('DELETE FROM workspace_members WHERE workspace_id = ? AND user_id = ?')
       .run(workspaceId, userId);
     if (info.changes === 0) throw notFound('That person is not in this workspace');
+    // A live cookie must not outlive the membership it was reaching the workspace through.
+    this.destroySessionsFor(userId);
   }
 
   /**
    * Every workspace this person may open, oldest first.
-   * Somebody who has never been placed in one belongs to the first workspace, so a single
-   * workspace install never has to think about membership at all.
+   * Membership is never inferred: an account with no row here reaches nothing, so removing
+   * somebody from their last workspace revokes access instead of moving them to another.
    */
   listWorkspacesFor(userId: string): WorkspaceRecord[] {
     const rows = this.#handle
@@ -695,9 +697,7 @@ export class AccountStore {
          ORDER BY w.created, w.id`,
       )
       .all(userId) as WorkspaceRow[];
-    if (rows.length > 0) return rows.map(toWorkspace);
-    const first = this.listWorkspaces()[0];
-    return first === undefined ? [] : [first];
+    return rows.map(toWorkspace);
   }
 
   // -------------------------------------------------------------------------
@@ -721,6 +721,20 @@ export class AccountStore {
     const rows = this.#handle
       .prepare(`SELECT ${USER_COLUMNS} FROM users ORDER BY name COLLATE NOCASE, email`)
       .all() as UserRow[];
+    return rows.map(toAccount);
+  }
+
+  /** The accounts in one workspace, ordered exactly like listUsers(). */
+  listUsersIn(workspaceId: string): Account[] {
+    const rows = this.#handle
+      .prepare(
+        `SELECT ${USER_COLUMNS.split(', ').map((column) => `u.${column}`).join(', ')}
+         FROM users u
+         JOIN workspace_members m ON m.user_id = u.id
+         WHERE m.workspace_id = ?
+         ORDER BY u.name COLLATE NOCASE, u.email`,
+      )
+      .all(workspaceId) as UserRow[];
     return rows.map(toAccount);
   }
 
@@ -1011,8 +1025,10 @@ export class AccountStore {
         )
         .run(account.id, now, invite.id);
       if (info.changes === 0) throw conflict('That invite link was just used by somebody else');
-      // The link decides which workspace the new person lands in.
-      if (invite.workspaceId !== null) this.addMember(invite.workspaceId, account.id, invite.role, now);
+      // The link decides which workspace the new person lands in. A link with none, the kind
+      // the CLI mints, joins the first one: an account with no membership reaches nothing.
+      const target = invite.workspaceId ?? this.listWorkspaces()[0]?.id ?? null;
+      if (target !== null) this.addMember(target, account.id, invite.role, now);
       return account;
     });
 

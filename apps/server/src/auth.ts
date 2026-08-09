@@ -253,6 +253,16 @@ export function principalOf(request: FastifyRequest, deps: ServerDeps): Principa
   return ANONYMOUS;
 }
 
+/**
+ * Refuse a request another site started. The session cookie is `SameSite=Lax`, so it rides a
+ * top-level navigation from anywhere; a GET that changes something must not accept one.
+ */
+export function requireSameSiteNavigation(request: FastifyRequest): void {
+  if (request.headers['sec-fetch-site'] === 'cross-site') {
+    throw unauthorized('That link must be opened from the app itself');
+  }
+}
+
 /** Throw unless the caller may invite people, change roles or remove accounts. */
 export function requireAdmin(request: FastifyRequest): void {
   if (request.principal.admin) return;

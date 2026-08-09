@@ -566,19 +566,48 @@ describe('workspaces', () => {
     expect(codeOf(() => accounts.addMember(main.id, 'us_nope'))).toBe('NOT_FOUND');
   });
 
-  it('gives somebody with no membership the first workspace', () => {
+  it('gives somebody with no membership nothing at all', () => {
     const accounts = store();
     const owner = admin(accounts);
     const main = accounts.createWorkspace({ name: 'Main', dir: '/content/main' });
     const design = accounts.createWorkspace({ name: 'Design', dir: '/content/design' });
 
-    expect(accounts.listWorkspacesFor(owner.id).map((entry) => entry.id)).toEqual([main.id]);
+    expect(accounts.listWorkspacesFor(owner.id)).toEqual([]);
 
     accounts.addMember(design.id, owner.id);
     expect(accounts.listWorkspacesFor(owner.id).map((entry) => entry.id)).toEqual([design.id]);
 
     accounts.addMember(main.id, owner.id);
     expect(accounts.listWorkspacesFor(owner.id).map((entry) => entry.id)).toEqual([main.id, design.id]);
+  });
+
+  it('takes the workspace and the live sessions away with the membership', () => {
+    const accounts = store();
+    admin(accounts);
+    accounts.createWorkspace({ name: 'Main', dir: '/content/main' });
+    const design = accounts.createWorkspace({ name: 'Design', dir: '/content/design' });
+    const bob = accounts.createUser({ email: 'bob@example.com', name: 'Bob', password: PASSWORD });
+
+    accounts.addMember(design.id, bob.id);
+    const session = accounts.createSession(bob.id);
+    expect(accounts.resolveSession(session.token)?.id).toBe(bob.id);
+
+    accounts.removeMember(design.id, bob.id);
+    // Removal revokes: it must not hand back the first workspace, and the cookie must die.
+    expect(accounts.listWorkspacesFor(bob.id)).toEqual([]);
+    expect(accounts.resolveSession(session.token)).toBeNull();
+  });
+
+  it('puts an invite that names no workspace into the first one', () => {
+    const accounts = store();
+    const owner = admin(accounts);
+    const main = accounts.createWorkspace({ name: 'Main', dir: '/content/main' });
+    accounts.createWorkspace({ name: 'Design', dir: '/content/design' });
+
+    const { token } = accounts.createInvite({ createdBy: owner.id });
+    const joined = accounts.redeemInvite(token, { email: 'bob@example.com', name: 'Bob', password: PASSWORD });
+
+    expect(accounts.listWorkspacesFor(joined.id).map((entry) => entry.id)).toEqual([main.id]);
   });
 
   it('puts a redeemed invite straight into its workspace', () => {

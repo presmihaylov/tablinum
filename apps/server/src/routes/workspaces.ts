@@ -10,6 +10,7 @@ import {
   CreateWorkspaceBodySchema,
   UpdateWorkspaceBodySchema,
   UpdateWorkspaceMemberBodySchema,
+  conflict,
   notFound,
   parseOrThrow,
   unauthorized,
@@ -23,7 +24,7 @@ import {
   type WorkspaceResponse,
   type WorkspacesResponse,
 } from '@tablinum/shared';
-import { requireAccount, requireAdmin } from '../auth.js';
+import { requireAccount, requireAdmin, requireSameSiteNavigation } from '../auth.js';
 import { API_PREFIX, type RouteContext } from '../context.js';
 import { unzipToDirectory, zipDirectory } from '../zip.js';
 
@@ -202,6 +203,8 @@ export function registerWorkspaceRoutes(app: FastifyInstance, ctx: RouteContext)
   });
 
   app.get(`${API_PREFIX}/workspaces/:id/members`, async (request): Promise<WorkspaceMembersResponse> => {
+    // A machine credential has no reason to read the roster of people.
+    requireAccount(request);
     const { id } = parseOrThrow(IdParamsSchema, request.params, 'workspace id');
     const record = recordOf(accounts, id);
     requireVisible(ctx, request, record);
@@ -239,12 +242,24 @@ export function registerWorkspaceRoutes(app: FastifyInstance, ctx: RouteContext)
     const { id, userId } = parseOrThrow(MemberParamsSchema, request.params, 'params');
     const record = recordOf(accounts, id);
     requireWorkspaceAdmin(accounts, request, record);
+
+    const me = request.principal.account;
+    if (me !== null && me.id === userId) {
+      throw conflict('Removing yourself would lock you out. Ask another admin.');
+    }
+    const admins = accounts.listMembers(record.id).filter((entry) => entry.role === 'admin');
+    if (admins.length === 1 && admins[0]?.userId === userId) {
+      throw conflict('A workspace needs at least one admin');
+    }
+
     accounts.removeMember(record.id, userId);
     return { ok: true };
   });
 
   /** The whole repository as a zip, history included. */
   app.get(`${API_PREFIX}/workspaces/:id/export`, async (request, reply) => {
+    // A GET that commits, so a link on another site must not be able to fire it.
+    requireSameSiteNavigation(request);
     const { id } = parseOrThrow(IdParamsSchema, request.params, 'workspace id');
     const record = recordOf(accounts, id);
     requireVisible(ctx, request, record);

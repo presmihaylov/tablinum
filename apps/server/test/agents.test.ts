@@ -5,8 +5,11 @@ import {
   AgentTokenResponseSchema,
   AgentResponseSchema,
   AgentsResponseSchema,
+  DEFAULT_WORKSPACE_SLUG,
   ErrorBodySchema,
   PageResponseSchema,
+  WorkspaceResponseSchema,
+  WorkspacesResponseSchema,
   type ServerMessage,
 } from '@tablinum/shared';
 import { contextOf } from '../src/context.js';
@@ -263,5 +266,67 @@ describe('agents', () => {
     });
     const created = await addAgent();
     expect(created.agent.handle).toBe('doc.bot.2');
+  });
+});
+
+describe('an agent token stays in its workspace', () => {
+  /** A second workspace the agent has nothing to do with. */
+  async function otherWorkspace() {
+    const response = await harness.app.inject({
+      method: 'POST',
+      url: '/api/v1/workspaces',
+      headers: harness.authHeaders(),
+      payload: { name: 'Finance' },
+    });
+    expect(response.statusCode).toBe(201);
+    return bodyOf(response, WorkspaceResponseSchema).workspace;
+  }
+
+  it('lists its own workspace and no other', async () => {
+    const other = await otherWorkspace();
+    const { token } = await addAgent();
+
+    const listed = await harness.app.inject({
+      method: 'GET',
+      url: '/api/v1/workspaces',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const body = bodyOf(listed, WorkspacesResponseSchema);
+    expect(body.workspaces.map((one) => one.slug)).toEqual([DEFAULT_WORKSPACE_SLUG]);
+    expect(body.workspaces.map((one) => one.id)).not.toContain(other.id);
+  });
+
+  it('reads no roster of people, not even the one for its own workspace', async () => {
+    const other = await otherWorkspace();
+    const { token } = await addAgent();
+    const headers = { authorization: `Bearer ${token}` };
+    const mine = harness.accounts.listWorkspaces()[0];
+
+    const theirs = await harness.app.inject({
+      method: 'GET',
+      url: `/api/v1/workspaces/${other.id}/members`,
+      headers,
+    });
+    expect(theirs.statusCode).toBe(401);
+    expect(theirs.body).not.toContain('members');
+
+    const own = await harness.app.inject({
+      method: 'GET',
+      url: `/api/v1/workspaces/${mine?.id ?? ''}/members`,
+      headers,
+    });
+    expect(own.statusCode).toBe(401);
+    expect(bodyOf(own, ErrorBodySchema).error.code).toBe('UNAUTHORIZED');
+  });
+
+  it('reads no roster of accounts either', async () => {
+    const { token } = await addAgent();
+    const response = await harness.app.inject({
+      method: 'GET',
+      url: '/api/v1/users',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(response.statusCode).toBe(401);
+    expect(bodyOf(response, ErrorBodySchema).error.code).toBe('UNAUTHORIZED');
   });
 });

@@ -11,6 +11,9 @@ import type { ApiClient } from './fixtures';
 const LINE = 'Run the pipeline every Friday.';
 const BODY = `${LINE}\n`;
 
+/** ProseMirror's own click run is 500ms wide. Anything longer starts a fresh count. */
+const CLICK_RUN_MS = 600;
+
 /** ProseMirror's editable box is a plain `div`, so the class is the handle the unit tests use. */
 function editorBody(page: Page): Locator {
   return page.locator('.gd-editor-surface');
@@ -64,6 +67,10 @@ async function selectWord(page: Page, line: string, word: string): Promise<void>
   }, word);
   if (spot === null) throw new Error(`${word} is not on the page`);
 
+  // ProseMirror counts clicks itself, over 500ms and 10px, and a click in the comment panel
+  // never reaches it to break the run. Two selections of the same word in a row would land as
+  // a triple click and take the whole paragraph, so the run is left to lapse first.
+  await page.waitForTimeout(CLICK_RUN_MS);
   await page.mouse.dblclick(spot.x, spot.y);
   await expect
     .poll(() => page.evaluate(() => window.getSelection()?.toString() ?? ''))

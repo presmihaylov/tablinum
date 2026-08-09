@@ -249,6 +249,24 @@ export const CORPUS: Record<string, string> = {
 
   'page embed above a heading': '![[eng/deploy]]\n\n# Next\n',
 
+  diagram: '![Architecture](/_assets/pg_1/architecture.excalidraw.svg)\n',
+
+  'diagram with no label': '![](/_assets/pg_1/sketch.excalidraw.svg)\n',
+
+  'diagram between paragraphs':
+    'Before.\n\n![Flow](/_assets/pg_1/flow.excalidraw.svg)\n\nAfter.\n',
+
+  'diagram pair': '![a](/_assets/pg_1/a.excalidraw.svg)\n![b](/_assets/pg_1/b.excalidraw.svg)\n',
+
+  'diagram above a heading': '![Flow](/_assets/pg_1/flow.excalidraw.svg)\n\n# Next\n',
+
+  // A diagram path in any shape the block rule does not claim stays an ordinary image.
+  'diagram path with a title': '![Flow](/_assets/pg_1/flow.excalidraw.svg "Figure 1")\n',
+
+  'diagram path inside a sentence': 'See ![Flow](/_assets/pg_1/flow.excalidraw.svg) above.\n',
+
+  'diagram path in a list item': '- ![Flow](/_assets/pg_1/flow.excalidraw.svg)\n',
+
   'html inline tag': 'Press <kbd>Esc</kbd> to close.\n',
 
   'html inline tag the schema knows': 'A <b>bold</b> and an <i>slanted</i> word.\n',

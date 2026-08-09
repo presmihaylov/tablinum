@@ -136,8 +136,9 @@ function staysSplit(previous: PMNode, node: PMNode): boolean {
 function endsBlock(node: PMNode): boolean {
   const name = node.type.name;
   if (name === 'heading' || name === 'codeBlock' || name === 'horizontalRule') return true;
-  // The embed is one whole line, so the line under it can only start a new block.
-  if (name === 'pageEmbed') return true;
+  // The embed and the diagram are one whole line, so the line under either can only
+  // start a new block.
+  if (name === 'pageEmbed' || name === 'diagram') return true;
   return name === 'htmlBlock' && isComment(node);
 }
 
@@ -323,6 +324,15 @@ function nodeSerializers(scratch: Scratch): NodeSerializers {
 
     pageEmbed: (state, node) => {
       state.write(`![[${stringAttr(node.attrs['target']) ?? ''}]]`);
+      state.closeBlock(node);
+    },
+
+    // The destination and the label are written back raw: the block rule only claims a line
+    // that already has this exact shape, so nothing here needs escaping or a `<>` wrapper.
+    diagram: (state, node) => {
+      const src = stringAttr(node.attrs['src']) ?? '';
+      const label = rawStringAttr(node.attrs['label']) ?? '';
+      state.write(`![${label}](${src})`);
       state.closeBlock(node);
     },
 

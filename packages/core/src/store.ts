@@ -18,6 +18,7 @@ import {
   depth,
   isDescendantOf,
   isPageId,
+  mergeText,
   newPageId,
   notFound,
   pagePathToRelFile,
@@ -65,6 +66,7 @@ import { IndexMap, type IndexedPage } from './index-map.js';
 import { buildBacklinkIndex, createPageResolver, resolveWikilinks, type LinkedPage } from './links.js';
 import { consoleLogger, type Logger } from './logger.js';
 import { Mutex } from './mutex.js';
+import { RevHistory } from './rev-history.js';
 import { listSpaceSlugs } from './scan.js';
 import { parseSpaceFile, serializeSpaceFile } from './space-file.js';
 
@@ -231,6 +233,7 @@ export class ContentStore {
   // Fastify serves requests concurrently and every write below is a chain of awaits, so two
   // requests would otherwise interleave between the "is this free" check and the write.
   readonly #writes = new Mutex();
+  readonly #history = new RevHistory();
 
   constructor(options: ContentStoreOptions) {
     const dir = options.contentDir;
@@ -454,10 +457,13 @@ export class ContentStore {
 
   async #readPage(record: IndexedPage): Promise<Page> {
     const parsed = await this.#readParsed(record);
+    const rev = contentRev(parsed.body);
+    // Every rev a caller can hold came through here, so this is where the merge base is learnt.
+    this.#history.record(record.id, rev, parsed.body);
     return {
       ...toSummary({ ...record, frontmatter: parsed.frontmatter }),
       markdown: parsed.body,
-      rev: contentRev(parsed.body),
+      rev,
     };
   }
 
@@ -593,7 +599,7 @@ export class ContentStore {
     const record = this.#index.byId(id);
     if (record === undefined) throw notFound(`No page with id ${id}`);
     const current = await this.#readParsed(record);
-    this.#assertBaseRev(body, current);
+    const reconciled = this.#reconcileBody(id, body, current);
 
     const next: Frontmatter = { ...current.frontmatter };
     if (body.title !== undefined) next.title = body.title;
@@ -606,7 +612,7 @@ export class ContentStore {
     if (body.order === null) delete next.order;
     if (typeof body.order === 'number') next.order = body.order;
 
-    const nextBody = body.markdown === undefined ? current.body : normalizeBody(body.markdown);
+    const nextBody = reconciled ?? current.body;
     const wantsMove = body.path !== undefined && body.path !== record.path;
     const fieldsChanged = !frontmatterEqual(current.frontmatter, next);
     const changed = fieldsChanged || nextBody !== current.body || wantsMove;
@@ -620,17 +626,39 @@ export class ContentStore {
       await writeText(filePath, content);
     }
     await this.#index.rebuild();
-    return this.#pageById(id);
+    const saved = await this.#pageById(id);
+    this.#history.record(id, saved.rev, saved.markdown);
+    return saved;
   }
 
   /**
-   * Reject a body edit written against a stale copy. The caller gets the current text back so
-   * it can merge and retry. Edits that do not touch the body never conflict.
+   * Settle a body edit against whatever is on disk now. Returns the text to write, or null when
+   * the edit does not touch the body.
+   *
+   * A stale `baseRev` used to be refused outright. That is what made ten people typing into a
+   * storm of 409s: every writer but one was rejected on every keystroke, and the retry produced
+   * another write, which stole the next writer's base in turn. When the server still holds the
+   * text that `baseRev` named it can merge the two edits itself, which is what the browser was
+   * being asked to do anyway. Only a genuine overlap is refused.
    */
-  #assertBaseRev(body: UpdatePageInput, current: ParsedFile): void {
-    if (body.baseRev === undefined || body.markdown === undefined) return;
+  #reconcileBody(id: PageId, body: UpdatePageInput, current: ParsedFile): string | null {
+    if (body.markdown === undefined) return null;
+    const incoming = normalizeBody(body.markdown);
+    if (body.baseRev === undefined) return incoming;
+
     const rev = contentRev(current.body);
-    if (body.baseRev === rev) return;
+    // Remember the state we are about to compare against, and the one a refusal hands back.
+    // Without this a client that retries on the rev from its own 409 can never be merged, so
+    // the retry conflicts again, which is the loop that produced the storm.
+    this.#history.record(id, rev, current.body);
+    if (body.baseRev === rev) return incoming;
+
+    const base = this.#history.find(id, body.baseRev);
+    if (base !== null) {
+      const merged = mergeText(base, incoming, current.body);
+      if (merged.clean) return normalizeBody(merged.text);
+    }
+
     throw saveConflict('The page changed since this edit started', {
       markdown: current.body,
       rev,

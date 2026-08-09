@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { isPageId } from '@tablinum/shared';
 import { ContentStore } from '../src/store.js';
+import { DEFAULT_HISTORY_DEPTH } from '../src/rev-history.js';
 import { parse } from '../src/frontmatter.js';
 import { silentLogger } from '../src/logger.js';
 import {
@@ -449,14 +450,76 @@ describe('updatePage with baseRev', () => {
     expect(next.markdown).toBe('from the other tab');
   });
 
-  it('rejects even a save of the identical body, and the client sorts it out', async () => {
+  it('accepts a stale save of the identical body', async () => {
     const page = await store.createPage({ path: 'docs/guide', title: 'Guide', markdown: 'one' });
     await store.updatePage(page.id, { markdown: 'same text' });
-    // The rule is about the revision, not the bytes. The caller compares the two copies itself.
+    // Both people arrived at the same text. There is nothing to tell them about.
+    const next = await store.updatePage(page.id, { markdown: 'same text', baseRev: page.rev });
+    expect(next.markdown).toBe('same text');
+  });
+
+  it('merges a stale edit that does not overlap what landed meanwhile', async () => {
+    const page = await store.createPage({
+      path: 'docs/guide',
+      title: 'Guide',
+      markdown: 'alpha\nbravo\ncharlie',
+    });
+    await store.updatePage(page.id, { markdown: 'ALPHA\nbravo\ncharlie' });
+
+    const next = await store.updatePage(page.id, {
+      markdown: 'alpha\nbravo\nCHARLIE',
+      baseRev: page.rev,
+    });
+    expect(next.markdown).toBe('ALPHA\nbravo\nCHARLIE');
+  });
+
+  it('still refuses a stale edit that overlaps what landed meanwhile', async () => {
+    const page = await store.createPage({
+      path: 'docs/guide',
+      title: 'Guide',
+      markdown: 'alpha\nbravo\ncharlie',
+    });
+    await store.updatePage(page.id, { markdown: 'alpha\nTHEIRS\ncharlie' });
+
     const failed = await codeOf(() =>
-      store.updatePage(page.id, { markdown: 'same text', baseRev: page.rev }),
+      store.updatePage(page.id, { markdown: 'alpha\nOURS\ncharlie', baseRev: page.rev }),
     );
     expect(failed).toBe('CONFLICT');
+  });
+
+  it('refuses a stale edit whose base the server no longer remembers', async () => {
+    const page = await store.createPage({ path: 'docs/guide', title: 'Guide', markdown: 'one' });
+    const stale = page.rev;
+    // Push the base out of the ring, so there is nothing to merge against.
+    for (let i = 0; i < DEFAULT_HISTORY_DEPTH + 2; i += 1) {
+      await store.updatePage(page.id, { markdown: `body ${i}` });
+    }
+
+    const failed = await codeOf(() =>
+      store.updatePage(page.id, { markdown: 'mine', baseRev: stale }),
+    );
+    expect(failed).toBe('CONFLICT');
+  });
+
+  it('lets many concurrent writers on separate lines all land', async () => {
+    const writers = 12;
+    const seed = Array.from({ length: writers }, (_, i) => `w${i}:`).join('\n');
+    const page = await store.createPage({ path: 'docs/guide', title: 'Guide', markdown: seed });
+
+    // Every writer starts from the same rev, which is the case this whole path exists for.
+    const results = await Promise.allSettled(
+      Array.from({ length: writers }, (_, i) => {
+        const lines = seed.split('\n');
+        lines[i] = `w${i}: edited`;
+        return store.updatePage(page.id, { markdown: lines.join('\n'), baseRev: page.rev });
+      }),
+    );
+    expect(results.every((result) => result.status === 'fulfilled')).toBe(true);
+
+    const final = await store.getPageById(page.id);
+    for (let i = 0; i < writers; i += 1) {
+      expect(final?.markdown).toContain(`w${i}: edited`);
+    }
   });
 
   it('lets an edit through when no baseRev is given at all', async () => {

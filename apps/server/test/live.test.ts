@@ -47,9 +47,14 @@ function user(id: string, name: string): LiveUser {
   return { id, name, color: '#3b82f6' };
 }
 
-function join(hub: LiveHub, id: string, now = 1_000): { socket: FakeSocket; client: ReturnType<LiveHub['join']> } {
+function join(
+  hub: LiveHub,
+  id: string,
+  identity: LiveUser | null = null,
+  now = 1_000,
+): { socket: FakeSocket; client: ReturnType<LiveHub['join']> } {
   const socket = new FakeSocket();
-  const client = hub.join(id, asSocket(socket), now);
+  const client = hub.join(id, asSocket(socket), identity, now);
   return { socket, client };
 }
 
@@ -78,19 +83,55 @@ describe('LiveHub', () => {
     expect(socket.sent[0]).toEqual({ type: 'welcome', clientId: 'tab-a' });
   });
 
-  it('replaces a tab that reconnects with the same id', () => {
+  it('replaces a tab that reconnects with the same id, and closes the old socket', () => {
     const hub = new LiveHub(LOG);
-    const first = join(hub, 'tab-a');
-    const second = join(hub, 'tab-a');
+    const me = user('u1', 'Quiet Otter');
+    const first = join(hub, 'tab-a', me);
+    const second = join(hub, 'tab-a', me);
     expect(hub.size).toBe(1);
-    expect(first.socket.closed).toBe(false);
+    // The displaced tab is told, so it reconnects instead of typing into a dead socket.
+    expect(first.socket.closed).toBe(true);
+    expect(second.client.id).toBe('tab-a');
     expect(second.socket.sent[0]?.type).toBe('welcome');
+  });
+
+  it('never hands one person a tab id another person holds', () => {
+    const hub = new LiveHub(LOG);
+    const victim = join(hub, 'tab-a', user('u1', 'Quiet Otter'));
+    const thief = join(hub, 'tab-a', user('u2', 'Bright Lynx'));
+
+    expect(hub.size).toBe(2);
+    expect(victim.socket.closed).toBe(false);
+    expect(thief.client.id).not.toBe('tab-a');
+    expect(thief.socket.sent[0]).toEqual({ type: 'welcome', clientId: thief.client.id });
+  });
+
+  it('shows the person the credential names, not the one the hello frame claims', () => {
+    const hub = new LiveHub(LOG);
+    const a = join(hub, 'tab-a', user('u1', 'Quiet Otter'));
+
+    send(hub, a.client, { type: 'hello', user: user('us_victim', 'Alice Chen') });
+    send(hub, a.client, { type: 'watch', path: 'eng/deploy' });
+
+    expect(hub.presence('eng/deploy')).toEqual([
+      { ...user('u1', 'Quiet Otter'), editing: false, agent: null },
+    ]);
+  });
+
+  it('leaves a tab with no account out of presence, whatever it says hello with', () => {
+    const hub = new LiveHub(LOG);
+    const a = join(hub, 'tab-a');
+
+    send(hub, a.client, { type: 'hello', user: user('us_victim', 'Alice Chen') });
+    send(hub, a.client, { type: 'watch', path: 'eng/deploy' });
+
+    expect(hub.presence('eng/deploy')).toEqual([]);
   });
 
   it('lists everyone who introduced themselves and watches the page', () => {
     const hub = new LiveHub(LOG);
-    const a = join(hub, 'tab-a');
-    const b = join(hub, 'tab-b');
+    const a = join(hub, 'tab-a', user('u1', 'Quiet Otter'));
+    const b = join(hub, 'tab-b', user('u2', 'Bright Lynx'));
 
     send(hub, a.client, { type: 'hello', user: user('u1', 'Quiet Otter') });
     send(hub, a.client, { type: 'watch', path: 'eng/deploy' });
@@ -110,15 +151,15 @@ describe('LiveHub', () => {
 
   it('leaves out a tab that never said hello', () => {
     const hub = new LiveHub(LOG);
-    const a = join(hub, 'tab-a');
+    const a = join(hub, 'tab-a', user('u1', 'Quiet Otter'));
     send(hub, a.client, { type: 'watch', path: 'eng/deploy' });
     expect(hub.presence('eng/deploy')).toEqual([]);
   });
 
   it('tells the other tabs when someone starts editing', () => {
     const hub = new LiveHub(LOG);
-    const a = join(hub, 'tab-a');
-    const b = join(hub, 'tab-b');
+    const a = join(hub, 'tab-a', user('u1', 'u1'));
+    const b = join(hub, 'tab-b', user('u2', 'u2'));
     for (const [tab, id] of [
       [a, 'u1'],
       [b, 'u2'],
@@ -139,7 +180,7 @@ describe('LiveHub', () => {
 
   it('clears the editing flag when a tab moves to another page', () => {
     const hub = new LiveHub(LOG);
-    const a = join(hub, 'tab-a');
+    const a = join(hub, 'tab-a', user('u1', 'u1'));
     send(hub, a.client, { type: 'hello', user: user('u1', 'u1') });
     send(hub, a.client, { type: 'watch', path: 'eng/deploy' });
     send(hub, a.client, { type: 'editing', editing: true });
@@ -212,8 +253,8 @@ describe('LiveHub', () => {
 
   it('drops a tab that stopped answering and tells the page it was on', () => {
     const hub = new LiveHub(LOG);
-    const a = join(hub, 'tab-a', 0);
-    const b = join(hub, 'tab-b', 0);
+    const a = join(hub, 'tab-a', user('u1', 'u1'), 0);
+    const b = join(hub, 'tab-b', user('u2', 'u2'), 0);
     for (const [tab, id] of [
       [a, 'u1'],
       [b, 'u2'],
@@ -257,7 +298,7 @@ describe('agents on a page', () => {
 
   /** A tab that says hello and watches `path`, which is what makes it hear presence. */
   function watcher(hub: LiveHub, id: string, path: string, now = 1_000) {
-    const tab = join(hub, id, now);
+    const tab = join(hub, id, user(id, id), now);
     send(hub, tab.client, { type: 'hello', user: user(id, id) }, now);
     send(hub, tab.client, { type: 'watch', path }, now);
     return tab;

@@ -21,6 +21,7 @@ import { createSlackApi, type SlackApi } from './slack.js';
 import { registerAgentRoutes } from './routes/agents.js';
 import { registerAssetRoutes, MAX_ASSET_BYTES } from './routes/assets.js';
 import { registerAuthRoutes } from './routes/auth.js';
+import { registerEmojiRoutes } from './routes/emoji.js';
 import { registerGitRoutes } from './routes/git.js';
 import { registerHealthRoutes } from './routes/health.js';
 import { registerInviteRoutes } from './routes/invites.js';
@@ -145,6 +146,7 @@ export async function buildApp(deps: ServerDeps): Promise<FastifyInstance> {
   registerWorkspaceRoutes(app, ctx);
   registerInviteRoutes(app, ctx);
   registerAgentRoutes(app, ctx);
+  registerEmojiRoutes(app, ctx);
   registerSpaceRoutes(app, ctx);
   registerTreeRoutes(app, ctx);
   registerPageRoutes(app, ctx);

@@ -333,7 +333,7 @@ export interface WorkspaceMember { account: Account; role: WorkspaceRole }
 Helpers in the same file: `workspaceSlugOf(name)`, `workspaceExportName(slug)` -> `<slug>.zip`,
 `newWorkspaceId()`, `isWorkspaceId(value)`.
 
-`packages/shared/src/comments.ts` — the conversation about a page, never the page itself:
+`packages/shared/src/comments.ts` holds the conversation about a page, never the page itself:
 
 ```ts
 export const THREAD_ID_PREFIX = 'ct_';

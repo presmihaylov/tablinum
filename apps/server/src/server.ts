@@ -271,12 +271,19 @@ export async function commitOrphanedWrites(
   }
 }
 
+/** The real content, git and search parts, plus the engines behind them. */
+export interface RealDeps {
+  deps: ServerDeps;
+  git: CoreGitEngine;
+  search: CoreSearchIndex;
+  accounts: AccountStore;
+}
+
 /**
- * Build every real dependency, wire them together and listen.
- * Order matters: the store must exist before git initializes the repo around it, the index
- * is built from the store, and the watcher only starts once the index is consistent.
+ * Every real dependency, unstarted. `start()` uses it, and so does the load test, which needs
+ * the same stack a deployment runs rather than the doubles the unit suite injects.
  */
-export async function start(config: Config = loadConfig()): Promise<RunningServer> {
+export function buildRealDeps(config: Config): RealDeps {
   const coreStore = new CoreContentStore({ contentDir: config.contentDir });
   const coreGit = CoreGitEngine.fromConfig(config);
   const coreSearch = new CoreSearchIndex({ dbPath: defaultDbPath(config.contentDir) });
@@ -295,6 +302,16 @@ export async function start(config: Config = loadConfig()): Promise<RunningServe
     version: VERSION,
     trustProxy: config.trustProxy,
   };
+  return { deps, git: coreGit, search: coreSearch, accounts };
+}
+
+/**
+ * Build every real dependency, wire them together and listen.
+ * Order matters: the store must exist before git initializes the repo around it, the index
+ * is built from the store, and the watcher only starts once the index is consistent.
+ */
+export async function start(config: Config = loadConfig()): Promise<RunningServer> {
+  const { deps, git: coreGit, accounts } = buildRealDeps(config);
 
   await deps.store.init();
   await deps.git.init();

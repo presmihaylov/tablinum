@@ -6,6 +6,7 @@ import type { Editor } from '@tiptap/core';
 import type { Transaction } from '@tiptap/pm/state';
 import { buildExtensions } from '../../src/editor/extensions';
 import type { DiagramRequest, MentionItem, WikilinkItem } from '../../src/editor/extensions';
+import { ThemeProvider } from '../../src/lib/theme';
 import { MarkMenu } from '../../src/editor/ui/MarkMenu';
 import { TableControls } from '../../src/editor/ui/TableControls';
 import { TableMenu } from '../../src/editor/ui/TableMenu';
@@ -33,6 +34,8 @@ export interface MountOptions {
   onPickVideo?: () => void;
   onPickPage?: () => void;
   editDiagram?: (request: DiagramRequest) => void;
+  /** False mounts the editor the way a reader sees it. Defaults to true. */
+  editable?: boolean;
 }
 
 function Harness({
@@ -53,6 +56,7 @@ function Harness({
       ...(options.editDiagram ? { editDiagram: options.editDiagram } : {}),
     }),
     content: options.content ?? '',
+    editable: options.editable ?? true,
   });
   const canvas = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -70,11 +74,16 @@ function Harness({
 
 /**
  * A really mounted editor. Menus and suggestion popovers are React components,
- * so they only exist once the editor lives in the document.
+ * so they only exist once the editor lives in the document. The theme provider is
+ * there because node views may paint themselves differently in each theme.
  */
 export async function mountEditor(options: MountOptions = {}): Promise<Editor> {
   let found: Editor | null = null;
-  render(<Harness options={options} onReady={(instance) => (found = instance)} />);
+  render(
+    <ThemeProvider>
+      <Harness options={options} onReady={(instance) => (found = instance)} />
+    </ThemeProvider>,
+  );
   await waitFor(() => expect(found).not.toBeNull());
   return found as unknown as Editor;
 }
@@ -107,6 +116,15 @@ export async function hoverTable(editor: Editor): Promise<void> {
 export async function settle(work: () => void): Promise<void> {
   await act(async () => {
     work();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+}
+
+/** Like `settle`, but also waits a frame: tiptap moves focus inside `requestAnimationFrame`. */
+export async function settleFrame(work: () => void): Promise<void> {
+  await act(async () => {
+    work();
+    await new Promise((resolve) => requestAnimationFrame(resolve));
     await new Promise((resolve) => setTimeout(resolve, 0));
   });
 }

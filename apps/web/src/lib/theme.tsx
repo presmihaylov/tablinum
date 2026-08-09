@@ -71,3 +71,11 @@ export function useTheme(): ThemeContextValue {
   if (!value) throw new Error('useTheme must be used inside <ThemeProvider>');
   return value;
 }
+
+/**
+ * The theme actually painted, for a component that may also be mounted on its own,
+ * outside the provider. The tokens are written light first, so light is the fallback.
+ */
+export function useResolvedTheme(): 'light' | 'dark' {
+  return useContext(ThemeContext)?.resolved ?? 'light';
+}

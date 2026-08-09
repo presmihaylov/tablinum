@@ -14,14 +14,17 @@
     "dev:plain": "concurrently -k -n server,web -c blue,magenta \"pnpm --filter @tablinum/server dev\" \"pnpm --filter @tablinum/web dev\"",
     "seed": "pnpm --filter @tablinum/shared build && tsx scripts/seed.ts",
     "build": "pnpm -r --sequential build",
-    "typecheck": "pnpm -r typecheck",
+    "typecheck": "pnpm -r typecheck && tsc --noEmit -p e2e/tsconfig.json",
     "test": "pnpm -r test",
     "test:load": "pnpm --filter @tablinum/server test:load",
+    "e2e": "playwright test --config e2e/playwright.config.ts",
+    "e2e:ui": "playwright test --config e2e/playwright.config.ts --ui",
     "lint": "pnpm -r lint",
     "clean": "pnpm -r exec rm -rf dist tsconfig.tsbuildinfo",
     "docker:build": "docker build -f deploy/Dockerfile -t tablinum:latest ."
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@types/node": "^22.15.3",
     "concurrently": "^9.1.2",
     "tsx": "^4.19.3",

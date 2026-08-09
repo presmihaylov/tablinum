@@ -116,7 +116,37 @@ pnpm build       # build every package
 pnpm typecheck   # strict tsc across the workspace
 pnpm test        # vitest across the workspace
 pnpm dev         # API and web together, with reload
+pnpm e2e         # playwright browser tests, see below
 ```
+
+### End-to-end tests
+
+`e2e/` drives a real browser against a real server: the built `apps/server/dist/server.js`
+serving the built `apps/web/dist`, over a content repo of its own. Install the browser once:
+
+```bash
+pnpm exec playwright install chromium
+```
+
+Then run the suite:
+
+```bash
+pnpm e2e                          # the whole suite
+pnpm e2e e2e/search.spec.ts       # one spec file
+pnpm e2e --headed --debug         # watch it, or step through it
+pnpm e2e:ui                       # the playwright UI runner
+```
+
+Playwright starts and stops the server itself, and builds the workspace first when `dist` is
+missing. Every run begins from an empty content repo, an empty `accounts.db` and a fresh admin
+account, so no test depends on what the last run left.
+
+- `TABLINUM_E2E_PORT=4310 pnpm e2e` moves the run to another port. The port names the server, the
+  content directory and the saved session, so two runs on two ports never collide.
+- `TABLINUM_E2E_SERVER_LOG=1 pnpm e2e` shows the server log, which is hidden by default.
+- A failed test keeps a trace and a screenshot in `test-results/`. Replay one with
+  `pnpm exec playwright show-trace test-results/<test>/trace.zip`, or open the whole run with
+  `pnpm exec playwright show-report`. A green run leaves the report only.
 
 ## Live collaboration
 

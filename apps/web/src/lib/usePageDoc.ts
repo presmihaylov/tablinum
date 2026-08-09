@@ -187,6 +187,10 @@ export function usePageDoc(page: Page | undefined): PageDocHandle {
     if (pageId === undefined) return;
     return live.subscribePage(pageId, (message) => {
       if (message.rev === docRef.current?.rev) return;
+      // The broadcast goes out before the PATCH reply does, so this tab hears about its own save
+      // while it still holds the old rev. Fetching then races the reply and re-saves against a
+      // rev that has already moved, which is how one person typing produced a run of 409s.
+      if (message.source === 'api' && message.by === myClientId()) return;
       void pullRemote(pageId, message.source === 'pull');
     });
   }, [pageId, live.subscribePage, pullRemote]);

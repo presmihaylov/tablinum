@@ -154,3 +154,24 @@ export function assetRelPath(pageId: PageId, filename: string): string {
 export function assetUrl(pageId: PageId, filename: string): string {
   return `/${assetRelPath(pageId, filename)}`;
 }
+
+/**
+ * Suffix of a diagram attachment. The file is an SVG with the drawing's own scene embedded
+ * in it, so one attachment is both the picture every markdown reader shows and the scene
+ * the editor reopens. Two extensions, so `extname` alone never splits it correctly.
+ */
+export const DIAGRAM_EXT = '.excalidraw.svg';
+
+/** True when an attachment name or URL names a diagram rather than a plain image. */
+export function isDiagramPath(path: string): boolean {
+  return path.length > DIAGRAM_EXT.length && path.toLowerCase().endsWith(DIAGRAM_EXT);
+}
+
+const ASSET_URL_RE = new RegExp(`^/${ASSETS_DIR}/([^/?#]+)/([^/?#]+)$`);
+
+/** Split an attachment URL back into the page that holds it and its filename. */
+export function parseAssetUrl(url: string): { pageId: PageId; filename: string } | null {
+  const match = ASSET_URL_RE.exec(url);
+  if (match === null) return null;
+  return { pageId: match[1] ?? '', filename: match[2] ?? '' };
+}

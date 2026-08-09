@@ -257,6 +257,11 @@ interface SessionRow {
 const USER_COLUMNS =
   'id, email, name, handle, role, color, password_hash, avatar_rev, disabled, created, updated';
 
+// `role` and `created` also exist on workspace_members, so a join has to say which table it means.
+const USER_COLUMNS_QUALIFIED = USER_COLUMNS.split(', ')
+  .map((column) => `u.${column}`)
+  .join(', ');
+
 const AGENT_COLUMNS =
   'id, name, handle, identity, workspace_id, disabled, created, updated, last_used';
 
@@ -728,7 +733,7 @@ export class AccountStore {
   listUsersIn(workspaceId: string): Account[] {
     const rows = this.#handle
       .prepare(
-        `SELECT ${USER_COLUMNS.split(', ').map((column) => `u.${column}`).join(', ')}
+        `SELECT ${USER_COLUMNS_QUALIFIED}
          FROM users u
          JOIN workspace_members m ON m.user_id = u.id
          WHERE m.workspace_id = ?

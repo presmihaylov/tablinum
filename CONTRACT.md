@@ -94,9 +94,14 @@ unique only inside the one that holds it.
 - Every other workspace lives at `<parent of content dir>/workspaces/<slug>/` and is opened
   lazily, on the first request that names it. Its search index is `<that directory>.search.db`.
 - A new workspace starts with one space, `general`, and its home page.
-- MEMBERSHIP: `workspace_members` in `accounts.db`, role `admin` or `member`. A person with no row
-  anywhere belongs to the first workspace, so a single-workspace install never sees membership at
-  all. An install admin (`role: 'admin'`, or a bearer token) reaches every workspace.
+- MEMBERSHIP: `workspace_members` in `accounts.db`, role `admin` or `member`. Membership is never
+  inferred: a person with no row anywhere reaches nothing, so removing somebody from their last
+  workspace revokes access instead of moving them to another. Every path that makes an account
+  writes the row: setup, an invite, and the back-fill for an install that predates workspaces. An
+  install admin (`role: 'admin'`, or a bearer token) still reaches every workspace, and an agent
+  token reaches exactly the one it was issued for.
+- Removing a member destroys their sessions. A workspace admin may not remove themselves, and the
+  last admin of a workspace may not be removed: both answer 409.
 - Deleting a workspace forgets it and its members. The files stay on disk: export first.
 
 WHICH WORKSPACE A REQUEST IS ABOUT, in order:
@@ -113,7 +118,11 @@ A named workspace the caller may not open answers `UNAUTHORIZED` for a signed-in
 EXPORT AND IMPORT: an export is a zip of the whole workspace directory, `.git` included, so every
 page and its full history travel with it. The server commits what is pending before it packs.
 An import unpacks the zip into a new directory, registers a new workspace and opens it, so the
-same archive may be imported many times and gets a fresh slug each time. A zip with one directory
+same archive may be imported many times and gets a fresh slug each time. It keeps only the git
+metadata that carries history (`.git/objects`, `.git/refs`, `HEAD`, `packed-refs`) and drops the
+rest, config and hooks included, because git would run those as the server. Every extracted file
+lands `0o644` and every directory `0o755`, whatever mode the archive claimed. Opening the imported
+workspace rewrites the local git config, so the history survives the drop. A zip with one directory
 at its top is unwrapped, so an archive made by another tool still works. Cap: 256 MB.
 
 ## FRONTMATTER
@@ -203,7 +212,7 @@ export interface Revision { sha: string; author: string; email: string; date: st
 
 export interface GitStatus {
   branch: string; ahead: number; behind: number;
-  dirtyFiles: string[]; remote: string | null; lastCommit: Revision | null;
+  dirtyFiles: string[]; remote: string | null; lastCommit: Revision | null;   // remote: no user:password
   conflict: GitConflict | null;   // set while a pull is blocked on a rebase it cannot finish
 }
 
@@ -368,7 +377,8 @@ holds no inline script: the theme is painted by `apps/web/public/theme.js`. The 
 video players in `apps/web/src/editor/embeds.ts`.
 
 ```
-GET    /api/v1/health                          -> { ok: true, version, contentDir }
+GET    /api/v1/health                          (public) -> { ok: true }
+                                               with any credential -> { ok: true, version, contentDir }
 POST   /api/v1/auth/login                      body { email, password } -> cookie, { ok: true, user: Account }
 POST   /api/v1/auth/logout                     -> { ok: true }
 GET    /api/v1/auth/state                      (public) -> { setupRequired, user: Account | null }
@@ -393,7 +403,9 @@ POST   /api/v1/me/slack                        body { slackUserId? } -> the same
                                                 bot token; 404 when Slack knows no such address)
 DELETE /api/v1/me/slack                        -> the same state, disconnected
 
-GET    /api/v1/users                           -> { users: Account[] }
+GET    /api/v1/users                           account only -> { users: Account[] }
+                                               (an admin reads the install, everybody else reads
+                                                the people in this workspace)
 GET    /api/v1/users/:id/avatar                ?v=<rev> -> the image bytes, immutable cache, 404 when none
 PATCH  /api/v1/users/:id                       admin, body { name?, role?, disabled? } -> { user: Account }
 DELETE /api/v1/users/:id                       admin -> { ok: true }   (409 on yourself)
@@ -433,12 +445,16 @@ PATCH  /api/v1/workspaces/:id                  workspace admin, body { name?, sl
 DELETE /api/v1/workspaces/:id                  admin -> { ok: true }
                                                (400 on the workspace the server was started with and
                                                 on the last one; the files stay on disk)
-GET    /api/v1/workspaces/:id/members          -> { members: WorkspaceMember[] }
+GET    /api/v1/workspaces/:id/members          account only -> { members: WorkspaceMember[] }
 POST   /api/v1/workspaces/:id/members          workspace admin, body { userId, role? } -> { ok: true }
 PATCH  /api/v1/workspaces/:id/members/:userId  workspace admin, body { role } -> { ok: true }
 DELETE /api/v1/workspaces/:id/members/:userId  workspace admin -> { ok: true }
+                                               (409 on yourself and on the last admin; the removed
+                                                person's sessions are destroyed)
 GET    /api/v1/workspaces/:id/export           workspace admin -> the zip bytes, `application/zip`,
                                                `content-disposition: attachment; filename="<slug>.zip"`
+                                               (it commits first, so `sec-fetch-site: cross-site`
+                                                answers 401: open the link from the app itself)
 POST   /api/v1/workspaces/import               admin, multipart file + optional field `name`
                                                (or ?name=) -> 201 { workspace: Workspace }
                                                (name falls back to the file name; the slug is always free)
@@ -474,9 +490,13 @@ GET    /api/v1/git/status                      -> { status: GitStatus }
 POST   /api/v1/git/pull                        -> { status: GitStatus, pulled: number }
 POST   /api/v1/git/push                        -> { status: GitStatus, pushed: boolean }
 POST   /api/v1/git/commit                      body { message? } -> { sha: string | null }
+                                               (a message is at most 2000 chars and carries no
+                                                control bytes: the git log is parsed on those)
 GET    /api/v1/git/conflict                    -> { conflict: GitConflict | null, files: ConflictFile[] }
-POST   /api/v1/git/resolve                     body { files: Array<{ file, content }>, message? }
-                                               -> { status: GitStatus, resolved: string[] }
+POST   /api/v1/git/resolve                     workspace admin, body { files: Array<{ file, content }>,
+                                               message? } -> { status: GitStatus, resolved: string[] }
+                                               (each `file` is repo-relative, never under `.git`, and
+                                                must be one git itself reported as conflicted)
 
 POST   /api/v1/assets                          multipart -> { url, path }
 
@@ -509,7 +529,8 @@ A client must send `content-type: application/json` and accept both `application
 
 One WebSocket per browser tab, at `/api/v1/live`. The tab id travels as `?client=` on the
 upgrade and as the `x-tablinum-client` header on every REST call, because a browser cannot set
-a header on an upgrade. `?workspace=` travels with it for the same reason. A broadcast reaches
+a header on an upgrade. The id is a proposal: the `welcome` frame names the id the server kept,
+and a tab asking for an id another person holds is given a fresh one instead of taking it over. `?workspace=` travels with it for the same reason. A broadcast reaches
 every tab in THAT workspace, the originator included; `by` names the tab that caused it, so that
 tab ignores its own echo. Each workspace has its own hub and its own rooms.
 
@@ -523,6 +544,8 @@ interface LiveAgent { id: string; name: string; handle: string }
 // client -> server
 type ClientMessage =
   | { type: 'hello'; user: LiveUser }              // sent again after a sign-in, without a reconnect
+                                                  // the `user` is ignored: the credential names the
+                                                  // tab, so a machine credential shows no chip
   | { type: 'watch'; path: PagePath | null }
   | { type: 'editing'; editing: boolean }
   | { type: 'ping' }

@@ -507,6 +507,7 @@ All configuration comes from environment variables. See `.env.example` for the a
 | `TABLINUM_AUTOPUSH_MS` | `5000` | Quiet period after a commit before the push; `0` disables it |
 | `TABLINUM_SLACK_BOT_TOKEN` | - | Slack bot token; unset turns mention notifications off |
 | `TABLINUM_PUBLIC_URL` | - | Public origin, used for the link inside a notification |
+| `TABLINUM_TRUST_PROXY` | `false` | Trust `X-Forwarded-Proto` and `X-Forwarded-For`. Turn it on behind a reverse proxy, or the session cookie never gets `Secure`. The Docker image defaults it to `true` |
 
 ## Contributing
 

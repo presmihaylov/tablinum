@@ -293,6 +293,7 @@ export async function start(config: Config = loadConfig()): Promise<RunningServe
     openWorkspace: openRealWorkspace(config),
     workspacesDir: resolve(config.contentDir, '..', 'workspaces'),
     version: VERSION,
+    trustProxy: config.trustProxy,
   };
 
   await deps.store.init();

@@ -61,6 +61,16 @@ describe('loadConfig overrides', () => {
     expect(config.autopushMs).toBe(0);
   });
 
+  it('reads every spelling of a boolean, and stays off by default', () => {
+    expect(loadConfig({}).trustProxy).toBe(false);
+    for (const value of ['1', 'true', 'TRUE', 'yes', 'on']) {
+      expect(loadConfig({ TABLINUM_TRUST_PROXY: value }).trustProxy).toBe(true);
+    }
+    for (const value of ['0', 'false', 'no', 'off']) {
+      expect(loadConfig({ TABLINUM_TRUST_PROXY: value }).trustProxy).toBe(false);
+    }
+  });
+
   it('treats an empty variable as unset', () => {
     expect(loadConfig({ TABLINUM_GIT_BRANCH: '   ' }).gitBranch).toBe('main');
     expect(loadConfig({ TABLINUM_API_TOKENS: '  ' }).apiTokens).toEqual([]);
@@ -79,6 +89,7 @@ describe('loadConfig validation', () => {
     ['author email without @', { TABLINUM_GIT_AUTHOR_EMAIL: 'tablinum' }],
     ['short session secret', { TABLINUM_SESSION_SECRET: 'short' }],
     ['negative autocommit', { TABLINUM_AUTOCOMMIT_MS: '-1' }],
+    ['unreadable boolean', { TABLINUM_TRUST_PROXY: 'maybe' }],
   ];
 
   it.each(bad)('throws on %s', (_label, env) => {

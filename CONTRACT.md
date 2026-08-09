@@ -542,3 +542,4 @@ Read from env, all packages use `@tablinum/shared`'s `loadConfig()`:
 | `TABLINUM_AUTOPUSH_MS` | quiet period after a commit before the push, default `5000`, `0` = off |
 | `TABLINUM_SLACK_BOT_TOKEN` | Slack bot token. Unset turns mention notifications off |
 | `TABLINUM_PUBLIC_URL` | origin used in a notification link, e.g. `https://docs.example.com` |
+| `TABLINUM_TRUST_PROXY` | trust `X-Forwarded-*`, default `false`. Behind a TLS-terminating proxy this is what marks the session cookie `Secure` and gives the login throttle a real client address. The Docker image defaults it to `true` |

@@ -1,4 +1,4 @@
-import type { Page, TreeNode } from '@gitdocs/shared';
+import { contentRev, type Page, type TreeNode } from '@gitdocs/shared';
 import type { SpaceTree } from '../src/lib/tree';
 
 let counter = 0;
@@ -28,6 +28,7 @@ export function space(slug: string, tree: TreeNode[]): SpaceTree {
 
 export function page(overrides: Partial<Page> = {}): Page {
   const path = overrides.path ?? 'eng/deploy';
+  const markdown = overrides.markdown ?? '# Deploy\n';
   return {
     id: overrides.id ?? fakeId('deploy'),
     path,
@@ -35,7 +36,8 @@ export function page(overrides: Partial<Page> = {}): Page {
     title: overrides.title ?? 'Deploy',
     created: overrides.created ?? '2026-01-01T00:00:00.000Z',
     updated: overrides.updated ?? '2026-01-02T00:00:00.000Z',
-    markdown: overrides.markdown ?? '# Deploy\n',
+    markdown,
+    rev: overrides.rev ?? contentRev(markdown),
     filePath: overrides.filePath ?? `/content/${path}.md`,
     hasChildren: overrides.hasChildren ?? false,
     ...(overrides.icon === undefined ? {} : { icon: overrides.icon }),

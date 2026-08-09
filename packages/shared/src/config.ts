@@ -10,6 +10,7 @@ export const DEFAULT_GIT_AUTHOR_NAME = 'gitdocs';
 export const DEFAULT_GIT_AUTHOR_EMAIL = 'gitdocs@localhost';
 export const DEFAULT_AUTOCOMMIT_MS = 5000;
 export const DEFAULT_AUTOPULL_MS = 60000;
+export const DEFAULT_AUTOPUSH_MS = 5000;
 
 /** Every environment variable gitdocs reads. */
 export const ENV_KEYS = [
@@ -24,6 +25,7 @@ export const ENV_KEYS = [
   'GITDOCS_GIT_AUTHOR_EMAIL',
   'GITDOCS_AUTOCOMMIT_MS',
   'GITDOCS_AUTOPULL_MS',
+  'GITDOCS_AUTOPUSH_MS',
 ] as const;
 
 export type EnvKey = (typeof ENV_KEYS)[number];
@@ -111,6 +113,7 @@ export function loadConfig(env: EnvSource = process.env): Config {
     gitAuthorEmail,
     autocommitMs: readInt(env, 'GITDOCS_AUTOCOMMIT_MS', DEFAULT_AUTOCOMMIT_MS, 0, 3600000),
     autopullMs: readInt(env, 'GITDOCS_AUTOPULL_MS', DEFAULT_AUTOPULL_MS, 0, 86400000),
+    autopushMs: readInt(env, 'GITDOCS_AUTOPUSH_MS', DEFAULT_AUTOPUSH_MS, 0, 3600000),
     openMode: apiTokens.length === 0 && password === null,
   };
 
@@ -144,6 +147,7 @@ export function redactConfig(config: Config): Record<string, string | number | b
     gitAuthorEmail: config.gitAuthorEmail,
     autocommitMs: config.autocommitMs,
     autopullMs: config.autopullMs,
+    autopushMs: config.autopushMs,
     openMode: config.openMode,
   };
 }

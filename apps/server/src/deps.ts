@@ -27,6 +27,21 @@ export interface ParsedPageFile {
   markdown: string;
 }
 
+/** The three versions of one file that a failed pull left behind. */
+export interface FileVersions {
+  /** Repo-relative path. */
+  file: string;
+  local: string;
+  remote: string;
+  base: string;
+}
+
+/** One caller decision: the exact text to keep for a conflicted file. */
+export interface FileResolution {
+  file: string;
+  content: string;
+}
+
 /** Filters accepted by the full-text index. */
 export interface SearchOptions {
   space?: string;
@@ -91,8 +106,14 @@ export interface GitEngine {
   init(): Promise<void>;
 
   status(): Promise<GitStatus>;
-  pull(): Promise<{ status: GitStatus; pulled: number }>;
+  pull(): Promise<{ status: GitStatus; pulled: number; files: string[] }>;
   push(): Promise<{ status: GitStatus; pushed: boolean }>;
+
+  /** Local, remote and base version of every file a failed pull could not merge. */
+  conflictVersions(): Promise<FileVersions[]>;
+
+  /** Commit the caller's text for every conflicted file and merge the remote in. */
+  resolveConflict(files: FileResolution[], message?: string): Promise<string[]>;
 
   /** Stage everything and commit. Returns null when the working tree is clean. */
   commit(message?: string): Promise<string | null>;

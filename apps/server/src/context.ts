@@ -1,11 +1,14 @@
 import type { FastifyInstance } from 'fastify';
 import type { ServerDeps } from './deps.js';
+import type { LiveHub } from './live.js';
 import type { Wiring } from './wiring.js';
 
 /** Everything a route module needs. Passed explicitly so nothing is decorated globally. */
 export interface RouteContext {
   deps: ServerDeps;
   wiring: Wiring;
+  /** Open browser tabs, so a change can be pushed to everyone looking at it. */
+  live: LiveHub;
   version: string;
 }
 

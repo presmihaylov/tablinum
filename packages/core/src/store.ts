@@ -13,6 +13,7 @@ import {
   assetUrl,
   baseName,
   conflict,
+  contentRev,
   depth,
   isDescendantOf,
   isPageId,
@@ -21,6 +22,7 @@ import {
   pagePathToRelFile,
   parentPath,
   parseOrThrow,
+  saveConflict,
   segments,
   spaceFileRelPath,
   spaceOf,
@@ -116,6 +118,8 @@ export interface UpdatePageInput {
   order?: number | null;
   /** A new path moves or renames the page and carries its children along. */
   path?: PagePath;
+  /** Revision the edit started from. Set it to make a body edit fail on a stale copy. */
+  baseRev?: string;
 }
 
 interface NewPageFields {
@@ -402,7 +406,11 @@ export class ContentStore {
 
   async #readPage(record: IndexedPage): Promise<Page> {
     const parsed = await this.#readParsed(record);
-    return { ...toSummary({ ...record, frontmatter: parsed.frontmatter }), markdown: parsed.body };
+    return {
+      ...toSummary({ ...record, frontmatter: parsed.frontmatter }),
+      markdown: parsed.body,
+      rev: contentRev(parsed.body),
+    };
   }
 
   async #pageById(id: PageId): Promise<Page> {
@@ -537,6 +545,7 @@ export class ContentStore {
     const record = this.#index.byId(id);
     if (record === undefined) throw notFound(`No page with id ${id}`);
     const current = await this.#readParsed(record);
+    this.#assertBaseRev(body, current);
 
     const next: Frontmatter = { ...current.frontmatter };
     if (body.title !== undefined) next.title = body.title;
@@ -564,6 +573,21 @@ export class ContentStore {
     }
     await this.#index.rebuild();
     return this.#pageById(id);
+  }
+
+  /**
+   * Reject a body edit written against a stale copy. The caller gets the current text back so
+   * it can merge and retry. Edits that do not touch the body never conflict.
+   */
+  #assertBaseRev(body: UpdatePageInput, current: ParsedFile): void {
+    if (body.baseRev === undefined || body.markdown === undefined) return;
+    const rev = contentRev(current.body);
+    if (body.baseRev === rev) return;
+    throw saveConflict('The page changed since this edit started', {
+      markdown: current.body,
+      rev,
+      updated: current.frontmatter.updated,
+    });
   }
 
   /** Move a page and, when it has children, its whole subtree. Returns the new file path. */

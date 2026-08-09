@@ -1,4 +1,5 @@
 import {
+  contentRev,
   newPageId,
   type GitStatus,
   type Page,
@@ -140,6 +141,7 @@ export function makePage(overrides: Partial<Page> = {}): Page {
     created: '2026-08-01T09:00:00.000Z',
     updated: '2026-08-08T10:00:00.000Z',
     markdown: 'The deploy runbook body.\n',
+    rev: contentRev('The deploy runbook body.\n'),
     filePath: `/content/${path}.md`,
     hasChildren: false,
     ...overrides,
@@ -147,7 +149,7 @@ export function makePage(overrides: Partial<Page> = {}): Page {
 }
 
 export function makeSummary(overrides: Partial<Page> = {}): PageSummary {
-  const { markdown: _markdown, ...summary } = makePage(overrides);
+  const { markdown: _markdown, rev: _rev, ...summary } = makePage(overrides);
   return summary;
 }
 
@@ -199,6 +201,7 @@ export function makeStatus(overrides: Partial<GitStatus> = {}): GitStatus {
     dirtyFiles: [],
     remote: 'git@example.com:acme/docs.git',
     lastCommit: makeRevision(),
+    conflict: null,
     ...overrides,
   };
 }

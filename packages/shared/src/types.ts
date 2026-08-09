@@ -25,12 +25,17 @@ export interface Page {
   created: string;
   updated: string;
   markdown: string; // body WITHOUT frontmatter
+  /**
+   * Fingerprint of `markdown`. A save sends the revision it started from, and the server
+   * rejects it when the file has moved on since. See contentRev() in merge.ts.
+   */
+  rev: string;
   filePath: string; // absolute path on disk
   hasChildren: boolean;
 }
 
 /** A page without its body. Used by the list and tree endpoints. */
-export type PageSummary = Omit<Page, 'markdown'>;
+export type PageSummary = Omit<Page, 'markdown' | 'rev'>;
 
 /** One node of the sidebar page tree. */
 export interface TreeNode {
@@ -68,6 +73,15 @@ export interface Revision {
   message: string;
 }
 
+/** A pull that could not be rebased, kept until the operator resolves it. */
+export interface GitConflict {
+  /** Repo-relative files the rebase could not merge. */
+  files: string[];
+  message: string;
+  /** ISO timestamp of the pull that failed. */
+  at: string;
+}
+
 /** State of the content repo working tree and its remote. */
 export interface GitStatus {
   branch: string;
@@ -76,6 +90,26 @@ export interface GitStatus {
   dirtyFiles: string[];
   remote: string | null;
   lastCommit: Revision | null;
+  /** Set while an upstream pull is blocked by conflicting local commits. */
+  conflict: GitConflict | null;
+}
+
+/** One conflicted file, with every version needed to resolve it. */
+export interface ConflictFile {
+  /** Repo-relative file path. */
+  file: string;
+  /** The page it holds, when the file is a page. */
+  path: PagePath | null;
+  title: string | null;
+  /** The version in the local branch. */
+  local: string;
+  /** The version on the remote branch. */
+  remote: string;
+  /** The version both branches started from. */
+  base: string;
+  /** Three-way merge of the three above, with conflict markers when it is not clean. */
+  merged: string;
+  clean: boolean;
 }
 
 /** A page that links to the page being inspected. */
@@ -94,9 +128,23 @@ export type ErrorCode =
   | 'GIT_ERROR'
   | 'INTERNAL';
 
+/** What a 409 from PATCH /pages/:id carries, so the client can merge instead of guessing. */
+export interface ConflictInfo {
+  /** The body the server holds right now. */
+  markdown: string;
+  /** Its revision, to send back with the merged save. */
+  rev: string;
+  updated: string;
+}
+
 /** Error envelope: every non-2xx REST response has this shape. */
 export interface ErrorBody {
-  error: { code: ErrorCode; message: string };
+  error: {
+    code: ErrorCode;
+    message: string;
+    /** Machine-readable context the client is expected to act on, e.g. a save conflict. */
+    info?: ConflictInfo;
+  };
 }
 
 /** Resolved, frozen runtime configuration. See loadConfig(). */
@@ -112,6 +160,8 @@ export interface Config {
   gitAuthorEmail: string;
   autocommitMs: number;
   autopullMs: number;
+  /** Quiet period after a commit before the branch is pushed. 0 disables the auto push. */
+  autopushMs: number;
   /** True when no token and no password are configured: the API is unauthenticated. */
   openMode: boolean;
 }

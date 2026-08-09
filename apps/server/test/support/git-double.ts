@@ -1,9 +1,10 @@
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
-import { gitError, type GitStatus, type Revision } from '@gitdocs/shared';
-import type { GitEngine } from '../../src/deps.js';
+import { gitError, type GitConflict, type GitStatus, type Revision } from '@gitdocs/shared';
+import type { FileResolution, FileVersions, GitEngine } from '../../src/deps.js';
 
 const run = promisify(execFile);
 
@@ -36,6 +37,10 @@ export class TestGitEngine implements GitEngine {
   #timer: NodeJS.Timeout | null = null;
   #pendingMessage: string | undefined;
   #chain: Promise<unknown> = Promise.resolve();
+
+  /** Set by a test to pretend a pull hit a conflict it could not rebase. */
+  conflict: GitConflict | null = null;
+  versions: FileVersions[] = [];
 
   constructor(
     readonly contentDir: string,
@@ -95,6 +100,7 @@ export class TestGitEngine implements GitEngine {
       dirtyFiles,
       remote: (await this.#tryGit(['remote', 'get-url', 'origin']))?.trim() ?? null,
       lastCommit: await this.#lastCommit(),
+      conflict: this.conflict,
     };
   }
 
@@ -154,8 +160,25 @@ export class TestGitEngine implements GitEngine {
     return this.#tryGit(['show', `${sha}:${relFile}`]);
   }
 
-  async pull(): Promise<{ status: GitStatus; pulled: number }> {
-    return { status: await this.status(), pulled: 0 };
+  async pull(): Promise<{ status: GitStatus; pulled: number; files: string[] }> {
+    return { status: await this.status(), pulled: 0, files: [] };
+  }
+
+  async conflictVersions(): Promise<FileVersions[]> {
+    return this.conflict === null ? [] : this.versions;
+  }
+
+  /** Write the caller's text, commit it and clear the pending conflict, like the real engine. */
+  async resolveConflict(files: FileResolution[], message?: string): Promise<string[]> {
+    for (const entry of files) {
+      const target = join(this.contentDir, entry.file);
+      await mkdir(dirname(target), { recursive: true });
+      await writeFile(target, entry.content, 'utf8');
+    }
+    await this.commit(message ?? 'docs: resolve conflicts with the remote');
+    this.conflict = null;
+    this.versions = [];
+    return files.map((entry) => entry.file);
   }
 
   async push(): Promise<{ status: GitStatus; pushed: boolean }> {

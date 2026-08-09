@@ -6,6 +6,7 @@ import {
   INDEX_BASENAME,
   PAGE_EXT,
   conflict,
+  contentRev,
   depth,
   internal,
   isDescendantOf,
@@ -14,6 +15,7 @@ import {
   pagePathToRelFile,
   parentPath,
   relFileToPagePath,
+  saveConflict,
   spaceFileRelPath,
   spaceOf,
   validation,
@@ -234,6 +236,13 @@ export class FsContentStore implements ContentStore {
   async updatePage(id: PageId, patch: UpdatePageBody): Promise<Page> {
     const current = await this.getPageById(id);
     if (current === null) throw notFound(`No page with id ${id}`);
+    if (patch.baseRev !== undefined && patch.markdown !== undefined && patch.baseRev !== current.rev) {
+      throw saveConflict('The page changed since this edit started', {
+        markdown: current.markdown,
+        rev: current.rev,
+        updated: current.updated,
+      });
+    }
 
     let rel = this.#fileOf(current.path);
     if (rel === null) throw notFound(`No file for page ${current.path}`);
@@ -396,6 +405,7 @@ export class FsContentStore implements ContentStore {
       created: frontmatter.created,
       updated: frontmatter.updated,
       markdown,
+      rev: contentRev(markdown),
       filePath: abs,
       hasChildren: isIndexRel(relFile),
     };

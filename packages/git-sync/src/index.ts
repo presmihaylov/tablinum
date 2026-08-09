@@ -1,5 +1,7 @@
 export { GitEngine, defaultCommitMessage } from './engine.js';
 export type {
+  ConflictResolution,
+  ConflictVersions,
   GitEngineOptions,
   InitResult,
   PullReason,

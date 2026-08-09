@@ -17,7 +17,7 @@ import {
   waitFor,
   writeFileIn,
 } from './helpers.js';
-import { GitEngine } from '../src/engine.js';
+import { GitEngine, type GitEngineOptions } from '../src/engine.js';
 
 afterEach(async () => {
   disposeEngines();
@@ -38,9 +38,12 @@ async function seededRemote(): Promise<{ remote: string; peer: string }> {
   return { remote, peer };
 }
 
-async function clonedEngine(remote: string): Promise<{ engine: GitEngine; dir: string }> {
+async function clonedEngine(
+  remote: string,
+  options: Partial<GitEngineOptions> = {},
+): Promise<{ engine: GitEngine; dir: string }> {
   const dir = await tempDir();
-  const engine = makeEngine({ contentDir: dir, remote, branch: 'main' });
+  const engine = makeEngine({ contentDir: dir, remote, branch: 'main', ...options });
   await engine.init();
   return { engine, dir };
 }
@@ -225,6 +228,49 @@ describe('GitEngine.pull', () => {
     await engine.init();
 
     await expect(engine.pull()).rejects.toMatchObject({ code: 'GIT_ERROR' });
+  });
+});
+
+describe('GitEngine auto push', () => {
+  it('pushes a debounced commit to the remote without being asked', async () => {
+    const { remote } = await seededRemote();
+    const { engine, dir } = await clonedEngine(remote, { autocommitMs: 10, autopushMs: 15 });
+
+    await writeFileIn(dir, 'eng/deploy.md', page('pg_2', 'Deploy', 'run the script'));
+    engine.scheduleCommit('docs: add the deploy page');
+
+    await waitFor(
+      async () => (await gitLines(remote, 'log', '--format=%s', 'main')).includes('docs: add the deploy page'),
+      'the auto push to reach the remote',
+    );
+  });
+
+  it('pulls and retries when the remote moved on', async () => {
+    const { remote, peer } = await seededRemote();
+    const { engine, dir } = await clonedEngine(remote, { autopushMs: 15 });
+
+    await peerPush(peer, 'peer body', 'docs: peer edit');
+    await writeFileIn(dir, 'eng/deploy.md', page('pg_2', 'Deploy', 'local body'));
+    await engine.commitAll('docs: local edit');
+
+    await waitFor(
+      async () => (await gitLines(remote, 'log', '--format=%s', 'main')).includes('docs: local edit'),
+      'the rejected push to be retried after a pull',
+    );
+    expect(await readFileIn(dir, 'eng/index.md')).toContain('peer body');
+  });
+
+  it('stays off when the interval is 0', async () => {
+    const { remote } = await seededRemote();
+    const { engine, dir } = await clonedEngine(remote, { autopushMs: 0 });
+
+    await writeFileIn(dir, 'eng/deploy.md', page('pg_2', 'Deploy', 'run the script'));
+    await engine.commitAll('docs: never pushed on its own');
+
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(await gitLines(remote, 'log', '--format=%s', 'main')).not.toContain(
+      'docs: never pushed on its own',
+    );
   });
 });
 

@@ -55,6 +55,7 @@ describe('PageSchema', () => {
     filePath: '/abs/content/eng/deploy.md',
     hasChildren: false,
     markdown: '# Deploy\n',
+    rev: 'a-1b2c3d',
   };
 
   it('accepts a full page', () => {
@@ -134,6 +135,7 @@ describe('responses', () => {
         dirtyFiles: ['eng/deploy.md'],
         remote: null,
         lastCommit: null,
+        conflict: null,
       },
     });
     expect(parsed.status.branch).toBe('main');

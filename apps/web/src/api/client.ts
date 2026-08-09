@@ -1,6 +1,8 @@
+import { CLIENT_HEADER } from '@gitdocs/shared';
 import type {
   AssetResponse,
   BacklinksResponse,
+  ConflictInfo,
   CreatePageBody,
   CreateSpaceBody,
   DeletePageResponse,
@@ -8,8 +10,11 @@ import type {
   ErrorCode,
   GitCommitBody,
   GitCommitResponse,
+  GitConflictResponse,
   GitPullResponse,
   GitPushResponse,
+  GitResolveBody,
+  GitResolveResponse,
   GitStatusResponse,
   HealthResponse,
   HistoryQuery,
@@ -28,6 +33,7 @@ import type {
   TreeResponse,
   UpdatePageBody,
 } from '@gitdocs/shared';
+import { myClientId } from '../lib/identity';
 
 export const API_BASE = '/api/v1';
 
@@ -35,17 +41,26 @@ export const API_BASE = '/api/v1';
 export class ApiError extends Error {
   readonly status: number;
   readonly code: ErrorCode;
+  /** On a save conflict, the copy the server holds. The caller merges it and retries. */
+  readonly info: ConflictInfo | null;
 
-  constructor(status: number, code: ErrorCode, message: string) {
+  constructor(status: number, code: ErrorCode, message: string, info: ConflictInfo | null = null) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.code = code;
+    this.info = info;
   }
 }
 
 export function isApiError(err: unknown): err is ApiError {
   return err instanceof ApiError;
+}
+
+/** A 409 that carries the server's copy of the page. */
+export function saveConflictOf(err: unknown): ConflictInfo | null {
+  if (!isApiError(err) || err.code !== 'CONFLICT') return null;
+  return err.info;
 }
 
 // ---------------------------------------------------------------------------
@@ -114,6 +129,13 @@ function fallbackCode(status: number): ErrorCode {
   return 'INTERNAL';
 }
 
+function readInfo(value: unknown): ConflictInfo | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const { markdown, rev, updated } = value as Record<string, unknown>;
+  if (typeof markdown !== 'string' || typeof rev !== 'string' || typeof updated !== 'string') return null;
+  return { markdown, rev, updated };
+}
+
 async function toApiError(response: Response): Promise<ApiError> {
   let payload: unknown = null;
   try {
@@ -122,13 +144,19 @@ async function toApiError(response: Response): Promise<ApiError> {
     payload = null;
   }
   if (isErrorBody(payload)) {
-    return new ApiError(response.status, payload.error.code, payload.error.message);
+    return new ApiError(
+      response.status,
+      payload.error.code,
+      payload.error.message,
+      readInfo(payload.error.info),
+    );
   }
   return new ApiError(response.status, fallbackCode(response.status), response.statusText || 'Request failed');
 }
 
 async function request<T>(pathname: string, options: RequestOptions = {}): Promise<T> {
-  const headers: Record<string, string> = { Accept: 'application/json' };
+  // Names the tab. The live channel echoes it back, so this tab ignores its own change.
+  const headers: Record<string, string> = { Accept: 'application/json', [CLIENT_HEADER]: myClientId() };
   const init: RequestInit = {
     method: options.method ?? 'GET',
     credentials: 'same-origin',
@@ -221,6 +249,12 @@ export const api = {
 
   gitCommit: (body: GitCommitBody = {}): Promise<GitCommitResponse> =>
     request('/git/commit', { method: 'POST', body }),
+
+  gitConflict: (signal?: AbortSignal): Promise<GitConflictResponse> =>
+    request('/git/conflict', { signal }),
+
+  gitResolve: (body: GitResolveBody): Promise<GitResolveResponse> =>
+    request('/git/resolve', { method: 'POST', body }),
 
   uploadAsset: (file: File, pageId?: PageId): Promise<AssetResponse> => {
     const form = new FormData();

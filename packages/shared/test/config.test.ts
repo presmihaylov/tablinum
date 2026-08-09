@@ -20,6 +20,7 @@ describe('loadConfig defaults', () => {
     expect(config.gitRemote).toBeNull();
     expect(config.autocommitMs).toBe(5000);
     expect(config.autopullMs).toBe(60000);
+    expect(config.autopushMs).toBe(5000);
   });
 
   it('runs in open mode when no token and no password are set', () => {
@@ -45,6 +46,7 @@ describe('loadConfig overrides', () => {
     GITDOCS_GIT_BRANCH: 'trunk',
     GITDOCS_AUTOCOMMIT_MS: '0',
     GITDOCS_AUTOPULL_MS: '0',
+    GITDOCS_AUTOPUSH_MS: '0',
   });
 
   it('trims the content dir and parses the port', () => {
@@ -60,6 +62,7 @@ describe('loadConfig overrides', () => {
   it('accepts zero for the timers', () => {
     expect(config.autocommitMs).toBe(0);
     expect(config.autopullMs).toBe(0);
+    expect(config.autopushMs).toBe(0);
   });
 
   it('treats an empty variable as unset', () => {

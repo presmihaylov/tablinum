@@ -18,13 +18,15 @@ export default defineConfig({
     port: 5173,
     strictPort: false,
     proxy: {
-      '/api': { target: API_TARGET, changeOrigin: true },
+      // ws: the live channel upgrades under the same prefix.
+      '/api': { target: API_TARGET, changeOrigin: true, ws: true },
       '/_assets': { target: API_TARGET, changeOrigin: true },
     },
   },
   preview: {
     proxy: {
-      '/api': { target: API_TARGET, changeOrigin: true },
+      // ws: the live channel upgrades under the same prefix.
+      '/api': { target: API_TARGET, changeOrigin: true, ws: true },
       '/_assets': { target: API_TARGET, changeOrigin: true },
     },
   },

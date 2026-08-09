@@ -6,11 +6,13 @@ import {
   PAGE_EXT,
   SPACE_FILE,
   pagePathToRelFile,
+  relFileToPagePath,
   type Page,
   type PageId,
   type PagePath,
 } from '@gitdocs/shared';
 import type { ServerDeps } from './deps.js';
+import { LiveHub } from './live.js';
 
 /**
  * Both files a page path could live in: `foo.md` when it is a leaf and `foo/index.md`
@@ -100,12 +102,16 @@ export interface MutationRecord {
   pages?: Page[];
   /** Page ids that no longer exist. */
   removedIds?: PageId[];
+  /** Page paths that no longer exist, so open tabs can be told. */
+  removedPaths?: PagePath[];
   /** Extra content-relative files the request touched, e.g. `_space.yml` or an attachment. */
   files?: string[];
   /** Commit message for the debounced commit. */
   message?: string;
   /** Skip the debounced commit, e.g. right after an explicit commit or pull. */
   skipCommit?: boolean;
+  /** The tab that asked for the change, so it can ignore the echo of its own edit. */
+  by?: string | null;
 }
 
 /**
@@ -118,6 +124,7 @@ export class Wiring {
   constructor(
     private readonly deps: ServerDeps,
     private readonly log: FastifyBaseLogger,
+    private readonly live: LiveHub = new LiveHub(log),
   ) {
     this.recentWrites = new RecentWrites(deps.echoSuppressMs ?? DEFAULT_ECHO_SUPPRESS_MS);
   }
@@ -141,6 +148,11 @@ export class Wiring {
     for (const id of record.removedIds ?? []) {
       await this.#removePage(id);
     }
+
+    for (const page of pages) {
+      this.live.pageChanged(page, 'api', record.by ?? null);
+    }
+    this.live.pagesRemoved(record.removedPaths ?? []);
 
     if (record.skipCommit === true) return;
     this.deps.git.scheduleCommit(record.message);
@@ -196,6 +208,7 @@ export function startContentWatcher(
   deps: ServerDeps,
   wiring: Wiring,
   log: FastifyBaseLogger,
+  live: LiveHub = new LiveHub(log),
 ): ContentWatcher {
   const contentDir = deps.store.contentDir;
   const pending = new Map<string, ChangeKind>();
@@ -220,17 +233,22 @@ export function startContentWatcher(
     if (batch.length === 0) return;
 
     let changed = false;
+    const removed: PagePath[] = [];
     for (const [rel, kind] of batch) {
       try {
         if (kind === 'remove') {
           const id = isPageFile(rel) ? await deps.store.forgetFile(rel) : null;
           if (id !== null) await deps.search.removePage(id);
+          if (isPageFile(rel)) removed.push(relFileToPagePath(rel));
           changed = true;
           continue;
         }
         if (isPageFile(rel)) {
           const page = await deps.store.reloadFile(rel);
-          if (page !== null) await deps.search.indexPage(page);
+          if (page !== null) {
+            await deps.search.indexPage(page);
+            live.pageChanged(page, 'disk', null);
+          }
         }
         changed = true;
       } catch (err) {
@@ -238,6 +256,7 @@ export function startContentWatcher(
       }
     }
 
+    live.pagesRemoved(removed);
     if (changed) deps.git.scheduleCommit();
   }
 

@@ -27,6 +27,8 @@ import { buildApp } from './app.js';
 import { contextOf } from './context.js';
 import type {
   ContentStore,
+  FileResolution,
+  FileVersions,
   GitEngine,
   ParsedPageFile,
   SearchIndex,
@@ -135,14 +137,22 @@ class CoreGitAdapter implements GitEngine {
     return this.core.status();
   }
 
-  async pull(): Promise<{ status: GitStatus; pulled: number }> {
+  async pull(): Promise<{ status: GitStatus; pulled: number; files: string[] }> {
     const result = await this.core.pull();
-    return { status: await this.core.status(), pulled: result.pulled };
+    return { status: await this.core.status(), pulled: result.pulled, files: result.files };
   }
 
   async push(): Promise<{ status: GitStatus; pushed: boolean }> {
     const result = await this.core.push();
     return { status: await this.core.status(), pushed: result.pushed };
+  }
+
+  conflictVersions(): Promise<FileVersions[]> {
+    return this.core.conflictVersions();
+  }
+
+  resolveConflict(files: FileResolution[], message?: string): Promise<string[]> {
+    return this.core.resolveConflict(files, message);
   }
 
   commit(message?: string): Promise<string | null> {
@@ -261,7 +271,7 @@ export async function start(config: Config = loadConfig()): Promise<RunningServe
   // else would ever notice: the watcher only sees changes made after it starts.
   await commitOrphanedWrites(deps, app.log);
 
-  let watcher: ContentWatcher | null = startContentWatcher(deps, ctx.wiring, app.log);
+  let watcher: ContentWatcher | null = startContentWatcher(deps, ctx.wiring, app.log, ctx.live);
   await watcher.whenReady();
   deps.git.startAutoPull(config.autopullMs);
 

@@ -25,6 +25,7 @@ import {
   type RevisionContentResponse,
 } from '@gitdocs/shared';
 import { API_PREFIX, type RouteContext } from '../context.js';
+import { clientOf } from '../live.js';
 import { contentRelPath, pageFileVariants } from '../wiring.js';
 
 const DEFAULT_HISTORY_LIMIT = 50;
@@ -105,6 +106,7 @@ export function registerPageRoutes(app: FastifyInstance, ctx: RouteContext): voi
       pages: affected,
       files: [...files],
       message: `Create ${page.path}`,
+      by: clientOf(request),
     });
 
     reply.status(201);
@@ -130,6 +132,8 @@ export function registerPageRoutes(app: FastifyInstance, ctx: RouteContext): voi
       pages: [...affected.values()],
       files: [...files],
       message: page.path === before.path ? `Update ${page.path}` : `Move ${before.path} to ${page.path}`,
+      by: clientOf(request),
+      ...(page.path === before.path ? {} : { removedPaths: [before.path] }),
     });
 
     return { page };
@@ -194,8 +198,10 @@ export function registerPageRoutes(app: FastifyInstance, ctx: RouteContext): voi
     await ctx.wiring.recordMutation({
       pages: affected,
       removedIds: victims.map((victim) => victim.id),
+      removedPaths: deleted,
       files: [...files],
       message: `Delete ${page.path}`,
+      by: clientOf(request),
     });
 
     return { deleted };

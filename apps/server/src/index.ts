@@ -9,6 +9,8 @@ export {
   registerAuthHook,
 } from './auth.js';
 export { registerErrorHandler, toErrorResponse } from './errors.js';
+export { LiveHub, clientOf, readClientId, registerLiveRoutes } from './live.js';
+export type { LiveClient } from './live.js';
 export {
   DEFAULT_ECHO_SUPPRESS_MS,
   RecentWrites,
@@ -22,6 +24,8 @@ export { API_PREFIX, contextOf } from './context.js';
 export type { RouteContext } from './context.js';
 export type {
   ContentStore,
+  FileResolution,
+  FileVersions,
   GitEngine,
   ParsedPageFile,
   SearchIndex,

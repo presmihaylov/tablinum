@@ -4,12 +4,14 @@ import { fileURLToPath } from 'node:url';
 import fastifyCookie from '@fastify/cookie';
 import fastifyMultipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
+import fastifyWebsocket from '@fastify/websocket';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { ASSETS_DIR, OPEN_MODE_WARNING } from '@gitdocs/shared';
 import { normalizePathname, registerAuthHook } from './auth.js';
 import { rememberContext, type RouteContext } from './context.js';
 import type { ServerDeps } from './deps.js';
 import { registerErrorHandler } from './errors.js';
+import { LiveHub, registerLiveRoutes } from './live.js';
 import { registerAssetRoutes, MAX_ASSET_BYTES } from './routes/assets.js';
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerGitRoutes } from './routes/git.js';
@@ -57,6 +59,7 @@ export async function buildApp(deps: ServerDeps): Promise<FastifyInstance> {
   await app.register(fastifyMultipart, {
     limits: { fileSize: MAX_ASSET_BYTES, files: 1, fields: 8, fieldSize: 4096 },
   });
+  await app.register(fastifyWebsocket, { options: { maxPayload: 64 * 1024 } });
 
   if (deps.config.openMode) app.log.warn(OPEN_MODE_WARNING);
 
@@ -64,13 +67,21 @@ export async function buildApp(deps: ServerDeps): Promise<FastifyInstance> {
   // at registration time, so a route added first would never be protected.
   registerAuthHook(app, deps.config);
 
+  const live = new LiveHub(app.log);
+  live.start();
+  app.addHook('onClose', async () => {
+    live.closeAll();
+  });
+
   const ctx: RouteContext = {
     deps,
-    wiring: new Wiring(deps, app.log),
+    wiring: new Wiring(deps, app.log, live),
+    live,
     version: deps.version ?? VERSION,
   };
   rememberContext(app, ctx);
 
+  registerLiveRoutes(app, ctx);
   registerHealthRoutes(app, ctx);
   registerAuthRoutes(app, ctx);
   registerSpaceRoutes(app, ctx);

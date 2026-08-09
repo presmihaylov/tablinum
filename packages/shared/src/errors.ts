@@ -1,4 +1,4 @@
-import type { ErrorBody, ErrorCode } from './types.js';
+import type { ConflictInfo, ErrorBody, ErrorCode } from './types.js';
 
 const STATUS_BY_CODE: Record<ErrorCode, number> = {
   NOT_FOUND: 404,
@@ -15,18 +15,23 @@ export class AppError extends Error {
   readonly status: number;
   /** Optional machine-readable context, echoed in logs but not in the response body. */
   readonly details?: unknown;
+  /** Context the client is meant to act on. Unlike `details` this IS sent to the caller. */
+  readonly info?: ConflictInfo;
 
-  constructor(code: ErrorCode, message: string, details?: unknown) {
+  constructor(code: ErrorCode, message: string, details?: unknown, info?: ConflictInfo) {
     super(message);
     this.name = 'AppError';
     this.code = code;
     this.status = STATUS_BY_CODE[code];
     this.details = details;
+    this.info = info;
     Error.captureStackTrace?.(this, AppError);
   }
 
   toJSON(): ErrorBody {
-    return { error: { code: this.code, message: this.message } };
+    const error: ErrorBody['error'] = { code: this.code, message: this.message };
+    if (this.info !== undefined) error.info = this.info;
+    return { error };
   }
 }
 
@@ -35,6 +40,10 @@ export const notFound = (message = 'Not found', details?: unknown): AppError =>
 
 export const conflict = (message = 'Conflict', details?: unknown): AppError =>
   new AppError('CONFLICT', message, details);
+
+/** A save that raced another one. The response carries the copy the server holds. */
+export const saveConflict = (message: string, info: ConflictInfo): AppError =>
+  new AppError('CONFLICT', message, undefined, info);
 
 export const validation = (message = 'Invalid request', details?: unknown): AppError =>
   new AppError('VALIDATION', message, details);

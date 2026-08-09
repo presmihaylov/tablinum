@@ -62,6 +62,7 @@ export const PageSummarySchema = z.object({
 
 export const PageSchema = PageSummarySchema.extend({
   markdown: z.string(),
+  rev: z.string().min(1),
 });
 
 export const TreeNodeSchema: z.ZodType<TreeNode> = z.lazy(() =>
@@ -105,6 +106,12 @@ export const RevisionSchema = z.object({
   message: z.string(),
 });
 
+export const GitConflictSchema = z.object({
+  files: z.array(z.string()),
+  message: z.string(),
+  at: z.string(),
+});
+
 export const GitStatusSchema = z.object({
   branch: z.string(),
   ahead: z.number().int(),
@@ -112,6 +119,18 @@ export const GitStatusSchema = z.object({
   dirtyFiles: z.array(z.string()),
   remote: z.string().nullable(),
   lastCommit: RevisionSchema.nullable(),
+  conflict: GitConflictSchema.nullable(),
+});
+
+export const ConflictFileSchema = z.object({
+  file: z.string().min(1),
+  path: PagePathSchema.nullable(),
+  title: z.string().nullable(),
+  local: z.string(),
+  remote: z.string(),
+  base: z.string(),
+  merged: z.string(),
+  clean: z.boolean(),
 });
 
 export const BacklinkSchema = z.object({
@@ -129,8 +148,18 @@ export const ErrorCodeSchema = z.enum([
   'INTERNAL',
 ]);
 
+export const ConflictInfoSchema = z.object({
+  markdown: z.string(),
+  rev: z.string().min(1),
+  updated: IsoDateSchema,
+});
+
 export const ErrorBodySchema = z.object({
-  error: z.object({ code: ErrorCodeSchema, message: z.string() }),
+  error: z.object({
+    code: ErrorCodeSchema,
+    message: z.string(),
+    info: ConflictInfoSchema.optional(),
+  }),
 });
 
 // ---------------------------------------------------------------------------
@@ -172,10 +201,23 @@ export const UpdatePageBodySchema = z
     icon: IconSchema.nullable().optional(),
     order: z.number().nullable().optional(),
     path: PagePathSchema.optional(),
+    /** The revision the edit started from. The server rejects the save if the file moved on. */
+    baseRev: z.string().min(1).optional(),
   })
-  .refine((body) => Object.keys(body).length > 0, 'Provide at least one field to update');
+  .refine(
+    (body) => Object.keys(body).some((key) => key !== 'baseRev'),
+    'Provide at least one field to update',
+  );
 
 export const GitCommitBodySchema = z.object({ message: z.string().min(1).optional() });
+
+/** One decision from the conflict UI: the exact text to keep for a file. */
+export const GitResolveBodySchema = z.object({
+  files: z
+    .array(z.object({ file: z.string().min(1), content: z.string() }))
+    .min(1),
+  message: z.string().min(1).optional(),
+});
 
 // ---------------------------------------------------------------------------
 // query params
@@ -231,6 +273,14 @@ export const GitPullResponseSchema = z.object({
 });
 export const GitPushResponseSchema = z.object({ status: GitStatusSchema, pushed: z.boolean() });
 export const GitCommitResponseSchema = z.object({ sha: z.string().nullable() });
+export const GitConflictResponseSchema = z.object({
+  conflict: GitConflictSchema.nullable(),
+  files: z.array(ConflictFileSchema),
+});
+export const GitResolveResponseSchema = z.object({
+  status: GitStatusSchema,
+  resolved: z.array(z.string()),
+});
 
 export const AssetResponseSchema = z.object({ url: z.string(), path: z.string() });
 
@@ -246,6 +296,7 @@ export type CreateSpaceBody = z.infer<typeof CreateSpaceBodySchema>;
 export type CreatePageBody = z.infer<typeof CreatePageBodySchema>;
 export type UpdatePageBody = z.infer<typeof UpdatePageBodySchema>;
 export type GitCommitBody = z.infer<typeof GitCommitBodySchema>;
+export type GitResolveBody = z.infer<typeof GitResolveBodySchema>;
 
 export type PagesQuery = z.infer<typeof PagesQuerySchema>;
 export type DeletePageQuery = z.infer<typeof DeletePageQuerySchema>;
@@ -268,6 +319,8 @@ export type GitStatusResponse = z.infer<typeof GitStatusResponseSchema>;
 export type GitPullResponse = z.infer<typeof GitPullResponseSchema>;
 export type GitPushResponse = z.infer<typeof GitPushResponseSchema>;
 export type GitCommitResponse = z.infer<typeof GitCommitResponseSchema>;
+export type GitConflictResponse = z.infer<typeof GitConflictResponseSchema>;
+export type GitResolveResponse = z.infer<typeof GitResolveResponseSchema>;
 export type AssetResponse = z.infer<typeof AssetResponseSchema>;
 
 // ---------------------------------------------------------------------------

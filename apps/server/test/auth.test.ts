@@ -93,6 +93,7 @@ describe('mutation audit', () => {
     { method: 'POST', url: '/api/v1/git/pull' },
     { method: 'POST', url: '/api/v1/git/push' },
     { method: 'POST', url: '/api/v1/git/commit' },
+    { method: 'POST', url: '/api/v1/git/resolve' },
   ];
 
   it('answers 401 on every mutation route when no credential is sent', async () => {

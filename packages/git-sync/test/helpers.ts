@@ -137,7 +137,8 @@ const engines: GitEngine[] = [];
 /** Build an engine with test-friendly defaults; every engine is disposed after the test. */
 export function makeEngine(options: GitEngineOptions): GitEngine {
   const { logger } = captureLogger();
-  const engine = new GitEngine({ logger, autopullMs: 0, ...options });
+  // Both timers are off unless a test asks for them: a background push would race assertions.
+  const engine = new GitEngine({ logger, autopullMs: 0, autopushMs: 0, ...options });
   engines.push(engine);
   return engine;
 }

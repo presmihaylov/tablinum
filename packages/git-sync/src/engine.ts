@@ -1,9 +1,10 @@
 import { access, mkdir, readdir, writeFile } from 'node:fs/promises';
-import { isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { simpleGit, type SimpleGit } from 'simple-git';
 import {
   DEFAULT_AUTOCOMMIT_MS,
   DEFAULT_AUTOPULL_MS,
+  DEFAULT_AUTOPUSH_MS,
   DEFAULT_GIT_AUTHOR_EMAIL,
   DEFAULT_GIT_AUTHOR_NAME,
   DEFAULT_GIT_BRANCH,
@@ -11,7 +12,7 @@ import {
   notFound,
   validation,
 } from '@gitdocs/shared';
-import type { Config, GitStatus, Revision } from '@gitdocs/shared';
+import type { Config, GitConflict, GitStatus, Revision } from '@gitdocs/shared';
 import { consoleLogger, type GitLogger } from './logger.js';
 import { Mutex } from './mutex.js';
 
@@ -24,6 +25,7 @@ export interface GitEngineOptions {
   authorEmail?: string;
   autocommitMs?: number;
   autopullMs?: number;
+  autopushMs?: number;
   logger?: GitLogger;
 }
 
@@ -53,6 +55,24 @@ export interface PushResult {
   reason: PushReason;
 }
 
+/** The three versions of one conflicted file, straight out of the object database. */
+export interface ConflictVersions {
+  /** Repo-relative path. */
+  file: string;
+  /** The version on the local branch. */
+  local: string;
+  /** The version on the remote branch. */
+  remote: string;
+  /** The version the two branches last agreed on. Empty when the file is new on both sides. */
+  base: string;
+}
+
+/** One caller decision: the exact text to keep for a conflicted file. */
+export interface ConflictResolution {
+  file: string;
+  content: string;
+}
+
 const GITATTRIBUTES_NAME = '.gitattributes';
 
 // Markdown and YAML must round-trip byte for byte between the web editor, the API and git.
@@ -68,6 +88,7 @@ const GITATTRIBUTES_CONTENT = [
 const INITIAL_COMMIT_MESSAGE = 'chore: initialize gitdocs content repo';
 const GITATTRIBUTES_COMMIT_MESSAGE = 'chore: normalize page line endings';
 const PRE_PULL_COMMIT_MESSAGE = 'docs: save local edits before pull';
+const RESOLVE_COMMIT_MESSAGE = 'docs: resolve conflicts with the remote';
 
 // Unit and record separators: a commit message may contain anything except these two bytes.
 const FIELD_SEP = '\x1f';
@@ -193,16 +214,20 @@ export class GitEngine {
   readonly authorEmail: string;
   readonly autocommitMs: number;
   readonly autopullMs: number;
+  readonly autopushMs: number;
 
   private readonly logger: GitLogger;
   private readonly mutex = new Mutex();
   private client: SimpleGit | null = null;
   private commitTimer: ReturnType<typeof setTimeout> | null = null;
   private pullTimer: ReturnType<typeof setInterval> | null = null;
+  private pushTimer: ReturnType<typeof setTimeout> | null = null;
   private pendingMessage: string | null = null;
   private pendingCommits = 0;
   private autoPullRunning = false;
+  private autoPushRunning = false;
   private disposed = false;
+  private conflictState: GitConflict | null = null;
 
   constructor(options: GitEngineOptions) {
     if (!isAbsolute(options.contentDir)) {
@@ -220,6 +245,7 @@ export class GitEngine {
     this.authorEmail = options.authorEmail ?? DEFAULT_GIT_AUTHOR_EMAIL;
     this.autocommitMs = options.autocommitMs ?? DEFAULT_AUTOCOMMIT_MS;
     this.autopullMs = options.autopullMs ?? DEFAULT_AUTOPULL_MS;
+    this.autopushMs = options.autopushMs ?? DEFAULT_AUTOPUSH_MS;
     this.logger = options.logger ?? consoleLogger;
   }
 
@@ -233,6 +259,7 @@ export class GitEngine {
       authorEmail: config.gitAuthorEmail,
       autocommitMs: config.autocommitMs,
       autopullMs: config.autopullMs,
+      autopushMs: config.autopushMs,
       ...(logger ? { logger } : {}),
     });
   }
@@ -269,7 +296,31 @@ export class GitEngine {
       dirtyFiles,
       remote: await this.remoteUrl(git),
       lastCommit: await this.lastCommit(),
+      conflict: this.conflictState,
     };
+  }
+
+  /** The pull conflict still waiting for a decision, or null. */
+  conflict(): GitConflict | null {
+    return this.conflictState;
+  }
+
+  /**
+   * The local, remote and base version of every conflicted file. The rebase was already aborted,
+   * so all three come out of the object database and the working tree stays untouched.
+   */
+  async conflictVersions(): Promise<ConflictVersions[]> {
+    const pending = this.conflictState;
+    if (pending === null) return [];
+    return this.mutex.runExclusive(() => this.conflictVersionsUnlocked(pending.files));
+  }
+
+  /**
+   * Apply the caller's chosen text for every conflicted file and merge the remote in. Unlike the
+   * pull this keeps both histories: the resolution lands as a merge commit.
+   */
+  async resolveConflict(files: ConflictResolution[], message?: string): Promise<string[]> {
+    return this.mutex.runExclusive(() => this.resolveConflictUnlocked(files, message));
   }
 
   /** Stage everything and commit. Returns the new commit sha, or null when nothing changed. */
@@ -414,6 +465,31 @@ export class GitEngine {
     return true;
   }
 
+  /**
+   * Push the branch shortly after a commit, so the remote follows the editor without anyone
+   * pressing Sync. Bursts coalesce into one push. No-op without a remote or with an interval of 0.
+   */
+  schedulePush(): void {
+    if (this.disposed || this.remote === null || this.autopushMs <= 0) return;
+    if (this.pushTimer !== null) clearTimeout(this.pushTimer);
+    this.pushTimer = setTimeout(() => {
+      this.pushTimer = null;
+      void this.autoPushTick();
+    }, this.autopushMs);
+    this.pushTimer.unref?.();
+  }
+
+  /** Cancel any pending debounce and push right now. Used by shutdown. */
+  async flushPendingPush(): Promise<boolean> {
+    if (this.pushTimer !== null) {
+      clearTimeout(this.pushTimer);
+      this.pushTimer = null;
+    }
+    if (this.remote === null || this.autopushMs <= 0) return false;
+    const result = await this.push();
+    return result.pushed;
+  }
+
   /** Stop the periodic pull. The engine stays usable. */
   stop(): void {
     if (this.pullTimer === null) return;
@@ -429,17 +505,30 @@ export class GitEngine {
       clearTimeout(this.commitTimer);
       this.commitTimer = null;
     }
+    if (this.pushTimer !== null) {
+      clearTimeout(this.pushTimer);
+      this.pushTimer = null;
+    }
   }
 
   /** Commit anything still pending, wait for queued git work, then dispose. */
   async close(): Promise<void> {
     const hadPendingCommit = this.commitTimer !== null;
+    const hadPendingPush = this.pushTimer !== null;
     this.dispose();
     if (hadPendingCommit) {
       try {
         await this.commitAllUnlockedThroughMutex();
       } catch (err) {
         this.logger.error('final commit failed', { error: describeGitError(err) });
+      }
+    }
+    // dispose() already refused any new push, so the last commit needs one here.
+    if (this.autopushMs > 0 && (hadPendingCommit || hadPendingPush)) {
+      try {
+        await this.push();
+      } catch (err) {
+        this.logger.warn('final push failed', { error: describeGitError(err) });
       }
     }
     await this.mutex.drain();
@@ -600,6 +689,8 @@ export class GitEngine {
     if (staged.length === 0) return null;
 
     await this.runCommit(git, message ?? defaultCommitMessage(staged));
+    // Every commit, from a save or from a conflict resolution, heads for the remote.
+    this.schedulePush();
     return (await git.raw(['rev-parse', 'HEAD'])).trim();
   }
 
@@ -648,7 +739,10 @@ export class GitEngine {
     if (!(await this.hasHead())) return this.adoptUpstream(git, upstream);
 
     const { behind } = await this.aheadBehind(upstream);
-    if (behind === 0) return { pulled: 0, files: [], reason: 'up-to-date' };
+    if (behind === 0) {
+      this.conflictState = null;
+      return { pulled: 0, files: [], reason: 'up-to-date' };
+    }
 
     const before = await this.headSha();
     try {
@@ -657,10 +751,85 @@ export class GitEngine {
       throw await this.recoverFromFailedRebase(git, before, err);
     }
 
+    this.conflictState = null;
     const after = await this.headSha();
     const files = splitLines(await git.raw(['diff', '--name-only', before, after]).catch(() => ''));
     this.logger.info('pulled from remote', { pulled: behind, files: files.length });
     return { pulled: behind, files, reason: 'pulled' };
+  }
+
+  private async conflictVersionsUnlocked(files: string[]): Promise<ConflictVersions[]> {
+    const git = await this.git();
+    const upstream = await this.upstreamRef();
+    if (upstream === null) return [];
+    const base = await this.mergeBase(upstream);
+
+    const versions: ConflictVersions[] = [];
+    for (const file of files) {
+      versions.push({
+        file,
+        local: (await this.showOrNull(git, 'HEAD', file)) ?? '',
+        remote: (await this.showOrNull(git, upstream, file)) ?? '',
+        base: base === null ? '' : ((await this.showOrNull(git, base, file)) ?? ''),
+      });
+    }
+    return versions;
+  }
+
+  private async mergeBase(upstream: string): Promise<string | null> {
+    const git = await this.git();
+    const sha = (await git.raw(['merge-base', 'HEAD', upstream]).catch(() => '')).trim();
+    return SHA_RE.test(sha) ? sha : null;
+  }
+
+  private async resolveConflictUnlocked(
+    files: ConflictResolution[],
+    message?: string,
+  ): Promise<string[]> {
+    if (this.remote === null) throw gitError('Cannot resolve conflicts without a remote.');
+    const git = await this.git();
+    const upstream = await this.upstreamRef();
+    if (upstream === null) throw gitError('Cannot resolve conflicts: the remote branch is gone.');
+
+    // Anything typed since the failed pull would otherwise block the merge.
+    await this.commitAllUnlocked(PRE_PULL_COMMIT_MESSAGE);
+    const before = await this.headSha();
+
+    // The merge is expected to conflict. Its value is MERGE_HEAD, which turns the resolution
+    // into a real merge commit instead of a commit that silently drops the remote history.
+    await git.raw(['merge', '--no-commit', '--no-ff', upstream]).catch(() => '');
+
+    try {
+      for (const entry of files) {
+        const target = join(this.contentDir, this.toRepoPath(entry.file));
+        await mkdir(dirname(target), { recursive: true });
+        await writeFile(target, entry.content, 'utf8');
+      }
+      await git.raw(['add', '-A']);
+
+      const stillConflicted = await this.conflictedFiles();
+      if (stillConflicted.length > 0) {
+        throw gitError(`Unresolved conflicts remain in ${stillConflicted.join(', ')}`, {
+          conflicted: stillConflicted,
+        });
+      }
+      const staged = await this.stagedFiles();
+      if (staged.length > 0 || (await this.inMerge())) {
+        await this.runCommit(git, message ?? RESOLVE_COMMIT_MESSAGE);
+      }
+    } catch (err) {
+      await git.raw(['merge', '--abort']).catch(() => '');
+      await git.raw(['reset', '--hard', before]).catch(() => '');
+      throw err;
+    }
+
+    this.conflictState = null;
+    const after = await this.headSha();
+    const changed = splitLines(
+      await git.raw(['diff', '--name-only', before, after]).catch(() => ''),
+    );
+    this.logger.info('resolved pull conflict', { files: changed.length });
+    return changed;
   }
 
   /** No local commits yet: take the remote branch wholesale. */
@@ -692,11 +861,14 @@ export class GitEngine {
       conflicted.length > 0
         ? `conflicting changes in ${conflicted.join(', ')}`
         : describeGitError(cause);
+    const message = `Pull failed: ${detail}. The rebase was aborted and the content repo is unchanged.`;
     this.logger.warn('pull aborted', { conflicted, error: describeGitError(cause) });
-    return gitError(
-      `Pull failed: ${detail}. The rebase was aborted and the content repo is unchanged.`,
-      { conflicted },
-    );
+    // Kept so the app can offer a resolution instead of only reporting the failure.
+    this.conflictState =
+      conflicted.length > 0
+        ? { files: conflicted, message, at: new Date().toISOString() }
+        : null;
+    return gitError(message, { conflicted });
   }
 
   private async pushUnlocked(): Promise<PushResult> {
@@ -722,6 +894,30 @@ export class GitEngine {
     }
     this.logger.info('pushed to remote', { branch, remote: this.remote });
     return { pushed: true, reason: 'pushed' };
+  }
+
+  /**
+   * A push rejected because the branch moved on the remote is not an error: pull, then push
+   * again. A second failure is left for the next commit or for the Sync button.
+   */
+  private async autoPushTick(): Promise<void> {
+    if (this.autoPushRunning) return;
+    this.autoPushRunning = true;
+    try {
+      const result = await this.push();
+      if (result.pushed) this.logger.info('auto pushed to remote', { remote: this.remote });
+    } catch (err) {
+      this.logger.warn('auto push failed, pulling first', { error: describeGitError(err) });
+      try {
+        await this.pull();
+        const retry = await this.push();
+        if (retry.pushed) this.logger.info('auto pushed to remote after a pull', { remote: this.remote });
+      } catch (retryErr) {
+        this.logger.warn('auto push failed', { error: describeGitError(retryErr) });
+      }
+    } finally {
+      this.autoPushRunning = false;
+    }
   }
 
   private async autoPullTick(): Promise<void> {
@@ -888,6 +1084,14 @@ export class GitEngine {
       .map((line) => line.split('\t')[1] ?? '')
       .filter((path) => path.length > 0);
     return unique(paths).sort();
+  }
+
+  private async inMerge(): Promise<boolean> {
+    const git = await this.git();
+    const raw = await git.raw(['rev-parse', '--git-path', 'MERGE_HEAD']).catch(() => '');
+    const relOrAbs = raw.trim();
+    if (relOrAbs.length === 0) return false;
+    return pathExists(isAbsolute(relOrAbs) ? relOrAbs : join(this.contentDir, relOrAbs));
   }
 
   private async inRebase(): Promise<boolean> {

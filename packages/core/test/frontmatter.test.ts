@@ -85,6 +85,37 @@ describe('round trip', () => {
     });
   }
 
+  /**
+   * A diagram is a plain fenced block, so the store must carry it the way it carries any
+   * other fence: untouched. Backticks and ragged whitespace inside it are diagram source.
+   */
+  const fences: [string, string][] = [
+    [
+      'a mermaid fence',
+      '```mermaid\ngraph TD\n  A[Start] --> B{Is it good?}\n  B -->|yes| C[Ship it]\n  B -->|no| A\n```',
+    ],
+    ['a mermaid fence holding a bare triple backtick', '```mermaid\ngraph TD\n  A["a ``` b"] --> B\n```'],
+    [
+      'a mermaid fence with awkward whitespace',
+      '```mermaid  \n\ngraph LR\n  A -->|"  yes  "| B  \n\t\n  B --> C\n\n```',
+    ],
+    [
+      'a mermaid fence beside prose',
+      '# Flow\n\nBefore.\n\n```mermaid\nflowchart LR\n  A --> B\n```\n\nAfter.',
+    ],
+  ];
+
+  for (const [label, body] of fences) {
+    it(`keeps ${label} byte identical`, () => {
+      const original = serialize(base(), body);
+      const parsed = parse(original);
+      expect(parsed.body).toBe(body);
+      expect(parsed.repaired).toBe(false);
+      expect(serialize(parsed.frontmatter, parsed.body)).toBe(original);
+      expect(serializePreserving(parsed, parsed.frontmatter, parsed.body)).toBe(original);
+    });
+  }
+
   it('hands back the original bytes when nothing changed', () => {
     const original = serialize(base({ icon: 'X', order: 1 }), 'Hello\n\nWorld');
     const parsed = parse(original);

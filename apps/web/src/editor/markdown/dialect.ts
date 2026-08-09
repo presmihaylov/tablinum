@@ -25,6 +25,7 @@ export const DATA = {
   wikilink: 'data-gd-wikilink',
   alias: 'data-gd-alias',
   embed: 'data-gd-embed',
+  diagram: 'data-gd-diagram',
   mention: 'data-gd-mention',
   emoji: 'data-gd-emoji',
   callout: 'data-callout',

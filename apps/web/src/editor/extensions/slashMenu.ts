@@ -15,6 +15,8 @@ export interface SlashMenuOptions {
   onPickVideo: () => void;
   /** Opens the page picker for the "Page" command. */
   onPickPage: () => void;
+  /** Opens a blank drawing canvas for the "Diagram" command. */
+  onPickDiagram: () => void;
 }
 
 export interface SlashCommandItem {
@@ -198,6 +200,18 @@ export const SLASH_COMMANDS: readonly SlashCommandItem[] = [
     },
   },
   {
+    id: 'diagram',
+    title: 'Diagram',
+    hint: 'Draw a diagram or a sketch',
+    glyph: 'DRAW',
+    keywords: ['diagram', 'draw', 'drawing', 'sketch', 'excalidraw', 'whiteboard', 'canvas'],
+    available: outsideTableCell,
+    run: (editor, range, options) => {
+      editor.chain().focus().deleteRange(range).run();
+      options.onPickDiagram();
+    },
+  },
+  {
     id: 'video',
     title: 'Video',
     hint: 'Embed a YouTube, Vimeo or Loom link',
@@ -262,6 +276,7 @@ export const SlashMenuExtension = Extension.create<SlashMenuOptions>({
       onPickEmoji: () => undefined,
       onPickVideo: () => undefined,
       onPickPage: () => undefined,
+      onPickDiagram: () => undefined,
     };
   },
 

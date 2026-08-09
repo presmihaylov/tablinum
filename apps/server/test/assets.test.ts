@@ -86,6 +86,40 @@ describe('asset upload', () => {
     expect(original.equals(PNG)).toBe(true);
   });
 
+  it('keeps a double extension whole when it takes a free name', async () => {
+    const name = 'sketch.excalidraw.svg';
+    await upload({ fields: { pageId }, filename: name, data: Buffer.from('<svg/>') });
+    const second = await upload({ fields: { pageId }, filename: name, data: Buffer.from('<svg/>') });
+    expect(bodyOf(second, AssetResponseSchema).path).toBe(
+      `_assets/${pageId}/sketch-2.excalidraw.svg`,
+    );
+  });
+
+  it('writes over the same name when the upload asks to replace it', async () => {
+    const name = 'sketch.excalidraw.svg';
+    const first = await upload({ fields: { pageId }, filename: name, data: Buffer.from('<svg>1') });
+    const path = bodyOf(first, AssetResponseSchema).path;
+
+    const again = await upload({
+      fields: { pageId, replace: 'true' },
+      filename: name,
+      data: Buffer.from('<svg>2'),
+    });
+    expect(bodyOf(again, AssetResponseSchema).path).toBe(path);
+
+    const written = await readFile(join(harness.contentDir, path), 'utf8');
+    expect(written).toBe('<svg>2');
+  });
+
+  it('replaces a name that is not there yet, so a first save still lands', async () => {
+    const response = await upload({
+      fields: { pageId, replace: 'true' },
+      filename: 'new.excalidraw.svg',
+      data: Buffer.from('<svg/>'),
+    });
+    expect(bodyOf(response, AssetResponseSchema).path).toBe(`_assets/${pageId}/new.excalidraw.svg`);
+  });
+
   it('serves the stored file back over /_assets', async () => {
     const stored = await upload({
       fields: { pageId },

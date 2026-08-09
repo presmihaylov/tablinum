@@ -5,7 +5,7 @@ import { EditorContent, useEditor } from '@tiptap/react';
 import type { Editor } from '@tiptap/core';
 import type { Transaction } from '@tiptap/pm/state';
 import { buildExtensions } from '../../src/editor/extensions';
-import type { MentionItem, WikilinkItem } from '../../src/editor/extensions';
+import type { DiagramRequest, MentionItem, WikilinkItem } from '../../src/editor/extensions';
 import { MarkMenu } from '../../src/editor/ui/MarkMenu';
 import { TableControls } from '../../src/editor/ui/TableControls';
 import { TableMenu } from '../../src/editor/ui/TableMenu';
@@ -32,6 +32,7 @@ export interface MountOptions {
   onPickEmoji?: () => void;
   onPickVideo?: () => void;
   onPickPage?: () => void;
+  editDiagram?: (request: DiagramRequest) => void;
 }
 
 function Harness({
@@ -49,6 +50,7 @@ function Harness({
       ...(options.onPickEmoji ? { onPickEmoji: options.onPickEmoji } : {}),
       ...(options.onPickVideo ? { onPickVideo: options.onPickVideo } : {}),
       ...(options.onPickPage ? { onPickPage: options.onPickPage } : {}),
+      ...(options.editDiagram ? { editDiagram: options.editDiagram } : {}),
     }),
     content: options.content ?? '',
   });

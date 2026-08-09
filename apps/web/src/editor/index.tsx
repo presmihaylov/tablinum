@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { EditorContent, useEditor } from '@tiptap/react';
 import type { Editor } from '@tiptap/core';
-import type { Page } from '@tablinum/shared';
+import { DIAGRAM_EXT, parseAssetUrl, type Page } from '@tablinum/shared';
 import { api } from '../api/client';
 import { useCreatePage, useTree, useUploadAsset, useUsers } from '../api/hooks';
 import { qk } from '../api/keys';
@@ -19,11 +19,12 @@ import type { PromptRequest } from '../components/ui/PromptDialog';
 import { SaveIndicator } from '../components/ui/SaveIndicator';
 import { EMBED_PROVIDERS, embedHtml, resolveEmbed } from './embeds';
 import { buildExtensions, insertEmoji } from './extensions';
-import type { EmbeddedPage, MentionItem, WikilinkItem } from './extensions';
+import type { DiagramRequest, EmbeddedPage, MentionItem, WikilinkItem } from './extensions';
 import { DEFAULT_FRAME, PARSE_OPTIONS, readMarkdown, writeMarkdown } from './markdown';
 import type { MarkdownFrame } from './markdown';
 import { useDocStream } from './useStream';
 import { BlockHandles } from './ui/BlockHandles';
+import { DiagramDialog } from './ui/DiagramDialog';
 import { EmojiPicker } from './ui/EmojiPicker';
 import type { EmojiAnchor } from './ui/EmojiPicker';
 import { MarkMenu } from './ui/MarkMenu';
@@ -71,6 +72,8 @@ interface Handlers {
   pickEmoji: () => void;
   pickVideo: () => void;
   pickPage: () => void;
+  pickDiagram: () => void;
+  editDiagram: (request: DiagramRequest) => void;
   insertVideo: (url: string) => void;
   upload: (file: File) => Promise<string | null>;
   search: (query: string) => Promise<WikilinkItem[]>;
@@ -95,6 +98,8 @@ export function PageEditor({
   const [emojiAt, setEmojiAt] = useState<EmojiAnchor | null>(null);
   const [videoOpen, setVideoOpen] = useState(false);
   const [pageOpen, setPageOpen] = useState(false);
+  const [diagram, setDiagram] = useState<DiagramRequest | null>(null);
+  const [diagramSaving, setDiagramSaving] = useState(false);
 
   const canvasRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -249,6 +254,8 @@ export function PageEditor({
     pickEmoji: () => undefined,
     pickVideo: () => undefined,
     pickPage: () => undefined,
+    pickDiagram: () => undefined,
+    editDiagram: () => undefined,
     insertVideo: () => undefined,
     upload: () => Promise.resolve(null),
     search: () => Promise.resolve([]),
@@ -261,6 +268,12 @@ export function PageEditor({
     pickEmoji: openEmoji,
     pickVideo: () => setVideoOpen(true),
     pickPage: () => setPageOpen(true),
+    pickDiagram: () =>
+      setDiagram({
+        src: null,
+        onSave: (url) => editorRef.current?.chain().focus().insertDiagram(url).run(),
+      }),
+    editDiagram: setDiagram,
     insertVideo,
     upload: uploadImage,
     search: searchPages,
@@ -277,6 +290,8 @@ export function PageEditor({
         onPickEmoji: () => handlers.current.pickEmoji(),
         onPickVideo: () => handlers.current.pickVideo(),
         onPickPage: () => handlers.current.pickPage(),
+        onPickDiagram: () => handlers.current.pickDiagram(),
+        editDiagram: (request) => handlers.current.editDiagram(request),
         uploadImage: (file) => handlers.current.upload(file),
         searchPages: (query) => handlers.current.search(query),
         searchPeople: (query) => handlers.current.people(query),
@@ -314,6 +329,7 @@ export function PageEditor({
     setEmojiAt(null);
     setVideoOpen(false);
     setPageOpen(false);
+    setDiagram(null);
     editor?.commands.setContent(readMarkdown(page.markdown).body, false, PARSE_OPTIONS);
   }, [page.id, page.title, page.icon, page.markdown, editor]);
 
@@ -369,6 +385,29 @@ export function PageEditor({
     });
   };
 
+  /**
+   * The drawing goes back over its own attachment, so the markdown never changes on a
+   * re-save and two people editing the same diagram are last write wins.
+   */
+  const saveDiagram = (svg: string): void => {
+    if (!diagram) return;
+    const existing = diagram.src === null ? null : parseAssetUrl(diagram.src);
+    const file = new File([svg], existing?.filename ?? `diagram${DIAGRAM_EXT}`, {
+      type: 'image/svg+xml',
+    });
+    setDiagramSaving(true);
+    void uploadRef
+      .current({ file, pageId: existing?.pageId ?? page.id, replace: existing !== null })
+      .then(
+        (asset) => {
+          diagram.onSave(asset.url);
+          setDiagram(null);
+        },
+        (error: unknown) => toast.pushError(error, 'The diagram could not be saved'),
+      )
+      .finally(() => setDiagramSaving(false));
+  };
+
   return (
     <article className="editor">
       <header className="editor__head">
@@ -402,6 +441,13 @@ export function PageEditor({
       ) : null}
 
       <PromptDialog request={videoRequest} onClose={() => setVideoOpen(false)} />
+
+      <DiagramDialog
+        scene={diagram}
+        saving={diagramSaving}
+        onCancel={() => setDiagram(null)}
+        onSave={saveDiagram}
+      />
 
       <PagePicker
         open={pageOpen}

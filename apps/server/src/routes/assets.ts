@@ -5,9 +5,11 @@ import type {} from '@fastify/multipart';
 import { z } from 'zod';
 import {
   ASSETS_DIR,
+  DIAGRAM_EXT,
   PageIdSchema,
   assetRelPath,
   assetUrl,
+  isDiagramPath,
   notFound,
   parseOrThrow,
   validation,
@@ -25,6 +27,12 @@ interface UploadedFile {
   data: Buffer;
 }
 
+/** `.excalidraw.svg` is two extensions, so `extname` would leave `-2` in the middle of it. */
+function suffixOf(filename: string): string {
+  if (isDiagramPath(filename)) return filename.slice(-DIAGRAM_EXT.length);
+  return extname(filename);
+}
+
 async function exists(path: string): Promise<boolean> {
   try {
     await access(path);
@@ -36,7 +44,7 @@ async function exists(path: string): Promise<boolean> {
 
 /** Never overwrite an existing attachment: `logo.png` becomes `logo-2.png`. */
 async function freeFilename(dir: string, filename: string): Promise<string> {
-  const ext = extname(filename);
+  const ext = suffixOf(filename);
   const stem = basename(filename, ext);
   let candidate = filename;
   for (let n = 2; await exists(join(dir, candidate)); n += 1) {
@@ -47,8 +55,9 @@ async function freeFilename(dir: string, filename: string): Promise<string> {
 
 async function readUpload(
   request: FastifyRequest,
-): Promise<{ pageId: string | null; file: UploadedFile | null }> {
+): Promise<{ pageId: string | null; replace: boolean; file: UploadedFile | null }> {
   let pageId: string | null = null;
+  let replace = false;
   let file: UploadedFile | null = null;
 
   for await (const part of request.parts()) {
@@ -56,6 +65,7 @@ async function readUpload(
       if (part.fieldname === 'pageId' && typeof part.value === 'string') {
         pageId = part.value.trim();
       }
+      if (part.fieldname === 'replace' && part.value === 'true') replace = true;
       continue;
     }
     if (file !== null) throw validation('Upload exactly one file per request');
@@ -66,7 +76,7 @@ async function readUpload(
     file = { filename: part.filename, data };
   }
 
-  return { pageId, file };
+  return { pageId, replace, file };
 }
 
 export function registerAssetRoutes(app: FastifyInstance, ctx: RouteContext): void {
@@ -104,14 +114,20 @@ export function registerAssetRoutes(app: FastifyInstance, ctx: RouteContext): vo
 
     const dir = join(store.contentDir, ASSETS_DIR, page.id);
     await mkdir(dir, { recursive: true });
-    const filename = await freeFilename(dir, safeName);
+    // `replace` is how a diagram saves over its own scene file. Without it every save would
+    // leave a new `-2`, `-3` copy behind and the markdown would have to change every time.
+    const filename = upload.replace ? safeName : await freeFilename(dir, safeName);
     const relPath = assetRelPath(page.id, filename);
 
-    await writeFile(join(store.contentDir, relPath), upload.file.data);
+    const target = join(store.contentDir, relPath);
+    const replaced = upload.replace && (await exists(target));
+    await writeFile(target, upload.file.data);
 
     await wiring.recordMutation({
       files: [relPath],
-      message: `Add attachment ${filename} to ${page.path}`,
+      message: replaced
+        ? `Update attachment ${filename} on ${page.path}`
+        : `Add attachment ${filename} to ${page.path}`,
     });
 
     return { url: assetUrl(page.id, filename), path: relPath };

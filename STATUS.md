@@ -14,9 +14,9 @@ REST API, the MCP server (stdio or remote), or the files themselves.
 | --- | --- | --- |
 | Typecheck | `pnpm -r typecheck` | PASS — 8 projects, strict + `noUncheckedIndexedAccess`, 0 errors |
 | Build | `pnpm -r build` | PASS — 8 dist outputs, Vite bundle 1,192 kB (383 kB gzip) |
-| Test | `pnpm -r test` | PASS — **1592 tests**, 0 failures |
+| Test | `pnpm -r test` | PASS — **1597 tests**, 0 failures |
 
-Per-package tests: shared 193, core 166, accounts 75, git-sync 67, search 92, mcp 102, server 215,
+Per-package tests: shared 195, core 166, accounts 75, git-sync 67, search 92, mcp 102, server 218,
 web 682.
 
 `packages/git-sync` cleans a temp repo at the end of every case and occasionally loses a race with

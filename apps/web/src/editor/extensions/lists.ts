@@ -9,7 +9,7 @@ import { TextSelection } from '@tiptap/pm/state';
  * or the serializer would write the item back as `1.`.
  */
 export const OrderedListParen = Extension.create({
-  name: 'gitdocsOrderedListParen',
+  name: 'tablinumOrderedListParen',
 
   addInputRules() {
     const type = this.editor.schema.nodes['orderedList'];
@@ -31,7 +31,7 @@ export const OrderedListParen = Extension.create({
  * extensions, because each stock shortcut calls `toggleList` directly.
  */
 export const ListShortcuts = Extension.create({
-  name: 'gitdocsListShortcuts',
+  name: 'tablinumListShortcuts',
   priority: 200,
 
   addKeyboardShortcuts() {

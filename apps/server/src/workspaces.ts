@@ -1,5 +1,5 @@
 import type { FastifyBaseLogger, FastifyInstance, FastifyRequest } from 'fastify';
-import type { WorkspaceRecord } from '@gitdocs/accounts';
+import type { WorkspaceRecord } from '@tablinum/accounts';
 import {
   WORKSPACE_COOKIE,
   WORKSPACE_HEADER,
@@ -7,7 +7,7 @@ import {
   conflict,
   notFound,
   unauthorized,
-} from '@gitdocs/shared';
+} from '@tablinum/shared';
 import { isPublicPath } from './auth.js';
 import type { ServerDeps } from './deps.js';
 import { LiveHub } from './live.js';

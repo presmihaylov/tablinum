@@ -32,7 +32,7 @@ export function SpaceSwitcher() {
         aria-expanded={open}
       >
         <span className="space-switcher__icon">{active?.icon ?? '◆'}</span>
-        <span className="space-switcher__name">{active?.name ?? 'gitdocs'}</span>
+        <span className="space-switcher__name">{active?.name ?? 'tablinum'}</span>
         <ChevronDown size={12} className="space-switcher__caret" />
       </button>
 

@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { SearchHitSchema } from '@gitdocs/shared';
+import { SearchHitSchema } from '@tablinum/shared';
 import { SEARCH_DB_FILENAME, SearchIndex, defaultDbPath } from '../src/index.js';
 import type { IndexablePage } from '../src/index.js';
 import { page, tempDb, type TempDb } from './helpers.js';
@@ -38,8 +38,8 @@ describe('SearchIndex', () => {
   });
 
   it('puts the default index beside the content directory, not inside it', () => {
-    expect(defaultDbPath('/srv/gitdocs/content')).toBe(`/srv/gitdocs/${SEARCH_DB_FILENAME}`);
-    expect(defaultDbPath('/srv/gitdocs/content')).not.toContain('/content/');
+    expect(defaultDbPath('/srv/tablinum/content')).toBe(`/srv/tablinum/${SEARCH_DB_FILENAME}`);
+    expect(defaultDbPath('/srv/tablinum/content')).not.toContain('/content/');
   });
 
   // -------------------------------------------------------------------------

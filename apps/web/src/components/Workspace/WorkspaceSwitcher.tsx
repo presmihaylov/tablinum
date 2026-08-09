@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Workspace } from '@gitdocs/shared';
+import type { Workspace } from '@tablinum/shared';
 import { useCreateWorkspace, useImportWorkspace } from '../../api/hooks';
 import { describeError, useToast } from '../../lib/toast';
 import { useWorkspace } from '../../lib/workspaces';
@@ -74,7 +74,7 @@ export function WorkspaceSwitcher() {
         aria-label="Workspace"
       >
         <span className="workspace-switcher__mark">{current?.icon ?? initialOf(current)}</span>
-        <span className="workspace-switcher__name">{current?.name ?? 'gitdocs'}</span>
+        <span className="workspace-switcher__name">{current?.name ?? 'tablinum'}</span>
         <ChevronDown size={12} className="workspace-switcher__caret" />
       </button>
 

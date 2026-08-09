@@ -8,7 +8,7 @@ export const LIVE_PATH = '/api/v1/live';
  * Header that names the tab a request came from. The live channel echoes it back on the
  * broadcast, so the tab that made the change does not reload its own edit.
  */
-export const CLIENT_HEADER = 'x-gitdocs-client';
+export const CLIENT_HEADER = 'x-tablinum-client';
 
 /** How often a client pings. The server drops a socket that stops answering. */
 export const LIVE_PING_MS = 25_000;

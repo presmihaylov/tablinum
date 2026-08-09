@@ -7,7 +7,7 @@ const sharedEntry = fileURLToPath(new URL('../shared/src/index.ts', import.meta.
 export default defineConfig({
   resolve: {
     alias: {
-      '@gitdocs/shared': sharedEntry,
+      '@tablinum/shared': sharedEntry,
     },
   },
   test: {

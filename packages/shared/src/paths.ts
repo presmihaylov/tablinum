@@ -27,7 +27,7 @@ function isValidSegment(segment: string): boolean {
   if (UNSAFE_SEGMENT_RE.test(segment)) return false;
   if (segment.trim() !== segment) return false;
   if (segment.startsWith('_')) return false; // reserved: _assets, _space.yml
-  // The scanner skips dot-names (.git, .gitdocs), so such a page would be written but never
+  // The scanner skips dot-names (.git, .tablinum), so such a page would be written but never
   // indexed: invisible to the API and impossible to delete through it.
   if (segment.startsWith('.')) return false;
   if (segment.endsWith('.')) return false;

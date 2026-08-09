@@ -9,7 +9,7 @@ import {
   type LiveUser,
   type Page,
   type ServerMessage,
-} from '@gitdocs/shared';
+} from '@tablinum/shared';
 import { LiveHub, agentOf, clientOf, readClientId } from '../src/live.js';
 
 /** A socket that records what the hub wrote to it. */
@@ -355,9 +355,9 @@ describe('client ids', () => {
   });
 
   it('reads the tab id from the rest header', () => {
-    expect(clientOf(request({}, { 'x-gitdocs-client': 'tab-a' }))).toBe('tab-a');
-    expect(clientOf(request({}, { 'x-gitdocs-client': ['tab-b'] }))).toBe('tab-b');
+    expect(clientOf(request({}, { 'x-tablinum-client': 'tab-a' }))).toBe('tab-a');
+    expect(clientOf(request({}, { 'x-tablinum-client': ['tab-b'] }))).toBe('tab-b');
     expect(clientOf(request({}, {}))).toBeNull();
-    expect(clientOf(request({}, { 'x-gitdocs-client': 'no spaces allowed' }))).toBeNull();
+    expect(clientOf(request({}, { 'x-tablinum-client': 'no spaces allowed' }))).toBeNull();
   });
 });

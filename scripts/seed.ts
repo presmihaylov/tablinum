@@ -1,8 +1,8 @@
 #!/usr/bin/env tsx
 /**
- * Seed a demo gitdocs content repo.
+ * Seed a demo tablinum content repo.
  *
- *   pnpm seed                          seed $GITDOCS_CONTENT_DIR (or the default)
+ *   pnpm seed                          seed $TABLINUM_CONTENT_DIR (or the default)
  *   pnpm seed -- --dir /tmp/content    seed somewhere else
  *   pnpm seed -- --force               replace the demo spaces if they exist
  *   pnpm seed -- --no-git              do not init or commit the repo
@@ -13,21 +13,21 @@ import { mkdir, readdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-import type { Frontmatter, PagePath } from '@gitdocs/shared';
+import type { Frontmatter, PagePath } from '@tablinum/shared';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-type Shared = typeof import('@gitdocs/shared');
+type Shared = typeof import('@tablinum/shared');
 
-/** Resolve @gitdocs/shared through the workspace, or fall back to its build output. */
+/** Resolve @tablinum/shared through the workspace, or fall back to its build output. */
 async function loadShared(): Promise<Shared> {
   try {
-    return await import('@gitdocs/shared');
+    return await import('@tablinum/shared');
   } catch {
     const built = resolve(ROOT, 'packages/shared/dist/index.js');
     if (!existsSync(built)) {
       throw new Error(
-        'Cannot resolve @gitdocs/shared. Run: pnpm --filter @gitdocs/shared build',
+        'Cannot resolve @tablinum/shared. Run: pnpm --filter @tablinum/shared build',
       );
     }
     return (await import(pathToFileURL(built).href)) as Shared;
@@ -229,7 +229,7 @@ updated: "2026-08-06T09:12:44.000Z"
 | \`order\` | no | Sorts siblings. Missing sorts by title. |
 | \`created\` / \`updated\` | yes | ISO 8601, UTC. |
 
-The app owns every key. Write the body, and let gitdocs keep the header
+The app owns every key. Write the body, and let tablinum keep the header
 correct.
 
 See [[docs/concepts/pages-and-spaces]] for where the file lives.
@@ -318,7 +318,7 @@ Agents edit the same files you do. They reach the content three ways:
 - Review the commits. Each edit is a normal commit with a normal diff.
 
 \`\`\`bash
-curl -s -H "Authorization: Bearer $GITDOCS_TOKEN" \\
+curl -s -H "Authorization: Bearer $TABLINUM_TOKEN" \\
   "http://localhost:4000/api/v1/search?q=deploy&limit=5"
 \`\`\`
 
@@ -438,7 +438,7 @@ The backup is a git remote. Restoring is a clone.
 
 \`\`\`bash
 docker compose down
-docker volume rm gitdocs_gitdocs-data
+docker volume rm tablinum_tablinum-data
 docker compose up -d           # the container clones the remote on first boot
 \`\`\`
 
@@ -544,7 +544,7 @@ derived data: delete the file and it rebuilds from the markdown on the next
 boot.
 
 \`\`\`bash
-curl -s -H "Authorization: Bearer $GITDOCS_TOKEN" \\
+curl -s -H "Authorization: Bearer $TABLINUM_TOKEN" \\
   "http://localhost:4000/api/v1/search?q=runbook&space=engineering&limit=10"
 \`\`\`
 
@@ -610,11 +610,11 @@ function parseArgs(argv: string[]): Options | null {
   return options;
 }
 
-const USAGE = `seed a demo gitdocs content repo
+const USAGE = `seed a demo tablinum content repo
 
   tsx scripts/seed.ts [options]
 
-  -d, --dir <path>   target content directory (default: $GITDOCS_CONTENT_DIR)
+  -d, --dir <path>   target content directory (default: $TABLINUM_CONTENT_DIR)
   -f, --force        replace the demo spaces if they already exist
       --no-git       do not init the repo and do not commit
   -q, --quiet        print only the summary line

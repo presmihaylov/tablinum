@@ -1,7 +1,7 @@
-export { GitdocsClient } from './client.js';
+export { TablinumClient } from './client.js';
 export type {
   FetchLike,
-  GitdocsClientOptions,
+  TablinumClientOptions,
   SearchParams,
   SpaceTree,
 } from './client.js';
@@ -27,7 +27,7 @@ export {
   MCP_SERVER_VERSION,
   STYLE_GUIDE_PROMPT,
   TREE_RESOURCE_URI,
-  createGitdocsMcpServer,
+  createTablinumMcpServer,
   instructionsFor,
   treeOutline,
   type CreateServerOptions,

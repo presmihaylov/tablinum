@@ -23,7 +23,7 @@ import {
   type Invite,
   type Workspace,
   type WorkspaceRole,
-} from '@gitdocs/shared';
+} from '@tablinum/shared';
 import { DECOY_HASH, hashPassword, verifyPassword } from './passwords.js';
 import { digestOf, hashToken, newToken } from './tokens.js';
 

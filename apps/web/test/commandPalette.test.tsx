@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { SearchHit } from '@gitdocs/shared';
+import type { SearchHit } from '@tablinum/shared';
 import { CommandPalette } from '../src/components/CommandPalette/CommandPalette';
 import { filterActions, scoreMatch } from '../src/lib/palette';
 import { useDebouncedValue } from '../src/lib/useDebouncedValue';

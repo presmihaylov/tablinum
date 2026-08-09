@@ -5,7 +5,7 @@ import {
   type ClientMessage,
   type PagePath,
   type ServerMessage,
-} from '@gitdocs/shared';
+} from '@tablinum/shared';
 import { currentWorkspace } from './currentWorkspace';
 import { myClientId, myUser, onIdentityChange } from './identity';
 

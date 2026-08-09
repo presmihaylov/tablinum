@@ -7,20 +7,20 @@ export interface CliOptions {
   mode: 'serve' | 'help' | 'version';
 }
 
-export const USAGE = `gitdocs-mcp - MCP stdio server for a gitdocs site
+export const USAGE = `tablinum-mcp - MCP stdio server for a tablinum site
 
 Usage:
-  gitdocs-mcp [--url <base-url>] [--token <token>]
+  tablinum-mcp [--url <base-url>] [--token <token>]
 
 Options:
-  --url <base-url>   Base URL of the running gitdocs server. Default ${DEFAULT_BASE_URL}
-  --token <token>    Bearer token, one of the server's GITDOCS_API_TOKENS. Optional in open mode.
+  --url <base-url>   Base URL of the running tablinum server. Default ${DEFAULT_BASE_URL}
+  --token <token>    Bearer token, one of the server's TABLINUM_API_TOKENS. Optional in open mode.
   -h, --help         Print this help.
   -v, --version      Print the version.
 
 Environment:
-  GITDOCS_URL        Same as --url.
-  GITDOCS_TOKEN      Same as --token.
+  TABLINUM_URL        Same as --url.
+  TABLINUM_TOKEN      Same as --token.
 
 The server speaks MCP over stdio, so stdout carries protocol frames only. Logs go to stderr.`;
 
@@ -47,7 +47,7 @@ export function parseCliOptions(argv: string[], env: EnvSource): CliOptions {
   if (argv.includes('--version') || argv.includes('-v')) {
     return { baseUrl: DEFAULT_BASE_URL, token: null, mode: 'version' };
   }
-  const baseUrl = clean(readFlag(argv, 'url')) ?? clean(env['GITDOCS_URL']) ?? DEFAULT_BASE_URL;
-  const token = clean(readFlag(argv, 'token')) ?? clean(env['GITDOCS_TOKEN']) ?? null;
+  const baseUrl = clean(readFlag(argv, 'url')) ?? clean(env['TABLINUM_URL']) ?? DEFAULT_BASE_URL;
+  const token = clean(readFlag(argv, 'token')) ?? clean(env['TABLINUM_TOKEN']) ?? null;
   return { baseUrl, token, mode: 'serve' };
 }

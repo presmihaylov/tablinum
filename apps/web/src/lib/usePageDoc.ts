@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import type { Page, PageId, UpdatePageBody } from '@gitdocs/shared';
+import type { Page, PageId, UpdatePageBody } from '@tablinum/shared';
 import { api, saveConflictOf } from '../api/client';
 import { useUpdatePage } from '../api/hooks';
 import { qk } from '../api/keys';

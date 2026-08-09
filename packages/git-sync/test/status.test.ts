@@ -1,7 +1,7 @@
 import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { GitStatusSchema } from '@gitdocs/shared';
+import { GitStatusSchema } from '@tablinum/shared';
 import {
   bareRemote,
   cleanupTempDirs,
@@ -33,8 +33,8 @@ describe('GitEngine.status', () => {
     expect(status.behind).toBe(0);
     expect(status.dirtyFiles).toEqual([]);
     expect(status.remote).toBeNull();
-    expect(status.lastCommit?.message).toBe('chore: initialize gitdocs content repo');
-    expect(status.lastCommit?.author).toBe('gitdocs');
+    expect(status.lastCommit?.message).toBe('chore: initialize tablinum content repo');
+    expect(status.lastCommit?.author).toBe('tablinum');
   });
 
   it('works before init, on a directory that is not a repo yet', async () => {

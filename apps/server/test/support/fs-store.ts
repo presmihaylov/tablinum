@@ -19,7 +19,7 @@ import {
   spaceFileRelPath,
   spaceOf,
   validation,
-} from '@gitdocs/shared';
+} from '@tablinum/shared';
 import type {
   Backlink,
   CreatePageBody,
@@ -33,7 +33,7 @@ import type {
   TreeNode,
   UpdatePageBody,
   UpdateSpaceBody,
-} from '@gitdocs/shared';
+} from '@tablinum/shared';
 import type { ContentStore, ParsedPageFile, SpaceTree } from '../../src/deps.js';
 import {
   parseFlatYaml,

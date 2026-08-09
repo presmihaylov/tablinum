@@ -3,7 +3,7 @@ import type Token from 'markdown-it/lib/token.mjs';
 import type StateBlock from 'markdown-it/lib/rules_block/state_block.mjs';
 import type StateCore from 'markdown-it/lib/rules_core/state_core.mjs';
 import type StateInline from 'markdown-it/lib/rules_inline/state_inline.mjs';
-import { HANDLE_PATTERN } from '@gitdocs/shared';
+import { HANDLE_PATTERN } from '@tablinum/shared';
 import { DATA, isCalloutType } from './dialect';
 import { encodeRaw, escapeHtml } from './html';
 
@@ -20,7 +20,7 @@ const AT = 0x40;
 const configured = new WeakSet<MarkdownIt>();
 
 /**
- * Teach markdown-it the gitdocs dialect. Everything here exists to keep source
+ * Teach markdown-it the tablinum dialect. Everything here exists to keep source
  * detail that plain HTML would throw away: break markers, fence widths, list
  * markers, emphasis markers, raw HTML and wikilinks.
  */

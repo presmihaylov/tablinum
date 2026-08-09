@@ -1,10 +1,10 @@
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { FastifyBaseLogger } from 'fastify';
-import { AccountStore, defaultAccountsDbPath, type WorkspaceRecord } from '@gitdocs/accounts';
-import { ContentStore as CoreContentStore, parse } from '@gitdocs/core';
-import { GitEngine as CoreGitEngine } from '@gitdocs/git-sync';
-import { SearchIndex as CoreSearchIndex, defaultDbPath } from '@gitdocs/search';
+import { AccountStore, defaultAccountsDbPath, type WorkspaceRecord } from '@tablinum/accounts';
+import { ContentStore as CoreContentStore, parse } from '@tablinum/core';
+import { GitEngine as CoreGitEngine } from '@tablinum/git-sync';
+import { SearchIndex as CoreSearchIndex, defaultDbPath } from '@tablinum/search';
 import {
   isAppError,
   loadConfig,
@@ -24,7 +24,7 @@ import {
   type Space,
   type UpdatePageBody,
   type UpdateSpaceBody,
-} from '@gitdocs/shared';
+} from '@tablinum/shared';
 import { buildApp } from './app.js';
 import { contextOf } from './context.js';
 import type {
@@ -52,7 +52,7 @@ async function orNull<T>(work: Promise<T>): Promise<T | null> {
   }
 }
 
-/** Adapts @gitdocs/core onto the store interface the routes use. */
+/** Adapts @tablinum/core onto the store interface the routes use. */
 class CoreStoreAdapter implements ContentStore {
   constructor(private readonly core: CoreContentStore) {}
 
@@ -132,7 +132,7 @@ class CoreStoreAdapter implements ContentStore {
   }
 }
 
-/** Adapts @gitdocs/git-sync onto the git interface the routes use. */
+/** Adapts @tablinum/git-sync onto the git interface the routes use. */
 class CoreGitAdapter implements GitEngine {
   constructor(private readonly core: CoreGitEngine) {}
 
@@ -187,7 +187,7 @@ class CoreGitAdapter implements GitEngine {
   }
 }
 
-/** Adapts @gitdocs/search, which is synchronous, onto the async index interface. */
+/** Adapts @tablinum/search, which is synchronous, onto the async index interface. */
 class CoreSearchAdapter implements SearchIndex {
   constructor(private readonly core: CoreSearchIndex) {}
 
@@ -261,7 +261,7 @@ export async function commitOrphanedWrites(
   try {
     const status = await deps.git.status();
     if (status.dirtyFiles.length === 0) return null;
-    const sha = await deps.git.commit('Commit content changed while gitdocs was stopped');
+    const sha = await deps.git.commit('Commit content changed while tablinum was stopped');
     log.info({ sha, files: status.dirtyFiles.length }, 'committed content left over from a crash');
     return sha;
   } catch (err) {
@@ -302,7 +302,7 @@ export async function start(config: Config = loadConfig()): Promise<RunningServe
   accounts.purgeExpiredSessions();
 
   const app = await buildApp(deps);
-  app.log.info(redactConfig(config), 'gitdocs configuration');
+  app.log.info(redactConfig(config), 'tablinum configuration');
   // A fresh install has nobody in it. Say so, because the first visitor becomes the admin.
   if (accounts.isEmpty()) {
     app.log.warn(`No account exists yet. Open http://localhost:${config.port} to create the first one.`);

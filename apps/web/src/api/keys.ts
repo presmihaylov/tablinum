@@ -1,4 +1,4 @@
-import type { PageId, PagePath, SearchQuery } from '@gitdocs/shared';
+import type { PageId, PagePath, SearchQuery } from '@tablinum/shared';
 
 /** Every query key in the app. Keep the prefixes stable: invalidation matches on them. */
 export const qk = {

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
-import { WORKSPACE_HEADER, type Account, type Workspace } from '@gitdocs/shared';
+import { WORKSPACE_HEADER, type Account, type Workspace } from '@tablinum/shared';
 import { WorkspaceSwitcher } from '../src/components/Workspace/WorkspaceSwitcher';
 import { setCurrentWorkspace } from '../src/lib/currentWorkspace';
 import { installFetch, type MockServer, type Routes as MockRoutes } from './mockFetch';

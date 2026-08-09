@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { hasConflictMarkers } from '@gitdocs/shared';
+import { hasConflictMarkers } from '@tablinum/shared';
 import { LiveDoc, type DocConflict } from '../src/lib/livedoc';
 
 interface Harness {

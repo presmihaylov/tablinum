@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { UpdatePageBody } from '@gitdocs/shared';
+import type { UpdatePageBody } from '@tablinum/shared';
 import { Autosave, type SaveState } from '../src/lib/autosave';
 
 function harness(options: { fail?: number } = {}) {

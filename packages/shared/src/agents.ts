@@ -11,7 +11,7 @@ import { WorkspaceIdSchema } from './workspaces.js';
  * own credential instead of borrowing a person's, and it gets an identity: a short brief that
  * says who it is and what it is allowed to write. The remote MCP server reads the credential,
  * finds the agent behind it, and hands that brief back as the server instructions, so an agent
- * connected to gitdocs already knows its own role before it calls a single tool.
+ * connected to tablinum already knows its own role before it calls a single tool.
  */
 
 /** Prefix of an agent id, in the style of the page and user ids. */

@@ -1,12 +1,12 @@
-name: gitdocs
+name: tablinum
 
 services:
-  gitdocs:
-    image: gitdocs:latest
+  tablinum:
+    image: tablinum:latest
     build:
       context: ..
       dockerfile: deploy/Dockerfile
-    container_name: gitdocs
+    container_name: tablinum
     restart: unless-stopped
     init: true
 
@@ -18,9 +18,9 @@ services:
     # These win over .env on purpose: inside the container the content repo and
     # the search index always live on the /data volume.
     environment:
-      GITDOCS_CONTENT_DIR: /data/content
-      GITDOCS_SEARCH_DB: /data/search.db
-      GITDOCS_PORT: "4000"
+      TABLINUM_CONTENT_DIR: /data/content
+      TABLINUM_SEARCH_DB: /data/search.db
+      TABLINUM_PORT: "4000"
 
     ports:
       # Reachable on the host's VPN address. Put a reverse proxy in front and
@@ -29,7 +29,7 @@ services:
 
     volumes:
       # content repo -> /data/content, search index -> /data/search.db
-      - gitdocs-data:/data
+      - tablinum-data:/data
       # A read-only SSH key lets the container push to a private git remote.
       # Create ./ssh with an id_ed25519 (chmod 600) and a known_hosts file.
       # - ./ssh:/home/node/.ssh:ro
@@ -54,26 +54,26 @@ services:
   # ---------------------------------------------------------------------------
   # OPTIONAL: TLS termination for a VPN-internal hostname.
   #
-  # gitdocs speaks plain HTTP. Put Caddy in front to get https://docs.vpn.example.com
+  # tablinum speaks plain HTTP. Put Caddy in front to get https://docs.vpn.example.com
   # for machines on the VPN only. Do NOT publish 80/443 to the public internet:
-  # gitdocs has accounts for people and shared bearer tokens for machines, but no
+  # tablinum has accounts for people and shared bearer tokens for machines, but no
   # MFA and no lockout, which is not an authentication model for the open web.
   #
   # To enable:
   #   1. Uncomment this service and the "caddy-data"/"caddy-config" volumes.
-  #   2. Change the gitdocs "ports" entry above to "127.0.0.1:4000:4000".
+  #   2. Change the tablinum "ports" entry above to "127.0.0.1:4000:4000".
   #   3. Write deploy/Caddyfile (see README.md, "Serve it inside a VPN").
-  #   4. Point the internal DNS record for GITDOCS_HOSTNAME at this host.
+  #   4. Point the internal DNS record for TABLINUM_HOSTNAME at this host.
   # ---------------------------------------------------------------------------
   # caddy:
   #   image: caddy:2-alpine
-  #   container_name: gitdocs-caddy
+  #   container_name: tablinum-caddy
   #   restart: unless-stopped
   #   depends_on:
-  #     - gitdocs
+  #     - tablinum
   #   environment:
   #     # Internal hostname served over TLS, e.g. docs.vpn.example.com
-  #     GITDOCS_HOSTNAME: ${GITDOCS_HOSTNAME:?set GITDOCS_HOSTNAME in deploy/.env}
+  #     TABLINUM_HOSTNAME: ${TABLINUM_HOSTNAME:?set TABLINUM_HOSTNAME in deploy/.env}
   #     # Only used by the Let's Encrypt DNS-01 variant in the Caddyfile.
   #     ACME_EMAIL: ${ACME_EMAIL:-}
   #     CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN:-}
@@ -87,6 +87,6 @@ services:
   #     - caddy-config:/config
 
 volumes:
-  gitdocs-data:
+  tablinum-data:
   # caddy-data:
   # caddy-config:

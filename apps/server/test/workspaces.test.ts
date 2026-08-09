@@ -9,7 +9,7 @@ import {
   WorkspaceMembersResponseSchema,
   WorkspaceResponseSchema,
   WorkspacesResponseSchema,
-} from '@gitdocs/shared';
+} from '@tablinum/shared';
 import { readZip } from '../src/zip.js';
 import { bodyOf, makeHarness, seed, type Harness } from './support/harness.js';
 import { multipart } from './support/multipart.js';

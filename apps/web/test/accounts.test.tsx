@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor, within } from '@testing-library/react';
 import { Route, Routes } from 'react-router-dom';
 import userEvent from '@testing-library/user-event';
-import type { Account, AuthStateResponse, Invite, Workspace } from '@gitdocs/shared';
+import type { Account, AuthStateResponse, Invite, Workspace } from '@tablinum/shared';
 import { App } from '../src/App';
 import { AccountMenu } from '../src/components/Account/AccountMenu';
 import { Avatar } from '../src/components/Account/Avatar';

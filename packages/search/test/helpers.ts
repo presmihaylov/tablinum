@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { newPageId } from '@gitdocs/shared';
+import { newPageId } from '@tablinum/shared';
 import type { IndexablePage } from '../src/index.js';
 
 let counter = 0;
@@ -27,7 +27,7 @@ export interface TempDb {
 
 /** A throwaway on-disk database, so tests exercise the same code path as production. */
 export function tempDb(): TempDb {
-  const dir = mkdtempSync(join(tmpdir(), 'gitdocs-search-'));
+  const dir = mkdtempSync(join(tmpdir(), 'tablinum-search-'));
   return {
     dbPath: join(dir, 'nested', 'search.db'),
     cleanup: () => rmSync(dir, { recursive: true, force: true }),

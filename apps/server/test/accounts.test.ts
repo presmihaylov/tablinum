@@ -11,7 +11,7 @@ import {
   OkResponseSchema,
   UserResponseSchema,
   UsersResponseSchema,
-} from '@gitdocs/shared';
+} from '@tablinum/shared';
 import { bodyOf, makeHarness, TEST_TOKEN, type Harness } from './support/harness.js';
 
 const open: Harness[] = [];
@@ -61,7 +61,7 @@ function multipart(field: string, filename: string, mime: string, bytes: Buffer)
   headers: Record<string, string>;
   payload: Buffer;
 } {
-  const boundary = '----gitdocstest0123456789';
+  const boundary = '----tablinumtest0123456789';
   const head = Buffer.from(
     `--${boundary}\r\nContent-Disposition: form-data; name="${field}"; filename="${filename}"\r\n` +
       `Content-Type: ${mime}\r\n\r\n`,

@@ -1,5 +1,5 @@
-/** House conventions for writing pages in this gitdocs instance, addressed to a model. */
-export const STYLE_GUIDE = `# How to write pages in gitdocs
+/** House conventions for writing pages in this tablinum instance, addressed to a model. */
+export const STYLE_GUIDE = `# How to write pages in tablinum
 
 Every page here is one markdown file with YAML frontmatter, stored in a git repository. Humans edit
 the same pages in a block editor in the browser. Write so that both stay readable.
@@ -21,8 +21,8 @@ the same pages in a block editor in the browser. Write so that both stay readabl
 
 ## Links
 - Link to another page with \`[[page-path]]\`, or \`[[page-path|the words you want to show]]\`.
-- Use the real page path, for example \`[[eng/runbooks/deploy]]\`. Confirm it with gitdocs_search or
-  gitdocs_list_tree first; a link to a path that does not exist renders as a broken link.
+- Use the real page path, for example \`[[eng/runbooks/deploy]]\`. Confirm it with tablinum_search or
+  tablinum_list_tree first; a link to a path that does not exist renders as a broken link.
 - Use ordinary markdown links for anything outside this docs site.
 - Reference an uploaded file as \`/_assets/<pageId>/<filename>\`.
 
@@ -34,13 +34,13 @@ the same pages in a block editor in the browser. Write so that both stay readabl
 
 ## Working safely next to humans
 - Search before you create. A near duplicate page is worse than a longer existing page.
-- Read a page with gitdocs_get_page before you rewrite it.
-- To add a section, use gitdocs_append_page. Never resend a whole body just to add to the end.
-- To change only metadata, call gitdocs_update_page WITHOUT \`markdown\`. Sending an empty
+- Read a page with tablinum_get_page before you rewrite it.
+- To add a section, use tablinum_append_page. Never resend a whole body just to add to the end.
+- To change only metadata, call tablinum_update_page WITHOUT \`markdown\`. Sending an empty
   \`markdown\` blanks the page.
-- Rename with gitdocs_move_page, never by deleting and recreating: that would lose the page id,
+- Rename with tablinum_move_page, never by deleting and recreating: that would lose the page id,
   its history and every incoming link.
-- Call gitdocs_git_sync after a batch of edits so other people and other agents see them.`;
+- Call tablinum_git_sync after a batch of edits so other people and other agents see them.`;
 
 /** The same guide, scoped to one space when the caller names one. */
 export function styleGuideFor(space: string | undefined): string {
@@ -50,6 +50,6 @@ export function styleGuideFor(space: string | undefined): string {
 
 ## For the "${slug}" space
 - Every page you write now belongs under \`${slug}/...\`.
-- Call gitdocs_list_tree with space "${slug}" first, and match the naming the pages already there
+- Call tablinum_list_tree with space "${slug}" first, and match the naming the pages already there
   use.`;
 }

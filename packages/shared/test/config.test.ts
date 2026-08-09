@@ -15,8 +15,8 @@ describe('loadConfig defaults', () => {
     expect(config.contentDir).toBe(DEFAULT_CONTENT_DIR);
     expect(config.port).toBe(4000);
     expect(config.gitBranch).toBe('main');
-    expect(config.gitAuthorName).toBe('gitdocs');
-    expect(config.gitAuthorEmail).toBe('gitdocs@localhost');
+    expect(config.gitAuthorName).toBe('tablinum');
+    expect(config.gitAuthorEmail).toBe('tablinum@localhost');
     expect(config.gitRemote).toBeNull();
     expect(config.autocommitMs).toBe(5000);
     expect(config.autopullMs).toBe(60000);
@@ -35,15 +35,15 @@ describe('loadConfig defaults', () => {
 
 describe('loadConfig overrides', () => {
   const config = loadConfig({
-    GITDOCS_CONTENT_DIR: '/srv/docs/',
-    GITDOCS_PORT: '8080',
-    GITDOCS_API_TOKENS: ' alpha, beta ,, alpha ',
-    GITDOCS_SESSION_SECRET: 'a-long-enough-secret',
-    GITDOCS_GIT_REMOTE: 'git@example.com:team/docs.git',
-    GITDOCS_GIT_BRANCH: 'trunk',
-    GITDOCS_AUTOCOMMIT_MS: '0',
-    GITDOCS_AUTOPULL_MS: '0',
-    GITDOCS_AUTOPUSH_MS: '0',
+    TABLINUM_CONTENT_DIR: '/srv/docs/',
+    TABLINUM_PORT: '8080',
+    TABLINUM_API_TOKENS: ' alpha, beta ,, alpha ',
+    TABLINUM_SESSION_SECRET: 'a-long-enough-secret',
+    TABLINUM_GIT_REMOTE: 'git@example.com:team/docs.git',
+    TABLINUM_GIT_BRANCH: 'trunk',
+    TABLINUM_AUTOCOMMIT_MS: '0',
+    TABLINUM_AUTOPULL_MS: '0',
+    TABLINUM_AUTOPUSH_MS: '0',
   });
 
   it('trims the content dir and parses the port', () => {
@@ -62,23 +62,23 @@ describe('loadConfig overrides', () => {
   });
 
   it('treats an empty variable as unset', () => {
-    expect(loadConfig({ GITDOCS_GIT_BRANCH: '   ' }).gitBranch).toBe('main');
-    expect(loadConfig({ GITDOCS_API_TOKENS: '  ' }).apiTokens).toEqual([]);
+    expect(loadConfig({ TABLINUM_GIT_BRANCH: '   ' }).gitBranch).toBe('main');
+    expect(loadConfig({ TABLINUM_API_TOKENS: '  ' }).apiTokens).toEqual([]);
   });
 });
 
 describe('loadConfig validation', () => {
   const bad: Array<[string, Record<string, string>]> = [
-    ['non-numeric port', { GITDOCS_PORT: 'nope' }],
-    ['port 0', { GITDOCS_PORT: '0' }],
-    ['port above range', { GITDOCS_PORT: '70000' }],
-    ['fractional port', { GITDOCS_PORT: '80.5' }],
-    ['relative content dir', { GITDOCS_CONTENT_DIR: 'relative/dir' }],
-    ['traversing content dir', { GITDOCS_CONTENT_DIR: '../content' }],
-    ['branch with whitespace', { GITDOCS_GIT_BRANCH: 'my branch' }],
-    ['author email without @', { GITDOCS_GIT_AUTHOR_EMAIL: 'gitdocs' }],
-    ['short session secret', { GITDOCS_SESSION_SECRET: 'short' }],
-    ['negative autocommit', { GITDOCS_AUTOCOMMIT_MS: '-1' }],
+    ['non-numeric port', { TABLINUM_PORT: 'nope' }],
+    ['port 0', { TABLINUM_PORT: '0' }],
+    ['port above range', { TABLINUM_PORT: '70000' }],
+    ['fractional port', { TABLINUM_PORT: '80.5' }],
+    ['relative content dir', { TABLINUM_CONTENT_DIR: 'relative/dir' }],
+    ['traversing content dir', { TABLINUM_CONTENT_DIR: '../content' }],
+    ['branch with whitespace', { TABLINUM_GIT_BRANCH: 'my branch' }],
+    ['author email without @', { TABLINUM_GIT_AUTHOR_EMAIL: 'tablinum' }],
+    ['short session secret', { TABLINUM_SESSION_SECRET: 'short' }],
+    ['negative autocommit', { TABLINUM_AUTOCOMMIT_MS: '-1' }],
   ];
 
   it.each(bad)('throws on %s', (_label, env) => {
@@ -86,17 +86,17 @@ describe('loadConfig validation', () => {
   });
 
   it('reports the offending variable', () => {
-    expect(() => loadConfig({ GITDOCS_PORT: 'nope' })).toThrow(/GITDOCS_PORT/);
+    expect(() => loadConfig({ TABLINUM_PORT: 'nope' })).toThrow(/TABLINUM_PORT/);
   });
 });
 
 describe('getConfig', () => {
   it('memoizes until reset', () => {
     resetConfigCache();
-    const first = getConfig({ GITDOCS_PORT: '5001' });
-    expect(getConfig({ GITDOCS_PORT: '5002' })).toBe(first);
+    const first = getConfig({ TABLINUM_PORT: '5001' });
+    expect(getConfig({ TABLINUM_PORT: '5002' })).toBe(first);
     resetConfigCache();
-    expect(getConfig({ GITDOCS_PORT: '5002' }).port).toBe(5002);
+    expect(getConfig({ TABLINUM_PORT: '5002' }).port).toBe(5002);
     resetConfigCache();
   });
 });
@@ -104,7 +104,7 @@ describe('getConfig', () => {
 describe('redactConfig', () => {
   it('hides secrets', () => {
     const redacted = redactConfig(
-      loadConfig({ GITDOCS_API_TOKENS: 'a,b', GITDOCS_SESSION_SECRET: 'hunter2-and-then-some' }),
+      loadConfig({ TABLINUM_API_TOKENS: 'a,b', TABLINUM_SESSION_SECRET: 'hunter2-and-then-some' }),
     );
     expect(redacted.apiTokens).toBe('2 token(s)');
     expect(redacted.sessionSecret).toBe('set');

@@ -68,7 +68,7 @@ jobs:
           printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
           ssh -i ~/.ssh/deploy -o IdentitiesOnly=yes \
               -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
-              -p 4423 "apps@$HOST" "appctl deploy gitdocs $TAG"
+              -p 4423 "apps@$HOST" "appctl deploy tablinum $TAG"
 
       - name: Wipe the key
         if: always()

@@ -1,8 +1,8 @@
-# gitdocs — integration status
+# tablinum — integration status
 
 Last verified: 2026-08-09, Node 22.22.3, pnpm 10.9.0, macOS (darwin 23.6.0).
 
-gitdocs is a standalone, self-hosted docs app. Every page is a markdown file with YAML
+tablinum is a standalone, self-hosted docs app. Every page is a markdown file with YAML
 frontmatter in a git repo. Humans edit through the web block editor; agents edit through the
 REST API, the MCP server (stdio or remote), or the files themselves.
 
@@ -214,7 +214,7 @@ bytes. **None of it is in the git repo**, so a push never carries a password or 
 
 - **Passwords** are scrypt with a per-password salt, stored as `scrypt$N$r$p$salt$hash`. The
   minimum length is 10 characters. Comparison is constant time.
-- **Sessions** are random tokens in a table, cookie `gitdocs_session`, 30 days. A signed-out
+- **Sessions** are random tokens in a table, cookie `tablinum_session`, 30 days. A signed-out
   token is deleted, so a copied cookie dies with it. A password reset drops every session for
   that account.
 - **Invites** are random tokens with an expiry (14 days by default) and an optional pinned email.
@@ -270,10 +270,10 @@ rewrites a page.
   notification table to fall out of step with the pages, and you are never told about your own
   mention. The queue is a promise chain off the request path, so a save never waits for Slack and
   never fails because Slack is down.
-- **Connecting Slack** needs one workspace bot token (`GITDOCS_SLACK_BOT_TOKEN`, scopes
+- **Connecting Slack** needs one workspace bot token (`TABLINUM_SLACK_BOT_TOKEN`, scopes
   `chat:write` and `users:read.email`). Each person clicks "Connect Slack" in "Your account";
-  gitdocs looks their email address up in Slack, or takes a member id that is pasted in.
-  `GITDOCS_PUBLIC_URL` supplies the origin of the link inside the message.
+  tablinum looks their email address up in Slack, or takes a member id that is pasted in.
+  `TABLINUM_PUBLIC_URL` supplies the origin of the link inside the message.
 
 Verified by tests, not by a live Slack workspace:
 
@@ -287,8 +287,8 @@ Verified by tests, not by a live Slack workspace:
 ### MCP server
 
 `packages/mcp/dist/cli.js` was spawned over stdio by a real MCP `Client` against the live API
-earlier in the project: `tools/list` returned all 11 tools, `gitdocs_list_tree` rendered the
-outline, `gitdocs_create_page` created a page that REST search then found, and a missing path
+earlier in the project: `tools/list` returned all 11 tools, `tablinum_list_tree` rendered the
+outline, `tablinum_create_page` created a page that REST search then found, and a missing path
 returned a readable tool error. The final verification run covered the MCP package by its 102
 unit tests only, not by a live stdio session.
 
@@ -302,7 +302,7 @@ a `gda_` token that is shown once. The token names that agent on every request:
   change, a pause that blocks the token at once, a rotation that retires the old token, a delete,
   and handles that stay unique across people and agents.
 - `apps/server/test/mcp.test.ts`, 9 tests: the handshake instructions carry the agent's own brief,
-  another credential gets the shared guidance alone, `tools/list` lists the gitdocs tools, a read
+  another credential gets the shared guidance alone, `tools/list` lists the tablinum tools, a read
   tool and a write tool both run through the loopback client and the written page appears in REST,
   a failing tool reports an error instead of crashing, no credential and a paused agent both give
   401, `GET` gives 405, and a body that is not JSON-RPC gives 400.
@@ -410,7 +410,7 @@ Both `scripts/dev.sh` and `scripts/seed.ts` now also accept the `--` that `pnpm 
   other divergence between the double and `packages/core` is invisible to the route suite. The
   fix is to export a `CoreStoreAdapter` from the server and run the suite against the real store;
   that is a larger change and is deliberately not in this pass.
-- **`GITDOCS_WEB_DIR` and `GITDOCS_SEARCH_DB` are not read by `server.ts`.** The deploy image sets
+- **`TABLINUM_WEB_DIR` and `TABLINUM_SEARCH_DB` are not read by `server.ts`.** The deploy image sets
   both. They are harmless today: `defaultWebDist()` resolves `apps/web/dist` relative to the
   server bundle, and `defaultDbPath(contentDir)` puts `search.db` beside the content dir, which
   is exactly `/data/search.db` in the image. `accounts.db` is derived the same way and has no
@@ -419,7 +419,7 @@ Both `scripts/dev.sh` and `scripts/seed.ts` now also accept the `--` that `pnpm 
 - **A workspace export and import are built in memory.** The zip is one `Buffer`, capped at 256 MB
   either way, so a very large repository costs that much RAM for the length of the request. A
   streamed archive is the fix if a repository ever gets near the cap.
-- **Deleting a workspace leaves its files on disk.** gitdocs forgets the workspace, its members and
+- **Deleting a workspace leaves its files on disk.** tablinum forgets the workspace, its members and
   its agents, but never removes a git repository on an API call. Freeing the disk is a manual step.
 - **A repair rewrites the file.** A markdown file that is missing any required frontmatter field
   is rewritten once on the next scan to complete it. This keeps page ids stable, but it means a
@@ -461,7 +461,7 @@ Both `scripts/dev.sh` and `scripts/seed.ts` now also accept the `--` that `pnpm 
 ### Install and verify
 
 ```bash
-cd /Users/pmihaylov/prg/repos/gitdocs
+cd /Users/pmihaylov/prg/repos/tablinum
 pnpm install
 pnpm -r typecheck
 pnpm -r build
@@ -483,13 +483,13 @@ The banner prints the web URL and the API token. Open the web UI to create the f
 ```bash
 pnpm -r build
 
-export GITDOCS_CONTENT_DIR=/absolute/path/to/content
-export GITDOCS_PORT=4000
-export GITDOCS_API_TOKENS=your-token-here
-export GITDOCS_SESSION_SECRET=$(openssl rand -hex 32)
-export GITDOCS_AUTOCOMMIT_MS=5000
-export GITDOCS_AUTOPULL_MS=60000        # 0 turns the periodic pull off
-export GITDOCS_AUTOPUSH_MS=5000         # 0 turns the automatic push off
+export TABLINUM_CONTENT_DIR=/absolute/path/to/content
+export TABLINUM_PORT=4000
+export TABLINUM_API_TOKENS=your-token-here
+export TABLINUM_SESSION_SECRET=$(openssl rand -hex 32)
+export TABLINUM_AUTOCOMMIT_MS=5000
+export TABLINUM_AUTOPULL_MS=60000        # 0 turns the periodic pull off
+export TABLINUM_AUTOPUSH_MS=5000         # 0 turns the automatic push off
 
 node apps/server/dist/server.js
 ```
@@ -499,7 +499,7 @@ Open `http://localhost:4000`. The built web UI is served from the same port.
 ### Seed demo content somewhere else
 
 ```bash
-pnpm seed -- --dir /tmp/gitdocs-content
+pnpm seed -- --dir /tmp/tablinum-content
 ```
 
 ### Call the API
@@ -516,10 +516,10 @@ curl -X POST -H "Authorization: Bearer $TOKEN" -H 'content-type: application/jso
 ### Register the MCP server with Claude Code
 
 ```bash
-claude mcp add gitdocs --scope project \
-  --env GITDOCS_URL=http://127.0.0.1:4000 \
-  --env GITDOCS_TOKEN=your-token-here \
-  -- node /Users/pmihaylov/prg/repos/gitdocs/packages/mcp/dist/cli.js
+claude mcp add tablinum --scope project \
+  --env TABLINUM_URL=http://127.0.0.1:4000 \
+  --env TABLINUM_TOKEN=your-token-here \
+  -- node /Users/pmihaylov/prg/repos/tablinum/packages/mcp/dist/cli.js
 ```
 
 ### Docker

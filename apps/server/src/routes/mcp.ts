@@ -1,7 +1,7 @@
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { GitdocsClient, createGitdocsMcpServer, type FetchLike } from '@gitdocs/mcp';
-import { MCP_ENDPOINT, type Agent } from '@gitdocs/shared';
+import { TablinumClient, createTablinumMcpServer, type FetchLike } from '@tablinum/mcp';
+import { MCP_ENDPOINT, type Agent } from '@tablinum/shared';
 
 /** Verbs the loopback client uses. Anything else never reaches app.inject(). */
 type LoopbackMethod = 'GET' | 'POST' | 'PATCH' | 'DELETE';
@@ -61,7 +61,7 @@ export function loopbackFetch(app: FastifyInstance, credentials: Record<string, 
 
 /** The brief an agent reads about itself before it calls a tool. */
 export function agentBrief(agent: Agent): string {
-  const who = `You are connected to gitdocs as "${agent.name}" (@${agent.handle}).`;
+  const who = `You are connected to tablinum as "${agent.name}" (@${agent.handle}).`;
   if (agent.identity.length === 0) return who;
   return `${who}\n\nThe people who run this site describe you like this:\n${agent.identity}`;
 }
@@ -91,12 +91,12 @@ export function registerMcpRoutes(app: FastifyInstance): void {
       });
     }
 
-    const client = new GitdocsClient({
+    const client = new TablinumClient({
       baseUrl: originOf(request),
       fetch: loopbackFetch(app, credentialsOf(request)),
     });
     const agent = request.principal.agent;
-    const server = createGitdocsMcpServer({
+    const server = createTablinumMcpServer({
       client,
       ...(agent === null ? {} : { identity: agentBrief(agent) }),
     });

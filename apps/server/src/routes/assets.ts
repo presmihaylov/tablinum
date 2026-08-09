@@ -12,7 +12,7 @@ import {
   parseOrThrow,
   validation,
   type AssetResponse,
-} from '@gitdocs/shared';
+} from '@tablinum/shared';
 import { API_PREFIX, partsOf, type RouteContext } from '../context.js';
 
 /** Hard ceiling for one attachment. Also enforced by the multipart parser itself. */

@@ -1,5 +1,5 @@
 /*
- * gitdocs design tokens.
+ * tablinum design tokens.
  * Light is the base palette. Dark is redefined twice: once for the system preference
  * (unless the user forced light) and once for the explicit toggle, so both directions win.
  */

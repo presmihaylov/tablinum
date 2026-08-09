@@ -1,5 +1,5 @@
 {
-  "name": "gitdocs",
+  "name": "tablinum",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -11,14 +11,14 @@
   },
   "scripts": {
     "dev": "bash scripts/dev.sh",
-    "dev:plain": "concurrently -k -n server,web -c blue,magenta \"pnpm --filter @gitdocs/server dev\" \"pnpm --filter @gitdocs/web dev\"",
-    "seed": "pnpm --filter @gitdocs/shared build && tsx scripts/seed.ts",
+    "dev:plain": "concurrently -k -n server,web -c blue,magenta \"pnpm --filter @tablinum/server dev\" \"pnpm --filter @tablinum/web dev\"",
+    "seed": "pnpm --filter @tablinum/shared build && tsx scripts/seed.ts",
     "build": "pnpm -r --sequential build",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
     "lint": "pnpm -r lint",
     "clean": "pnpm -r exec rm -rf dist tsconfig.tsbuildinfo",
-    "docker:build": "docker build -f deploy/Dockerfile -t gitdocs:latest ."
+    "docker:build": "docker build -f deploy/Dockerfile -t tablinum:latest ."
   },
   "devDependencies": {
     "@types/node": "^22.15.3",

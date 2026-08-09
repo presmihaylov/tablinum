@@ -32,7 +32,7 @@ import {
   type Space,
   type TreeNode,
   type UpdatePageBody,
-} from '@gitdocs/shared';
+} from '@tablinum/shared';
 import type { z } from 'zod';
 
 /** One entry of `GET /api/v1/tree`: a space plus its page tree. */
@@ -41,10 +41,10 @@ export type SpaceTree = Space & { tree: TreeNode[] };
 /** The subset of `fetch` this client uses. Tests inject their own. */
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
-export interface GitdocsClientOptions {
-  /** Base URL of a running gitdocs server, e.g. "http://127.0.0.1:4000". */
+export interface TablinumClientOptions {
+  /** Base URL of a running tablinum server, e.g. "http://127.0.0.1:4000". */
   baseUrl: string;
-  /** Bearer token from the server's `GITDOCS_API_TOKENS`. Omit when the server runs in open mode. */
+  /** Bearer token from the server's `TABLINUM_API_TOKENS`. Omit when the server runs in open mode. */
   token?: string | null;
   fetch?: FetchLike;
   /** Abort a request after this many milliseconds. 0 disables the timeout. */
@@ -107,25 +107,25 @@ function errorFromResponse(status: number, rawBody: string): AppError {
     // Body was not JSON; fall through to the generic message below.
   }
   const detail = rawBody.trim().length === 0 ? '(empty body)' : truncate(rawBody.trim(), 300);
-  return new AppError(code, `gitdocs server responded ${status}: ${detail}`);
+  return new AppError(code, `tablinum server responded ${status}: ${detail}`);
 }
 
 /**
- * Typed HTTP client for the gitdocs REST API.
+ * Typed HTTP client for the tablinum REST API.
  *
  * Every call goes through the server so that indexing, git commits and validation stay
  * consistent with what the web editor does. Nothing here touches the filesystem.
  */
-export class GitdocsClient {
+export class TablinumClient {
   readonly baseUrl: string;
   private readonly token: string | null;
   private readonly doFetch: FetchLike;
   private readonly timeoutMs: number;
 
-  constructor(options: GitdocsClientOptions) {
+  constructor(options: TablinumClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/+$/, '');
     if (this.baseUrl.length === 0) {
-      throw new AppError('VALIDATION', 'GITDOCS_URL must be a non-empty base URL');
+      throw new AppError('VALIDATION', 'TABLINUM_URL must be a non-empty base URL');
     }
     this.token = options.token != null && options.token.length > 0 ? options.token : null;
     const injected = options.fetch;
@@ -145,7 +145,7 @@ export class GitdocsClient {
     if (result.success) return result.data;
     throw new AppError(
       'INTERNAL',
-      `The gitdocs server returned an unexpected ${label} response - ${issueText(result.error)}`,
+      `The tablinum server returned an unexpected ${label} response - ${issueText(result.error)}`,
     );
   }
 
@@ -172,8 +172,8 @@ export class GitdocsClient {
       const reason = err instanceof Error ? err.message : String(err);
       throw new AppError(
         'INTERNAL',
-        `Cannot reach the gitdocs server at ${this.baseUrl} (${reason}). ` +
-          'Start the server, or point GITDOCS_URL at a running instance.',
+        `Cannot reach the tablinum server at ${this.baseUrl} (${reason}). ` +
+          'Start the server, or point TABLINUM_URL at a running instance.',
       );
     } finally {
       if (timer !== undefined) clearTimeout(timer);
@@ -190,7 +190,7 @@ export class GitdocsClient {
     } catch {
       throw new AppError(
         'INTERNAL',
-        `The gitdocs server returned invalid JSON for ${method} ${path}: ${truncate(rawBody, 200)}`,
+        `The tablinum server returned invalid JSON for ${method} ${path}: ${truncate(rawBody, 200)}`,
       );
     }
     return this.parse(schema, json, `${method} ${path}`);

@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import type { LivePresence, PageChangedMessage, PageId, PagePath, ServerMessage } from '@gitdocs/shared';
+import type { LivePresence, PageChangedMessage, PageId, PagePath, ServerMessage } from '@tablinum/shared';
 import { invalidateContent } from '../api/hooks';
 import { qk } from '../api/keys';
 import { DocRoom, type DocRoomHandlers } from './docRoom';

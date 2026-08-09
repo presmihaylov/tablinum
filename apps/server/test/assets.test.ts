@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { AssetResponseSchema, ErrorBodySchema } from '@gitdocs/shared';
+import { AssetResponseSchema, ErrorBodySchema } from '@tablinum/shared';
 import { MAX_ASSET_BYTES } from '../src/routes/assets.js';
 import { bodyOf, makeHarness, seed, type Harness } from './support/harness.js';
 import { multipart } from './support/multipart.js';

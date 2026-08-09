@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { SearchQuerySchema, parseOrThrow, type SearchResponse } from '@gitdocs/shared';
+import { SearchQuerySchema, parseOrThrow, type SearchResponse } from '@tablinum/shared';
 import { API_PREFIX, partsOf, type RouteContext } from '../context.js';
 
 const DEFAULT_SEARCH_LIMIT = 20;

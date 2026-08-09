@@ -23,7 +23,7 @@ import {
   type PageListResponse,
   type PageResponse,
   type RevisionContentResponse,
-} from '@gitdocs/shared';
+} from '@tablinum/shared';
 import { API_PREFIX, partsOf, type RouteContext } from '../context.js';
 import { agentOf, clientOf, type LiveHub } from '../live.js';
 import type { ContentStore } from '../deps.js';

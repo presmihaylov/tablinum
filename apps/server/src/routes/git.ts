@@ -15,7 +15,7 @@ import {
   type GitResolveResponse,
   type GitStatusResponse,
   type PagePath,
-} from '@gitdocs/shared';
+} from '@tablinum/shared';
 import { API_PREFIX, partsOf, type RouteContext } from '../context.js';
 import type { ContentStore } from '../deps.js';
 import type { WorkspaceParts } from '../workspaces.js';

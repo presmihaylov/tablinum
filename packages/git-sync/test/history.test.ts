@@ -1,7 +1,7 @@
 import { mkdir, rename, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { AppError } from '@gitdocs/shared';
+import { AppError } from '@tablinum/shared';
 import {
   cleanupTempDirs,
   disposeEngines,
@@ -38,8 +38,8 @@ describe('GitEngine.history', () => {
     ]);
     const [newest] = revisions;
     expect(newest?.sha).toMatch(/^[0-9a-f]{40}$/);
-    expect(newest?.author).toBe('gitdocs');
-    expect(newest?.email).toBe('gitdocs@localhost');
+    expect(newest?.author).toBe('tablinum');
+    expect(newest?.email).toBe('tablinum@localhost');
     expect(newest?.date).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/);
   });
 

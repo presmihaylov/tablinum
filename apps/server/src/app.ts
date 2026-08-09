@@ -10,7 +10,7 @@ import {
   ASSETS_DIR,
   DEFAULT_WORKSPACE_NAME,
   DEFAULT_WORKSPACE_SLUG,
-} from '@gitdocs/shared';
+} from '@tablinum/shared';
 import { normalizePathname, registerAuthHook } from './auth.js';
 import { rememberContext, type RouteContext } from './context.js';
 import type { ServerDeps } from './deps.js';

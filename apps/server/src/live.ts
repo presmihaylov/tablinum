@@ -18,7 +18,7 @@ import {
   type Page,
   type PagePath,
   type ServerMessage,
-} from '@gitdocs/shared';
+} from '@tablinum/shared';
 import type { RouteContext } from './context.js';
 import { DocRooms, writerOf, type DocRoom } from './docroom.js';
 
@@ -71,7 +71,7 @@ export function agentOf(request: FastifyRequest): LiveAgent | null {
   return { id: agent.id, name: agent.name, handle: agent.handle };
 }
 
-/** The tab that sent a REST request, from its `x-gitdocs-client` header. */
+/** The tab that sent a REST request, from its `x-tablinum-client` header. */
 export function clientOf(request: FastifyRequest): string | null {
   const raw = request.headers[CLIENT_HEADER];
   const value = Array.isArray(raw) ? raw[0] : raw;

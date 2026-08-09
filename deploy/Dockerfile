@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1.7
 #
-# gitdocs production image.
+# tablinum production image.
 #   build context = the repository root
-#   docker build -f deploy/Dockerfile -t gitdocs:latest .
+#   docker build -f deploy/Dockerfile -t tablinum:latest .
 
 # ---------------------------------------------------------------------------
 # base - node + a pinned pnpm, shared by the build and the runtime stage
@@ -71,26 +71,26 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends git openssh-client ca-certificates tini \
  && rm -rf /var/lib/apt/lists/*
 
-LABEL org.opencontainers.image.title="gitdocs" \
+LABEL org.opencontainers.image.title="tablinum" \
       org.opencontainers.image.description="Self-hosted docs app backed by a git repo of markdown files." \
-      org.opencontainers.image.source="https://github.com/pmihaylov/gitdocs" \
+      org.opencontainers.image.source="https://github.com/presmihaylov/tablinum" \
       org.opencontainers.image.licenses="MIT"
 
 # HOME is what git --global writes into; pin it so it cannot depend on how the
 # container was started.
 ENV HOME=/home/node \
     NODE_ENV=production \
-    GITDOCS_CONTENT_DIR=/data/content \
-    GITDOCS_SEARCH_DB=/data/search.db \
-    GITDOCS_WEB_DIR=/app/apps/web/dist \
-    GITDOCS_PORT=4000
+    TABLINUM_CONTENT_DIR=/data/content \
+    TABLINUM_SEARCH_DB=/data/search.db \
+    TABLINUM_WEB_DIR=/app/apps/web/dist \
+    TABLINUM_PORT=4000
 
 # The named volume inherits this ownership the first time it is created.
 RUN mkdir -p /data/content && chown -R node:node /data
 
 COPY --from=build --chown=node:node /app /app
-COPY deploy/docker-entrypoint.sh /usr/local/bin/gitdocs-entrypoint
-RUN chmod 0755 /usr/local/bin/gitdocs-entrypoint
+COPY deploy/docker-entrypoint.sh /usr/local/bin/tablinum-entrypoint
+RUN chmod 0755 /usr/local/bin/tablinum-entrypoint
 
 USER node
 WORKDIR /app
@@ -98,8 +98,8 @@ VOLUME ["/data"]
 EXPOSE 4000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=25s --retries=3 \
-  CMD ["node", "-e", "const p=process.env.GITDOCS_PORT||4000;fetch('http://127.0.0.1:'+p+'/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+  CMD ["node", "-e", "const p=process.env.TABLINUM_PORT||4000;fetch('http://127.0.0.1:'+p+'/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
 
-ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/gitdocs-entrypoint"]
-# Matches the "start" script of @gitdocs/server.
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/tablinum-entrypoint"]
+# Matches the "start" script of @tablinum/server.
 CMD ["node", "/app/apps/server/dist/server.js"]

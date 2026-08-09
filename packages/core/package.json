@@ -1,9 +1,9 @@
 {
-  "name": "@gitdocs/core",
+  "name": "@tablinum/core",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Content store for gitdocs: markdown files with YAML frontmatter, page tree, id index, links and views.",
+  "description": "Content store for tablinum: markdown files with YAML frontmatter, page tree, id index, links and views.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -23,7 +23,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@gitdocs/shared": "workspace:*",
+    "@tablinum/shared": "workspace:*",
     "chokidar": "^4.0.3",
     "gray-matter": "^4.0.3",
     "yaml": "^2.7.1",

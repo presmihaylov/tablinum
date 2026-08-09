@@ -1,6 +1,6 @@
-# Running gitdocs
+# Running tablinum
 
-gitdocs is one container. It serves the web UI and the REST API on port 4000, and it keeps every
+tablinum is one container. It serves the web UI and the REST API on port 4000, and it keeps every
 page as a markdown file in a git repo on a volume. There is no database to administer: the search
 index is derived data you can delete at any time, and the content repo is an ordinary git repo you
 can clone, diff, revert and push.
@@ -11,7 +11,7 @@ That shape decides most of the operational answers below. Backup is `git push`. 
 ```
 deploy/
   Dockerfile              multi-stage build, non-root runtime
-  docker-compose.yml      the gitdocs service, plus a commented-out Caddy service
+  docker-compose.yml      the tablinum service, plus a commented-out Caddy service
   docker-entrypoint.sh    prepares /data and the git identity
   .env.example            every setting, documented
   Caddyfile.example       three TLS options for a VPN-internal hostname
@@ -32,8 +32,8 @@ Edit `.env` and set a session secret and one API token:
 
 ```bash
 # in deploy/.env
-GITDOCS_API_TOKENS=$(openssl rand -hex 32)
-GITDOCS_SESSION_SECRET=$(openssl rand -hex 32)
+TABLINUM_API_TOKENS=$(openssl rand -hex 32)
+TABLINUM_SESSION_SECRET=$(openssl rand -hex 32)
 ```
 
 Then build and start:
@@ -41,7 +41,7 @@ Then build and start:
 ```bash
 docker compose build
 docker compose up -d
-docker compose logs -f gitdocs
+docker compose logs -f tablinum
 ```
 
 Open <http://localhost:4000>. Nobody has claimed a fresh server, so the sign-in screen asks you to
@@ -49,7 +49,7 @@ create the first account. You become the admin, and you name your first workspac
 
 **Claim it before anybody else can.** The setup form is public until the first account exists, so
 open the page as soon as the container is up. After that, invite everybody else with a link from
-"People and invites". `GITDOCS_API_TOKENS` is for agents and scripts only.
+"People and invites". `TABLINUM_API_TOKENS` is for agents and scripts only.
 
 Check it from the shell:
 
@@ -57,7 +57,7 @@ Check it from the shell:
 curl -fsS http://localhost:4000/api/v1/health
 # {"ok":true,"version":"0.1.0","contentDir":"/data/content"}
 
-curl -fsS -H "Authorization: Bearer $GITDOCS_API_TOKENS" \
+curl -fsS -H "Authorization: Bearer $TABLINUM_API_TOKENS" \
   http://localhost:4000/api/v1/tree | head
 ```
 
@@ -78,7 +78,7 @@ curl -fsS -H "Authorization: Bearer $GITDOCS_API_TOKENS" \
 committed or pushed. That also makes it the only state the git remote does not back up. See
 section 5.
 
-The volume is `gitdocs_gitdocs-data`. The container runs as the non-root `node` user (uid 1000),
+The volume is `tablinum_tablinum-data`. The container runs as the non-root `node` user (uid 1000),
 which owns `/data`.
 
 ### Some demo content to look at
@@ -86,12 +86,12 @@ which owns `/data`.
 From a checkout of the repository, not from the container:
 
 ```bash
-pnpm seed -- --dir /tmp/gitdocs-demo
+pnpm seed -- --dir /tmp/tablinum-demo
 ```
 
 That writes two spaces and eighteen pages, some carrying `status` / `owner` / `priority`
 properties so the table views have real rows, and wikilinks between pages so backlinks are not
-empty. Point `GITDOCS_CONTENT_DIR` at the directory, or copy it into the volume (see section 6).
+empty. Point `TABLINUM_CONTENT_DIR` at the directory, or copy it into the volume (see section 6).
 
 ### Running from source instead
 
@@ -112,15 +112,15 @@ the web dev server on 5173, and prints the generated dev token. The token is wri
 
 Every setting is an environment variable, and every one of them is documented in
 [`.env.example`](.env.example). `docker-compose.yml` forces the three that describe the container
-layout (`GITDOCS_CONTENT_DIR`, `GITDOCS_SEARCH_DB`, `GITDOCS_PORT`); set everything else in
+layout (`TABLINUM_CONTENT_DIR`, `TABLINUM_SEARCH_DB`, `TABLINUM_PORT`); set everything else in
 `deploy/.env`.
 
 The two that matter on day one:
 
 | Variable | Why you care |
 | --- | --- |
-| `GITDOCS_API_TOKENS` | comma-separated bearer tokens. One per consumer, so you can revoke one alone. |
-| `GITDOCS_GIT_REMOTE` | the remote the content repo pushes to. This is your backup. |
+| `TABLINUM_API_TOKENS` | comma-separated bearer tokens. One per consumer, so you can revoke one alone. |
+| `TABLINUM_GIT_REMOTE` | the remote the content repo pushes to. This is your backup. |
 
 Apply a change with `docker compose up -d`. Compose recreates the container; the volume, and
 therefore all content, stays.
@@ -129,11 +129,11 @@ therefore all content, stays.
 
 ## 3. Point the content repo at a private remote
 
-Without a remote, gitdocs still commits every edit locally. You get history and undo, but the only
+Without a remote, tablinum still commits every edit locally. You get history and undo, but the only
 copy is on that one host. Add a remote and every commit is pushed, which gives you an off-host
 backup, a code-review surface, and a way for people to edit the docs from a normal git checkout.
 
-Create an **empty private repository** on GitHub, Gitea or GitLab. Do not add a README: gitdocs
+Create an **empty private repository** on GitHub, Gitea or GitLab. Do not add a README: tablinum
 pushes its own first commit.
 
 You then have two ways to authenticate. Pick one.
@@ -146,7 +146,7 @@ never expires by surprise.
 ```bash
 # on the docker host, in the deploy/ directory
 mkdir -p ssh && chmod 700 ssh
-ssh-keygen -t ed25519 -N "" -C "gitdocs@$(hostname)" -f ssh/id_ed25519
+ssh-keygen -t ed25519 -N "" -C "tablinum@$(hostname)" -f ssh/id_ed25519
 chmod 600 ssh/id_ed25519
 ssh-keyscan github.com > ssh/known_hosts       # or your Gitea host
 cat ssh/id_ed25519.pub
@@ -159,19 +159,19 @@ Uncomment the SSH mount in `docker-compose.yml`:
 
 ```yaml
     volumes:
-      - gitdocs-data:/data
+      - tablinum-data:/data
       - ./ssh:/home/node/.ssh:ro
 ```
 
 Set the remote in `deploy/.env`:
 
 ```bash
-GITDOCS_GIT_REMOTE=git@github.com:acme/docs-content.git
+TABLINUM_GIT_REMOTE=git@github.com:acme/docs-content.git
 ```
 
 The entrypoint picks up `/home/node/.ssh/id_ed25519` automatically and runs ssh in batch mode, so a
 missing host key fails fast instead of hanging on a prompt. If you would rather not mount a
-`known_hosts` file, put the output of `ssh-keyscan` into `GITDOCS_SSH_KNOWN_HOSTS` instead.
+`known_hosts` file, put the output of `ssh-keyscan` into `TABLINUM_SSH_KNOWN_HOSTS` instead.
 
 **Never commit `deploy/ssh/`.** `deploy/.env` is already ignored by the root `.gitignore` rule for
 `.env`; the key directory needs its own line:
@@ -190,7 +190,7 @@ GitHub calls this a fine-grained personal access token with `Contents: read and 
 repository. Gitea and GitLab call it a repository access token or a deploy token.
 
 ```bash
-GITDOCS_GIT_REMOTE=https://x-access-token:github_pat_xxx@github.com/acme/docs-content.git
+TABLINUM_GIT_REMOTE=https://x-access-token:github_pat_xxx@github.com/acme/docs-content.git
 ```
 
 The token is now inside a URL, which means it also lands in `.git/config` inside the volume and in
@@ -212,8 +212,8 @@ Use the SSH deploy key unless port 22 is blocked.
 ### First push
 
 ```bash
-docker compose restart gitdocs
-docker compose exec gitdocs git -C /data/content remote -v
+docker compose restart tablinum
+docker compose exec tablinum git -C /data/content remote -v
 curl -fsS -X POST -H "Authorization: Bearer $TOKEN" http://localhost:4000/api/v1/git/push
 curl -fsS -H "Authorization: Bearer $TOKEN" http://localhost:4000/api/v1/git/status
 ```
@@ -226,7 +226,7 @@ failing.
 
 ## 4. Serve it inside a VPN
 
-gitdocs authenticates people with an account and machines with a shared bearer token. That is the
+tablinum authenticates people with an account and machines with a shared bearer token. That is the
 right amount of security for a tool behind a VPN and the wrong amount for the open internet: there
 is no MFA, and anyone who reads a token reads and writes all of your documentation.
 
@@ -296,9 +296,9 @@ managed trust store, take option B. Everyone else, take option C.
 
 If you are tempted, the honest checklist you would need first is: per-user accounts, MFA, session
 revocation, brute-force protection on the login endpoint, per-token audit logging, and a plan for
-the day a token leaks. gitdocs has none of those. Put it behind the VPN, or behind an
+the day a token leaks. tablinum has none of those. Put it behind the VPN, or behind an
 authenticating proxy that provides them (an identity-aware proxy in front of port 4000 works well,
-because gitdocs never trusts request headers for identity).
+because tablinum never trusts request headers for identity).
 
 ---
 
@@ -314,11 +314,11 @@ use accounts, copy it on a schedule. The database runs in WAL mode, so copy the 
 together, and stop the service first so the copy cannot catch a half-written transaction:
 
 ```bash
-docker compose stop gitdocs
-docker compose cp gitdocs:/data/accounts.db      ./accounts-$(date +%F).db
-docker compose cp gitdocs:/data/accounts.db-wal  ./accounts-$(date +%F).db-wal   # may not exist
-docker compose cp gitdocs:/data/accounts.db-shm  ./accounts-$(date +%F).db-shm   # may not exist
-docker compose start gitdocs
+docker compose stop tablinum
+docker compose cp tablinum:/data/accounts.db      ./accounts-$(date +%F).db
+docker compose cp tablinum:/data/accounts.db-wal  ./accounts-$(date +%F).db-wal   # may not exist
+docker compose cp tablinum:/data/accounts.db-shm  ./accounts-$(date +%F).db-shm   # may not exist
+docker compose start tablinum
 ```
 
 The volume snapshot below covers the same file and needs no downtime, so prefer it if you already
@@ -344,9 +344,9 @@ If you also want a copy that does not depend on the remote being reachable:
 
 ```bash
 docker run --rm \
-  -v gitdocs_gitdocs-data:/data:ro \
+  -v tablinum_tablinum-data:/data:ro \
   -v "$PWD:/backup" \
-  alpine tar czf /backup/gitdocs-$(date +%F).tar.gz -C /data .
+  alpine tar czf /backup/tablinum-$(date +%F).tar.gz -C /data .
 ```
 
 Run it while the service is up. Git may commit during the tar, in which case the archive contains a
@@ -356,29 +356,29 @@ repository that is one commit behind; `git fsck` will still be happy.
 
 ```bash
 docker compose down
-docker volume rm gitdocs_gitdocs-data
+docker volume rm tablinum_tablinum-data
 docker compose up -d
 ```
 
-With `GITDOCS_GIT_REMOTE` set, gitdocs clones the remote into the empty volume on first boot and
+With `TABLINUM_GIT_REMOTE` set, tablinum clones the remote into the empty volume on first boot and
 rebuilds the search index from the markdown. Expect a few seconds for a few thousand pages.
 
 That brings back every document, but **not the accounts**: the empty volume has no `accounts.db`.
 Copy your backup of it in before the first boot, or claim the server again and re-invite everybody.
 
 ```bash
-docker compose cp ./accounts-2026-08-08.db gitdocs:/data/accounts.db
-docker compose exec -u root gitdocs chown node:node /data/accounts.db
-docker compose restart gitdocs
+docker compose cp ./accounts-2026-08-08.db tablinum:/data/accounts.db
+docker compose exec -u root tablinum chown node:node /data/accounts.db
+docker compose restart tablinum
 ```
 
 To restore from a tarball instead:
 
 ```bash
 docker compose down
-docker volume create gitdocs_gitdocs-data
-docker run --rm -v gitdocs_gitdocs-data:/data -v "$PWD:/backup" \
-  alpine sh -c 'tar xzf /backup/gitdocs-2026-08-08.tar.gz -C /data && chown -R 1000:1000 /data'
+docker volume create tablinum_tablinum-data
+docker run --rm -v tablinum_tablinum-data:/data -v "$PWD:/backup" \
+  alpine sh -c 'tar xzf /backup/tablinum-2026-08-08.tar.gz -C /data && chown -R 1000:1000 /data'
 docker compose up -d
 ```
 
@@ -387,8 +387,8 @@ docker compose up -d
 You do not need a restore procedure for this. Use git.
 
 ```bash
-docker compose exec gitdocs git -C /data/content log --oneline -- docs/getting-started.md
-docker compose exec gitdocs git -C /data/content checkout <sha> -- docs/getting-started.md
+docker compose exec tablinum git -C /data/content log --oneline -- docs/getting-started.md
+docker compose exec tablinum git -C /data/content checkout <sha> -- docs/getting-started.md
 ```
 
 The API does the same thing without a shell:
@@ -402,9 +402,9 @@ Copy the files in and restart. That is the whole procedure.
 
 ```bash
 # from a directory of .md files on the host
-docker cp ./my-old-docs gitdocs:/data/content/handbook
-docker compose exec -u root gitdocs chown -R node:node /data/content/handbook
-docker compose restart gitdocs
+docker cp ./my-old-docs tablinum:/data/content/handbook
+docker compose exec -u root tablinum chown -R node:node /data/content/handbook
+docker compose restart tablinum
 ```
 
 On the next read, the content store repairs anything that is missing:
@@ -462,32 +462,32 @@ To roll back, check out the previous tag, rebuild, and bring it up again.
 ### The container never becomes healthy
 
 ```bash
-docker compose logs --tail=100 gitdocs
-docker compose exec gitdocs node -e "fetch('http://127.0.0.1:4000/api/v1/health').then(r=>r.text()).then(console.log)"
+docker compose logs --tail=100 tablinum
+docker compose exec tablinum node -e "fetch('http://127.0.0.1:4000/api/v1/health').then(r=>r.text()).then(console.log)"
 ```
 
 Usual causes: a bad value in `.env` (config validation fails loudly at boot with the variable name
 in the message), port 4000 already taken on the host, or `/data` not writable. For the last one:
 
 ```bash
-docker compose exec -u root gitdocs chown -R node:node /data
+docker compose exec -u root tablinum chown -R node:node /data
 ```
 
 ### A merge conflict in the content repo
 
 This happens when someone pushed to the remote while the local copy had uncommitted work, or when
-two writers edited the same page. gitdocs stops the sync loop rather than guessing a winner, so
+two writers edited the same page. tablinum stops the sync loop rather than guessing a winner, so
 your content is intact and the conflict is waiting for you.
 
 ```bash
 curl -fsS -H "Authorization: Bearer $TOKEN" http://localhost:4000/api/v1/git/status
-docker compose exec gitdocs git -C /data/content status
+docker compose exec tablinum git -C /data/content status
 ```
 
 Fix it like any other repository:
 
 ```bash
-docker compose exec gitdocs sh -c '
+docker compose exec tablinum sh -c '
   cd /data/content
   git diff --name-only --diff-filter=U      # the conflicted files
 '
@@ -497,23 +497,23 @@ Then choose one of three routes:
 
 ```bash
 # a. keep what is on the server, drop the remote side of the conflict
-docker compose exec gitdocs git -C /data/content checkout --ours -- <file>
+docker compose exec tablinum git -C /data/content checkout --ours -- <file>
 
 # b. keep the remote side
-docker compose exec gitdocs git -C /data/content checkout --theirs -- <file>
+docker compose exec tablinum git -C /data/content checkout --theirs -- <file>
 
 # c. edit the file by hand and remove the <<<<<<< markers
-docker compose exec gitdocs vi /data/content/<file>
+docker compose exec tablinum vi /data/content/<file>
 ```
 
 Finish:
 
 ```bash
-docker compose exec gitdocs sh -c '
+docker compose exec tablinum sh -c '
   cd /data/content
   git add -A && git rebase --continue || git commit --no-edit
 '
-docker compose restart gitdocs
+docker compose restart tablinum
 ```
 
 Conflict markers left in a file are not a corruption: the page still loads, it just shows the
@@ -527,10 +527,10 @@ files inside the volume while the service is running.
 The index is derived data. Delete it.
 
 ```bash
-docker compose stop gitdocs
-docker compose run --rm -u root gitdocs rm -f /data/search.db /data/search.db-wal /data/search.db-shm
-docker compose up -d gitdocs
-docker compose logs -f gitdocs        # watch the reindex
+docker compose stop tablinum
+docker compose run --rm -u root tablinum rm -f /data/search.db /data/search.db-wal /data/search.db-shm
+docker compose up -d tablinum
+docker compose logs -f tablinum        # watch the reindex
 ```
 
 Nothing is lost: the index is rebuilt from the markdown files. If search is merely stale for one
@@ -543,34 +543,34 @@ A `database disk image is malformed` error in the logs means the same thing. Sam
 Symptoms: writes fail, `git/status` errors, or every commit attempt reports a lock.
 
 ```bash
-docker compose exec gitdocs sh -c 'cd /data/content && git status'
+docker compose exec tablinum sh -c 'cd /data/content && git status'
 ```
 
 Work through these in order:
 
 ```bash
 # 1. a stale lock from a container that was killed mid-write
-docker compose exec gitdocs rm -f /data/content/.git/index.lock
+docker compose exec tablinum rm -f /data/content/.git/index.lock
 
 # 2. an interrupted rebase or merge
-docker compose exec gitdocs sh -c 'cd /data/content && git rebase --abort || git merge --abort'
+docker compose exec tablinum sh -c 'cd /data/content && git rebase --abort || git merge --abort'
 
 # 3. "detected dubious ownership" after restoring a volume from a tarball
-docker compose exec -u root gitdocs chown -R node:node /data
-docker compose restart gitdocs
+docker compose exec -u root tablinum chown -R node:node /data
+docker compose restart tablinum
 
 # 4. a detached HEAD, usually after a manual checkout of an old revision
-docker compose exec gitdocs sh -c 'cd /data/content && git checkout main'
+docker compose exec tablinum sh -c 'cd /data/content && git checkout main'
 
 # 5. verify the object database
-docker compose exec gitdocs sh -c 'cd /data/content && git fsck --no-progress'
+docker compose exec tablinum sh -c 'cd /data/content && git fsck --no-progress'
 ```
 
 If `git fsck` reports real corruption, do not fight it. The remote has the history: delete the
 volume and restore as in section 5. Copy any uncommitted files out first:
 
 ```bash
-docker cp gitdocs:/data/content /tmp/rescue
+docker cp tablinum:/data/content /tmp/rescue
 ```
 
 ### Pushes are failing
@@ -578,13 +578,13 @@ docker cp gitdocs:/data/content /tmp/rescue
 `ahead` keeps climbing in `GET /api/v1/git/status`.
 
 ```bash
-docker compose exec gitdocs sh -c 'cd /data/content && git push 2>&1 | tail -20'
+docker compose exec tablinum sh -c 'cd /data/content && git push 2>&1 | tail -20'
 ```
 
 Read the error. A permission failure means the deploy key lost write access or the token expired.
-A host key failure means `known_hosts` is missing: set `GITDOCS_SSH_KNOWN_HOSTS`, or mount the file.
+A host key failure means `known_hosts` is missing: set `TABLINUM_SSH_KNOWN_HOSTS`, or mount the file.
 A non-fast-forward means somebody rewrote history on the remote; reconcile it in a normal checkout
-before letting gitdocs push again.
+before letting tablinum push again.
 
 ### Everything looks fine but edits do not save
 
@@ -592,7 +592,7 @@ Check disk space first. Git needs room to write objects, and a full volume produ
 errors everywhere else.
 
 ```bash
-docker compose exec gitdocs df -h /data
+docker compose exec tablinum df -h /data
 ```
 
 ### Nobody can sign in, or the last admin lost their password
@@ -602,17 +602,17 @@ owns the file. It works while the service is running.
 
 ```bash
 # who exists
-docker compose exec gitdocs node /app/apps/server/dist/accounts-cli.js list
+docker compose exec tablinum node /app/apps/server/dist/accounts-cli.js list
 
 # hand somebody a new password; it prints one when you do not supply one
-docker compose exec gitdocs node /app/apps/server/dist/accounts-cli.js \
+docker compose exec tablinum node /app/apps/server/dist/accounts-cli.js \
   reset-password ada@example.com
 
 # make a second admin, so this cannot happen again
-docker compose exec gitdocs node /app/apps/server/dist/accounts-cli.js promote sam@example.com
+docker compose exec tablinum node /app/apps/server/dist/accounts-cli.js promote sam@example.com
 
 # an invite link when the UI is out of reach; open <your url>/invite/<token>
-docker compose exec gitdocs node /app/apps/server/dist/accounts-cli.js invite --role admin
+docker compose exec tablinum node /app/apps/server/dist/accounts-cli.js invite --role admin
 ```
 
 Run it with no arguments for the full list. It signs out every session of the account it touches.
@@ -628,18 +628,18 @@ server is unclaimed again, so the sign-in screen asks the next visitor to create
 ```bash
 # service
 docker compose ps
-docker compose logs -f gitdocs
-docker compose restart gitdocs
-docker compose exec gitdocs sh
+docker compose logs -f tablinum
+docker compose restart tablinum
+docker compose exec tablinum sh
 
 # accounts
-docker compose exec gitdocs node /app/apps/server/dist/accounts-cli.js list
-docker compose exec gitdocs node /app/apps/server/dist/accounts-cli.js invite ada@example.com
+docker compose exec tablinum node /app/apps/server/dist/accounts-cli.js list
+docker compose exec tablinum node /app/apps/server/dist/accounts-cli.js invite ada@example.com
 
 # content
-docker compose exec gitdocs git -C /data/content log --oneline -20
-docker compose exec gitdocs git -C /data/content status --short
-docker compose exec gitdocs find /data/content -name '*.md' | wc -l
+docker compose exec tablinum git -C /data/content log --oneline -20
+docker compose exec tablinum git -C /data/content status --short
+docker compose exec tablinum find /data/content -name '*.md' | wc -l
 
 # API
 curl -fsS http://localhost:4000/api/v1/health
@@ -653,10 +653,10 @@ curl -fsS -X POST -H "Authorization: Bearer $TOKEN" http://localhost:4000/api/v1
 The build context is the repository root, not `deploy/`.
 
 ```bash
-cd /path/to/gitdocs
-docker build -f deploy/Dockerfile -t gitdocs:latest .
-docker run --rm -p 4000:4000 -v gitdocs-data:/data \
-  -e GITDOCS_API_TOKENS=local-dev-token gitdocs:latest
+cd /path/to/tablinum
+docker build -f deploy/Dockerfile -t tablinum:latest .
+docker run --rm -p 4000:4000 -v tablinum-data:/data \
+  -e TABLINUM_API_TOKENS=local-dev-token tablinum:latest
 ```
 
 The build stage installs `python3`, `make` and `g++` because the SQLite driver compiles a native

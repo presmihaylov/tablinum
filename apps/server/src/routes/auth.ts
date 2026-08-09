@@ -13,7 +13,7 @@ import {
   type AuthStateResponse,
   type InvitePreviewResponse,
   type OkResponse,
-} from '@gitdocs/shared';
+} from '@tablinum/shared';
 import { LoginThrottle, accountTokenOf, clearSessionCookie, setAccountCookie } from '../auth.js';
 import { API_PREFIX, type RouteContext } from '../context.js';
 

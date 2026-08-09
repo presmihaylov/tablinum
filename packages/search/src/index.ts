@@ -1,8 +1,8 @@
 import { mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import Database from 'better-sqlite3';
-import { internal, validation } from '@gitdocs/shared';
-import type { Page, PageId, SearchHit } from '@gitdocs/shared';
+import { internal, validation } from '@tablinum/shared';
+import type { Page, PageId, SearchHit } from '@tablinum/shared';
 import { escapeHtml, markdownToPlainText } from './plaintext.js';
 import { buildMatchExpressions, isFtsQueryError } from './query.js';
 

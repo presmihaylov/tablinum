@@ -4,14 +4,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { afterEach, describe, expect, it } from 'vitest';
-import { isAppError } from '@gitdocs/shared';
+import { isAppError } from '@tablinum/shared';
 import { crc32, isSafeEntryName, readZip, unzipToDirectory, zipDirectory } from '../src/zip.js';
 
 const run = promisify(execFile);
 const roots: string[] = [];
 
 async function tempDir(): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), 'gitdocs-zip-'));
+  const dir = await mkdtemp(join(tmpdir(), 'tablinum-zip-'));
   roots.push(dir);
   return dir;
 }

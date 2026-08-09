@@ -1,10 +1,10 @@
 import type { FastifyBaseLogger } from 'fastify';
 
 /**
- * The small part of the Slack Web API that gitdocs uses.
+ * The small part of the Slack Web API that tablinum uses.
  *
  * Only two calls are needed: find a person by their email address, and send them a direct
- * message. gitdocs never reads Slack, so one bot token covers the whole workspace and no
+ * message. tablinum never reads Slack, so one bot token covers the whole workspace and no
  * per-person secret is stored.
  */
 export interface SlackApi {

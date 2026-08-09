@@ -11,8 +11,8 @@ import {
   gitError,
   notFound,
   validation,
-} from '@gitdocs/shared';
-import type { Config, GitConflict, GitStatus, Revision } from '@gitdocs/shared';
+} from '@tablinum/shared';
+import type { Config, GitConflict, GitStatus, Revision } from '@tablinum/shared';
 import { consoleLogger, type GitLogger } from './logger.js';
 import { Mutex } from './mutex.js';
 
@@ -77,7 +77,7 @@ const GITATTRIBUTES_NAME = '.gitattributes';
 
 // Markdown and YAML must round-trip byte for byte between the web editor, the API and git.
 const GITATTRIBUTES_CONTENT = [
-  '# gitdocs: page files are text and always use LF, on every platform.',
+  '# tablinum: page files are text and always use LF, on every platform.',
   '*.md text eol=lf',
   '*.markdown text eol=lf',
   '*.yml text eol=lf',
@@ -85,7 +85,7 @@ const GITATTRIBUTES_CONTENT = [
   '',
 ].join('\n');
 
-const INITIAL_COMMIT_MESSAGE = 'chore: initialize gitdocs content repo';
+const INITIAL_COMMIT_MESSAGE = 'chore: initialize tablinum content repo';
 const GITATTRIBUTES_COMMIT_MESSAGE = 'chore: normalize page line endings';
 const PRE_PULL_COMMIT_MESSAGE = 'docs: save local edits before pull';
 const RESOLVE_COMMIT_MESSAGE = 'docs: resolve conflicts with the remote';

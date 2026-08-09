@@ -1,4 +1,4 @@
-# gitdocs
+# tablinum
 
 A self-hosted docs app with a modern block editor, where **every page is just a markdown file with
 YAML frontmatter in a git repo**.
@@ -12,7 +12,7 @@ Two audiences edit the same content and neither corrupts the other:
 Every write on either side lands as a commit in the content repo. Nothing is hidden in a database
 you cannot read.
 
-> **gitdocs has no connection to Notion.** There is no import, no Notion API client and no sync.
+> **tablinum has no connection to Notion.** There is no import, no Notion API client and no sync.
 > The only thing borrowed is the *look and feel* of that style of editor. Your content stays in
 > markdown files that you own.
 
@@ -26,7 +26,7 @@ you cannot read.
               +--------v---------+                    +----------v----------+
               |  apps/web        |                    |  packages/mcp       |
               |  React + Vite    |                    |  MCP server         |
-              |  TipTap editor   |                    |  gitdocs_* tools    |
+              |  TipTap editor   |                    |  tablinum_* tools    |
               +--------+---------+                    +----------+----------+
                        |  fetch + session cookie                 |  bearer token
                        |                                         |
@@ -51,14 +51,14 @@ you cannot read.
                                             |
                               +-------------v--------------+
                               |  CONTENT REPO (a git repo) |
-                              |  ${GITDOCS_CONTENT_DIR}    |
+                              |  ${TABLINUM_CONTENT_DIR}    |
                               |  <space>/index.md          |
                               |  <space>/page.md           |
                               |  _assets/<pageId>/...      |
                               +-------------+--------------+
                                             |
                                     optional git remote
-                                  (GITDOCS_GIT_REMOTE)
+                                  (TABLINUM_GIT_REMOTE)
 
    packages/shared   - types, zod schemas, config, ids, path rules. Every box above imports it.
    packages/accounts - people, passwords, sessions, invites, avatars, workspaces and their
@@ -73,14 +73,14 @@ you cannot read.
 
 | Path | Package | What it does |
 | --- | --- | --- |
-| `packages/shared` | `@gitdocs/shared` | Types, zod schemas, config loader, page ids, path rules |
-| `packages/core` | `@gitdocs/core` | Content store: files, frontmatter, page tree, id index |
-| `packages/git-sync` | `@gitdocs/git-sync` | Git engine: auto-commit, pull, push, history |
-| `packages/search` | `@gitdocs/search` | SQLite FTS5 index and backlinks |
-| `packages/accounts` | `@gitdocs/accounts` | SQLite accounts: people, passwords, sessions, invites, avatars |
-| `packages/mcp` | `@gitdocs/mcp` | MCP server for agents: a stdio CLI, and the tools behind `/api/v1/mcp` |
-| `apps/server` | `@gitdocs/server` | Fastify REST API |
-| `apps/web` | `@gitdocs/web` | React + Vite + TipTap editor |
+| `packages/shared` | `@tablinum/shared` | Types, zod schemas, config loader, page ids, path rules |
+| `packages/core` | `@tablinum/core` | Content store: files, frontmatter, page tree, id index |
+| `packages/git-sync` | `@tablinum/git-sync` | Git engine: auto-commit, pull, push, history |
+| `packages/search` | `@tablinum/search` | SQLite FTS5 index and backlinks |
+| `packages/accounts` | `@tablinum/accounts` | SQLite accounts: people, passwords, sessions, invites, avatars |
+| `packages/mcp` | `@tablinum/mcp` | MCP server for agents: a stdio CLI, and the tools behind `/api/v1/mcp` |
+| `apps/server` | `@tablinum/server` | Fastify REST API |
+| `apps/web` | `@tablinum/web` | React + Vite + TipTap editor |
 | `deploy` | - | Dockerfile, docker-compose.yml, ops guide |
 
 ## Quickstart
@@ -88,8 +88,8 @@ you cannot read.
 Requires Node 22 and pnpm 10.
 
 ```bash
-git clone <this-repo> gitdocs
-cd gitdocs
+git clone <this-repo> tablinum
+cd tablinum
 pnpm install
 cp .env.example .env      # then edit .env
 pnpm build
@@ -99,14 +99,14 @@ pnpm dev                  # API on :4000, web on :5173
 Open http://localhost:5173. Nobody has claimed a fresh server, so the sign-in screen asks you to
 create the first account. You become the admin, and you name your first workspace on the next step.
 
-On first boot gitdocs creates the content repo at `GITDOCS_CONTENT_DIR`, runs `git init` in it and
+On first boot tablinum creates the content repo at `TABLINUM_CONTENT_DIR`, runs `git init` in it and
 writes a starter space. That directory is a normal git repo: clone it, edit it, commit to it.
 
 Point it at an existing repo of markdown instead:
 
 ```bash
 git clone git@example.com:team/docs.git ~/docs
-GITDOCS_CONTENT_DIR=~/docs pnpm dev
+TABLINUM_CONTENT_DIR=~/docs pnpm dev
 ```
 
 ### Common tasks
@@ -149,7 +149,7 @@ written to the working tree and committed like any other change.
 ## Accounts, invites and avatars
 
 Every person who reaches the web UI has an account. Machines are the exception: they send a bearer
-token instead, either one from `GITDOCS_API_TOKENS` or a per-agent `gda_` token.
+token instead, either one from `TABLINUM_API_TOKENS` or a per-agent `gda_` token.
 
 1. **Claim the server.** Open a fresh server and the sign-in screen asks for an email, a name and a
    password. The first visitor becomes the admin, and then names the workspace the server started
@@ -178,12 +178,12 @@ that file, so signing out really does revoke the cookie.
 If the last admin loses their password, a CLI on the server is the way back in:
 
 ```bash
-pnpm --filter @gitdocs/server accounts list
-pnpm --filter @gitdocs/server accounts reset-password ada@example.com
-pnpm --filter @gitdocs/server accounts promote sam@example.com
+pnpm --filter @tablinum/server accounts list
+pnpm --filter @tablinum/server accounts reset-password ada@example.com
+pnpm --filter @tablinum/server accounts promote sam@example.com
 ```
 
-In Docker it is `docker compose exec gitdocs node /app/apps/server/dist/accounts-cli.js list`.
+In Docker it is `docker compose exec tablinum node /app/apps/server/dist/accounts-cli.js list`.
 
 ## Workspaces
 
@@ -196,23 +196,23 @@ Every install starts with one workspace, `Main`: the content directory you confi
 with a single workspace behaves exactly as it did before, and you never have to think about this.
 
 - **Create one.** Open the workspace button, choose "New workspace", give it a name and an icon.
-  gitdocs makes a git repository for it, gives it a `general` space and moves you into it.
+  tablinum makes a git repository for it, gives it a `general` space and moves you into it.
 - **Add people.** "Workspace settings" lists everybody in the workspace. Add somebody, make them an
   admin of it, or remove them. A workspace admin renames it, manages its people and exports it. An
   install admin reaches every workspace.
-- **Switch.** Pick another workspace from the same menu. gitdocs throws away everything cached
+- **Switch.** Pick another workspace from the same menu. tablinum throws away everything cached
   about the old one, so nothing from one workspace can appear in another.
 
 **Export** hands you a zip of the whole repository, `.git` included, so every page and its full
-history travel with it. gitdocs commits whatever is pending before it packs the archive.
+history travel with it. tablinum commits whatever is pending before it packs the archive.
 
-**Import** takes that zip back, on this server or on any other gitdocs, and registers it as a new
+**Import** takes that zip back, on this server or on any other tablinum, and registers it as a new
 workspace. Importing the same archive twice gives you two independent workspaces: the second gets
 its own slug and its own directory, and writing in one does not touch the other.
 
 ```
 <parent of content dir>/
-  content/               # the "Main" workspace: ${GITDOCS_CONTENT_DIR}
+  content/               # the "Main" workspace: ${TABLINUM_CONTENT_DIR}
   search.db              # its search index
   accounts.db            # people, workspaces and who is in which
   workspaces/
@@ -220,7 +220,7 @@ its own slug and its own directory, and writing in one does not touch the other.
     handbook.search.db   # its search index, kept outside the repo so an export never holds it
 ```
 
-Only `Main` uses `GITDOCS_GIT_REMOTE`; the others are local repositories you move with the zip.
+Only `Main` uses `TABLINUM_GIT_REMOTE`; the others are local repositories you move with the zip.
 Deleting a workspace forgets it and its members but leaves the files on disk, so export it first if
 you want the pages.
 
@@ -240,13 +240,13 @@ To deliver notifications, connect a Slack app:
 
 1. Create a Slack app in your workspace and give the bot the scopes `chat:write` and
    `users:read.email`.
-2. Install it and set `GITDOCS_SLACK_BOT_TOKEN` to the bot token (`xoxb-...`).
-3. Set `GITDOCS_PUBLIC_URL` to the origin people reach gitdocs on, so the message can link to the
+2. Install it and set `TABLINUM_SLACK_BOT_TOKEN` to the bot token (`xoxb-...`).
+3. Set `TABLINUM_PUBLIC_URL` to the origin people reach tablinum on, so the message can link to the
    page. Slack cannot resolve `localhost`.
-4. Each person opens "Your account" and clicks "Connect Slack". gitdocs matches their gitdocs email
+4. Each person opens "Your account" and clicks "Connect Slack". tablinum matches their tablinum email
    address against Slack. If the two addresses differ, they paste their Slack member id instead.
 
-On every save, gitdocs compares the handles in the new body with the handles in the previous body
+On every save, tablinum compares the handles in the new body with the handles in the previous body
 and sends a direct message for each handle that is new. Nothing is stored: there is no
 notification table to fall out of step with the pages, and you never hear about your own mention.
 A save never fails because Slack is unreachable.
@@ -282,7 +282,7 @@ Rules:
   | `engineering/runbooks/deploy.md` | `engineering/runbooks/deploy` |
 
 - Adding a child under a leaf promotes it: `foo.md` becomes `foo/index.md`. Removing the last child
-  demotes it back. gitdocs does this for you, and the page id never changes.
+  demotes it back. tablinum does this for you, and the page id never changes.
 - Drag a page in the sidebar to reorder or reparent it inside its space. To send it to a different
   space, right-click it and pick **Move to space**: the page lands at the top level of the chosen
   space, takes its children with it, keeps every id, and opens right away. A space home page
@@ -318,7 +318,7 @@ Base URL `http://localhost:4000/api/v1`. JSON in, JSON out.
 
 Authentication:
 
-- Agents send `Authorization: Bearer <token>`, with tokens from `GITDOCS_API_TOKENS`.
+- Agents send `Authorization: Bearer <token>`, with tokens from `TABLINUM_API_TOKENS`.
 - The web UI posts `{ email, password }` to `/auth/login` and gets a signed httpOnly session cookie.
 - Both grant the same access to the content. Only an account names a person.
 - `POST /auth/setup` is the one public write. It creates the first admin on a server that has no
@@ -378,7 +378,7 @@ Authentication:
 | POST | `/assets` | multipart | `{ url, path }` |
 | GET | `/live` | `?client=<tab id>&workspace=<slug>` | WebSocket |
 
-Every content endpoint answers about one workspace. Name it with the `x-gitdocs-workspace` header,
+Every content endpoint answers about one workspace. Name it with the `x-tablinum-workspace` header,
 or with `?workspace=` on a link and on the WebSocket upgrade. Send neither and you get your first
 workspace, which is the only one a single-workspace install has. An agent token names its own
 workspace and ignores both.
@@ -409,19 +409,19 @@ Example:
 
 ```bash
 curl -s http://localhost:4000/api/v1/pages \
-  -H "Authorization: Bearer $GITDOCS_TOKEN" \
+  -H "Authorization: Bearer $TABLINUM_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"path":"engineering/runbooks/deploy","title":"Deploy runbook","markdown":"# Deploy\n"}'
 ```
 
 ## Point Claude at the MCP server
 
-`@gitdocs/mcp` speaks MCP over stdio, so Claude can read and write pages directly.
+`@tablinum/mcp` speaks MCP over stdio, so Claude can read and write pages directly.
 
 Claude Code:
 
 ```bash
-claude mcp add gitdocs -- node /absolute/path/to/gitdocs/packages/mcp/dist/index.js
+claude mcp add tablinum -- node /absolute/path/to/tablinum/packages/mcp/dist/index.js
 ```
 
 Claude Desktop - add this to `claude_desktop_config.json`:
@@ -429,12 +429,12 @@ Claude Desktop - add this to `claude_desktop_config.json`:
 ```json
 {
   "mcpServers": {
-    "gitdocs": {
+    "tablinum": {
       "command": "node",
-      "args": ["/absolute/path/to/gitdocs/packages/mcp/dist/index.js"],
+      "args": ["/absolute/path/to/tablinum/packages/mcp/dist/index.js"],
       "env": {
-        "GITDOCS_CONTENT_DIR": "/absolute/path/to/your/content",
-        "GITDOCS_API_TOKENS": "your-token"
+        "TABLINUM_CONTENT_DIR": "/absolute/path/to/your/content",
+        "TABLINUM_API_TOKENS": "your-token"
       }
     }
   }
@@ -460,7 +460,7 @@ Point any MCP client at the address the dialog shows:
 ```json
 {
   "mcpServers": {
-    "gitdocs": {
+    "tablinum": {
       "type": "http",
       "url": "http://localhost:4000/api/v1/mcp",
       "headers": { "Authorization": "Bearer gda_your-agent-token" }
@@ -472,7 +472,7 @@ Point any MCP client at the address the dialog shows:
 Claude Code:
 
 ```bash
-claude mcp add --transport http gitdocs http://localhost:4000/api/v1/mcp \
+claude mcp add --transport http tablinum http://localhost:4000/api/v1/mcp \
   --header "Authorization: Bearer gda_your-agent-token"
 ```
 
@@ -494,19 +494,19 @@ All configuration comes from environment variables. See `.env.example` for the a
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `GITDOCS_CONTENT_DIR` | `<repo>/.data/content` | Absolute path to the content git repo |
-| `GITDOCS_PORT` | `4000` | REST API port |
-| `GITDOCS_API_TOKENS` | - | Comma-separated bearer tokens |
-| `GITDOCS_SESSION_SECRET` | random per boot | Cookie signing secret |
-| `GITDOCS_GIT_REMOTE` | - | Optional remote for the content repo |
-| `GITDOCS_GIT_BRANCH` | `main` | Branch to commit, pull and push |
-| `GITDOCS_GIT_AUTHOR_NAME` | `gitdocs` | Commit author name |
-| `GITDOCS_GIT_AUTHOR_EMAIL` | `gitdocs@localhost` | Commit author email |
-| `GITDOCS_AUTOCOMMIT_MS` | `5000` | Debounce before an automatic commit; `0` disables it |
-| `GITDOCS_AUTOPULL_MS` | `60000` | Background pull interval; `0` disables it |
-| `GITDOCS_AUTOPUSH_MS` | `5000` | Quiet period after a commit before the push; `0` disables it |
-| `GITDOCS_SLACK_BOT_TOKEN` | - | Slack bot token; unset turns mention notifications off |
-| `GITDOCS_PUBLIC_URL` | - | Public origin, used for the link inside a notification |
+| `TABLINUM_CONTENT_DIR` | `<repo>/.data/content` | Absolute path to the content git repo |
+| `TABLINUM_PORT` | `4000` | REST API port |
+| `TABLINUM_API_TOKENS` | - | Comma-separated bearer tokens |
+| `TABLINUM_SESSION_SECRET` | random per boot | Cookie signing secret |
+| `TABLINUM_GIT_REMOTE` | - | Optional remote for the content repo |
+| `TABLINUM_GIT_BRANCH` | `main` | Branch to commit, pull and push |
+| `TABLINUM_GIT_AUTHOR_NAME` | `tablinum` | Commit author name |
+| `TABLINUM_GIT_AUTHOR_EMAIL` | `tablinum@localhost` | Commit author email |
+| `TABLINUM_AUTOCOMMIT_MS` | `5000` | Debounce before an automatic commit; `0` disables it |
+| `TABLINUM_AUTOPULL_MS` | `60000` | Background pull interval; `0` disables it |
+| `TABLINUM_AUTOPUSH_MS` | `5000` | Quiet period after a commit before the push; `0` disables it |
+| `TABLINUM_SLACK_BOT_TOKEN` | - | Slack bot token; unset turns mention notifications off |
+| `TABLINUM_PUBLIC_URL` | - | Public origin, used for the link inside a notification |
 
 ## Contributing
 

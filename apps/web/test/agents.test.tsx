@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { Account, Agent, AuthStateResponse } from '@gitdocs/shared';
+import type { Account, Agent, AuthStateResponse } from '@tablinum/shared';
 import { AccountMenu } from '../src/components/Account/AccountMenu';
 import { AgentsDialog } from '../src/components/Account/AgentsDialog';
 import { AuthProvider } from '../src/lib/auth';

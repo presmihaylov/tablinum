@@ -1,4 +1,4 @@
-import type { Account, LiveUser } from '@gitdocs/shared';
+import type { Account, LiveUser } from '@tablinum/shared';
 
 /**
  * Who this tab is on the live channel. Always the signed-in account: a browser reaches the

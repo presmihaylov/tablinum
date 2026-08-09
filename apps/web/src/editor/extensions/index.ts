@@ -27,7 +27,7 @@ import type { MentionItem } from './mentionSuggestion';
 import { createPageEmbed } from './pageEmbed';
 import type { EmbeddedPage } from './pageEmbed';
 import { SlashMenuExtension } from './slashMenu';
-import { GitdocsTaskItem, GitdocsTaskList } from './taskList';
+import { TablinumTaskItem, TablinumTaskList } from './taskList';
 import { Wikilink } from './wikilink';
 import { WikilinkSuggestion } from './wikilinkSuggestion';
 import type { WikilinkItem } from './wikilinkSuggestion';
@@ -108,8 +108,8 @@ export function buildExtensions(overrides: Partial<EditorExtensionOptions> = {})
     TableRow,
     TableHeader,
     TableCell,
-    GitdocsTaskList,
-    GitdocsTaskItem,
+    TablinumTaskList,
+    TablinumTaskItem,
     Callout,
     Wikilink,
     Mention,
@@ -125,7 +125,7 @@ export function buildExtensions(overrides: Partial<EditorExtensionOptions> = {})
       tightListClass: 'tight',
       bulletListMarker: '-',
       transformPastedText: true,
-      // Copying is handled by the gitdocs serializer instead.
+      // Copying is handled by the tablinum serializer instead.
       transformCopiedText: false,
     }),
     MarkdownDialect,

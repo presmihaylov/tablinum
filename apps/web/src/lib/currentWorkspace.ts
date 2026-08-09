@@ -1,4 +1,4 @@
-import { WORKSPACE_COOKIE } from '@gitdocs/shared';
+import { WORKSPACE_COOKIE } from '@tablinum/shared';
 import { readStored, writeStored } from './storage';
 
 /**

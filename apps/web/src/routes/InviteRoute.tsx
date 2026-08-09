@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { MIN_PASSWORD_LENGTH } from '@gitdocs/shared';
+import { MIN_PASSWORD_LENGTH } from '@tablinum/shared';
 import { useInvitePreview, useRegister } from '../api/hooks';
 import { useAuth } from '../lib/auth';
 import { describeError } from '../lib/toast';
@@ -51,7 +51,7 @@ export function InviteRoute() {
     return (
       <div className="login">
         <div className="login__card">
-          <div className="login__brand">gitdocs</div>
+          <div className="login__brand">tablinum</div>
           <p className="login__lede">Checking the link...</p>
         </div>
       </div>
@@ -62,7 +62,7 @@ export function InviteRoute() {
     return (
       <div className="login">
         <div className="login__card">
-          <div className="login__brand">gitdocs</div>
+          <div className="login__brand">tablinum</div>
           <p className="login__lede">This invite link is not valid any more.</p>
           <p className="login__note">Ask whoever sent it for a new one.</p>
         </div>
@@ -73,7 +73,7 @@ export function InviteRoute() {
   return (
     <div className="login">
       <form className="login__card" onSubmit={onSubmit}>
-        <div className="login__brand">gitdocs</div>
+        <div className="login__brand">tablinum</div>
         <p className="login__lede">
           {preview.data?.invitedBy === null || preview.data === undefined
             ? 'You are invited to these docs.'

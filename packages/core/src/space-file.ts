@@ -1,5 +1,5 @@
 import { parse as parseYaml } from 'yaml';
-import { SpaceFileSchema, type Space } from '@gitdocs/shared';
+import { SpaceFileSchema, type Space } from '@tablinum/shared';
 import { emitNumber, emitString } from './yaml-emit.js';
 import { titleize } from './frontmatter.js';
 

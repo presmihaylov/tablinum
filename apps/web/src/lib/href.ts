@@ -1,4 +1,4 @@
-import type { PagePath } from '@gitdocs/shared';
+import type { PagePath } from '@tablinum/shared';
 
 /** Route for a page. Each segment is encoded on its own so slashes survive. */
 export function pageHref(path: PagePath): string {

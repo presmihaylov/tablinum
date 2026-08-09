@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { AppError, loadConfig } from '@gitdocs/shared';
+import { AppError, loadConfig } from '@tablinum/shared';
 import { GitEngine } from '../src/engine.js';
 import { silentLogger } from '../src/logger.js';
 import {
@@ -30,8 +30,8 @@ describe('GitEngine.init', () => {
     const engine = makeEngine({
       contentDir: dir,
       branch: 'trunk',
-      authorName: 'gitdocs',
-      authorEmail: 'gitdocs@localhost',
+      authorName: 'tablinum',
+      authorEmail: 'tablinum@localhost',
     });
 
     const result = await engine.init();
@@ -40,8 +40,8 @@ describe('GitEngine.init', () => {
     expect(result.cloned).toBe(false);
     expect(result.branch).toBe('trunk');
     expect(await exists(join(dir, '.git'))).toBe(true);
-    expect((await git(dir, 'config', '--local', 'user.name')).trim()).toBe('gitdocs');
-    expect((await git(dir, 'config', '--local', 'user.email')).trim()).toBe('gitdocs@localhost');
+    expect((await git(dir, 'config', '--local', 'user.name')).trim()).toBe('tablinum');
+    expect((await git(dir, 'config', '--local', 'user.email')).trim()).toBe('tablinum@localhost');
     expect((await git(dir, 'rev-parse', '--abbrev-ref', 'HEAD')).trim()).toBe('trunk');
   });
 
@@ -154,7 +154,7 @@ describe('GitEngine.init', () => {
 
   it('clones the remote when the content directory is empty', async () => {
     const remote = await bareRemote();
-    const author = await tempDir('gitdocs-author-');
+    const author = await tempDir('tablinum-author-');
     await git(author, 'clone', remote, '.');
     await git(author, 'config', 'user.name', 'Test Author');
     await git(author, 'config', 'user.email', 'author@example.test');
@@ -235,12 +235,12 @@ describe('GitEngine.fromConfig', () => {
   it('takes every git setting from the resolved config', async () => {
     const dir = await tempDir();
     const config = loadConfig({
-      GITDOCS_CONTENT_DIR: dir,
-      GITDOCS_GIT_BRANCH: 'trunk',
-      GITDOCS_GIT_AUTHOR_NAME: 'docs bot',
-      GITDOCS_GIT_AUTHOR_EMAIL: 'bot@example.test',
-      GITDOCS_AUTOCOMMIT_MS: '250',
-      GITDOCS_AUTOPULL_MS: '0',
+      TABLINUM_CONTENT_DIR: dir,
+      TABLINUM_GIT_BRANCH: 'trunk',
+      TABLINUM_GIT_AUTHOR_NAME: 'docs bot',
+      TABLINUM_GIT_AUTHOR_EMAIL: 'bot@example.test',
+      TABLINUM_AUTOCOMMIT_MS: '250',
+      TABLINUM_AUTOPULL_MS: '0',
     });
 
     const engine = GitEngine.fromConfig(config, silentLogger);

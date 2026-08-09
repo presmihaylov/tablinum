@@ -1,7 +1,7 @@
 import { rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { newPageId, type Frontmatter } from '@gitdocs/shared';
+import { newPageId, type Frontmatter } from '@tablinum/shared';
 import type { ServerDeps } from '../src/deps.js';
 import {
   RecentWrites,

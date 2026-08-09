@@ -7,7 +7,7 @@ import {
   SpaceResponseSchema,
   SpacesResponseSchema,
   TreeResponseSchema,
-} from '@gitdocs/shared';
+} from '@tablinum/shared';
 import { bodyOf, makeHarness, seed, type Harness } from './support/harness.js';
 
 let harness: Harness;

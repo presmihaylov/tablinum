@@ -38,22 +38,22 @@ importers:
       '@fastify/websocket':
         specifier: ^11.3.0
         version: 11.3.0
-      '@gitdocs/accounts':
+      '@tablinum/accounts':
         specifier: workspace:*
         version: link:../../packages/accounts
-      '@gitdocs/core':
+      '@tablinum/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitdocs/git-sync':
+      '@tablinum/git-sync':
         specifier: workspace:*
         version: link:../../packages/git-sync
-      '@gitdocs/mcp':
+      '@tablinum/mcp':
         specifier: workspace:*
         version: link:../../packages/mcp
-      '@gitdocs/search':
+      '@tablinum/search':
         specifier: workspace:*
         version: link:../../packages/search
-      '@gitdocs/shared':
+      '@tablinum/shared':
         specifier: workspace:*
         version: link:../../packages/shared
       '@modelcontextprotocol/sdk':
@@ -84,7 +84,7 @@ importers:
 
   apps/web:
     dependencies:
-      '@gitdocs/shared':
+      '@tablinum/shared':
         specifier: workspace:*
         version: link:../../packages/shared
       '@tanstack/react-query':
@@ -247,7 +247,7 @@ importers:
 
   packages/accounts:
     dependencies:
-      '@gitdocs/shared':
+      '@tablinum/shared':
         specifier: workspace:*
         version: link:../shared
       better-sqlite3:
@@ -269,7 +269,7 @@ importers:
 
   packages/core:
     dependencies:
-      '@gitdocs/shared':
+      '@tablinum/shared':
         specifier: workspace:*
         version: link:../shared
       chokidar:
@@ -297,7 +297,7 @@ importers:
 
   packages/git-sync:
     dependencies:
-      '@gitdocs/shared':
+      '@tablinum/shared':
         specifier: workspace:*
         version: link:../shared
       simple-git:
@@ -316,7 +316,7 @@ importers:
 
   packages/mcp:
     dependencies:
-      '@gitdocs/shared':
+      '@tablinum/shared':
         specifier: workspace:*
         version: link:../shared
       '@modelcontextprotocol/sdk':
@@ -341,7 +341,7 @@ importers:
 
   packages/search:
     dependencies:
-      '@gitdocs/shared':
+      '@tablinum/shared':
         specifier: workspace:*
         version: link:../shared
       better-sqlite3:

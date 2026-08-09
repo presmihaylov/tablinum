@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { PagePath } from '@gitdocs/shared';
+import type { PagePath } from '@tablinum/shared';
 import { ancestorPaths } from '../../lib/tree';
 import { usePersistedState } from '../../lib/storage';
 import { useContent } from '../../lib/content';

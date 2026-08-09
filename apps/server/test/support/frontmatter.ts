@@ -1,5 +1,5 @@
-import { FrontmatterSchema, parseOrThrow, validation } from '@gitdocs/shared';
-import type { Frontmatter } from '@gitdocs/shared';
+import { FrontmatterSchema, parseOrThrow, validation } from '@tablinum/shared';
+import type { Frontmatter } from '@tablinum/shared';
 
 /** Every value this codec can write. `_space.yml` needs no more than these. */
 export type Scalar = string | number | boolean | null | string[];

@@ -6,13 +6,13 @@ export interface ImageUploadOptions {
   upload: (file: File) => Promise<string | null>;
 }
 
-export const imageUploadPluginKey = new PluginKey('gitdocsImageUpload');
+export const imageUploadPluginKey = new PluginKey('tablinumImageUpload');
 
 const IMAGE_TYPE = /^image\//;
 
 /** Drops and pastes of image files become uploads, then an image node at the drop point. */
 export const ImageUpload = Extension.create<ImageUploadOptions>({
-  name: 'gitdocsImageUpload',
+  name: 'tablinumImageUpload',
 
   addOptions() {
     return { upload: () => Promise.resolve(null) };

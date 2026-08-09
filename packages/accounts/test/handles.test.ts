@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import Database from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
-import { isAppError } from '@gitdocs/shared';
+import { isAppError } from '@tablinum/shared';
 import { AccountStore } from '../src/store.js';
 
 const open: AccountStore[] = [];
@@ -17,7 +17,7 @@ function store(dbPath = ':memory:'): AccountStore {
 }
 
 function tempDb(): string {
-  const dir = mkdtempSync(join(tmpdir(), 'gitdocs-accounts-'));
+  const dir = mkdtempSync(join(tmpdir(), 'tablinum-accounts-'));
   dirs.push(dir);
   return join(dir, 'accounts.db');
 }

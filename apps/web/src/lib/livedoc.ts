@@ -1,4 +1,4 @@
-import { mergeText } from '@gitdocs/shared';
+import { mergeText } from '@tablinum/shared';
 
 /** Where the other copy came from, so the conflict dialog can name it. */
 export type ConflictSource = 'peer' | 'git';

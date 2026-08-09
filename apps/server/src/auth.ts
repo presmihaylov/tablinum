@@ -7,11 +7,11 @@ import {
   type Account,
   type Agent,
   type Config,
-} from '@gitdocs/shared';
+} from '@tablinum/shared';
 import type { ServerDeps } from './deps.js';
 
 /** Name of the signed, httpOnly session cookie set by POST /api/v1/auth/login. */
-export const SESSION_COOKIE = 'gitdocs_session';
+export const SESSION_COOKIE = 'tablinum_session';
 
 /** How long a web session stays valid. */
 export const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;

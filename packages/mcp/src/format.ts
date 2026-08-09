@@ -1,4 +1,4 @@
-import type { GitStatus, Page, Revision, SearchHit, TreeNode } from '@gitdocs/shared';
+import type { GitStatus, Page, Revision, SearchHit, TreeNode } from '@tablinum/shared';
 import type { SpaceTree } from './client.js';
 
 const SNIPPET_MAX = 240;
@@ -36,7 +36,7 @@ function outlineNodes(nodes: TreeNode[], indent: string, out: string[]): void {
 /** Indented outline of the page tree: one line per page, path in brackets. */
 export function formatTreeOutline(spaces: SpaceTree[]): string {
   if (spaces.length === 0) {
-    return 'No spaces exist yet. Create the first page with gitdocs_create_page; its first path segment becomes the space.';
+    return 'No spaces exist yet. Create the first page with tablinum_create_page; its first path segment becomes the space.';
   }
   const lines: string[] = [];
   for (const space of spaces) {
@@ -61,7 +61,7 @@ function countNodes(nodes: TreeNode[]): number {
 /** Ranked hits, one block per hit, snippet flattened to a single line. */
 export function formatSearchHits(hits: SearchHit[], query: string): string {
   if (hits.length === 0) {
-    return `No page matches ${JSON.stringify(query)}. Try fewer or broader words, drop the space filter, or call gitdocs_list_tree to browse.`;
+    return `No page matches ${JSON.stringify(query)}. Try fewer or broader words, drop the space filter, or call tablinum_list_tree to browse.`;
   }
   const lines = [`${count(hits.length, 'hit')} for ${JSON.stringify(query)}:`, ''];
   hits.forEach((hit, index) => {
@@ -79,7 +79,7 @@ export function formatSearchHits(hits: SearchHit[], query: string): string {
 /** Metadata header plus the page body, verbatim and unmodified. */
 export function formatPage(page: Page): string {
   const header = [
-    '--- gitdocs page ---',
+    '--- tablinum page ---',
     `path: ${page.path}`,
     `id: ${page.id}`,
     `space: ${page.space}`,

@@ -37,7 +37,7 @@ import {
   type Space,
   type TreeNode,
   type UpdateSpaceBody,
-} from '@gitdocs/shared';
+} from '@tablinum/shared';
 import {
   frontmatterEqual,
   normalizeBody,
@@ -74,7 +74,7 @@ export const DEFAULT_SPACE_SLUG = 'docs';
 export const DEFAULT_SPACE_NAME = 'Docs';
 export const WELCOME_TITLE = 'Welcome';
 
-export const WELCOME_MARKDOWN = `# Welcome to gitdocs
+export const WELCOME_MARKDOWN = `# Welcome to tablinum
 
 This page lives at \`docs/index.md\` in your content repository. Every page here is a markdown
 file with YAML frontmatter, and every edit is a commit.

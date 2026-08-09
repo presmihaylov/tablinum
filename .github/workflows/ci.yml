@@ -75,30 +75,30 @@ jobs:
           file: deploy/Dockerfile
           push: false
           load: true
-          tags: gitdocs:ci
+          tags: tablinum:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Smoke test the image
         run: |
-          docker run -d --name gitdocs-ci -p 4000:4000 \
-            -e GITDOCS_API_TOKENS=ci-token \
-            gitdocs:ci
+          docker run -d --name tablinum-ci -p 4000:4000 \
+            -e TABLINUM_API_TOKENS=ci-token \
+            tablinum:ci
           for i in $(seq 1 30); do
-            if [ "$(docker inspect -f '{{.State.Health.Status}}' gitdocs-ci)" = "healthy" ]; then
+            if [ "$(docker inspect -f '{{.State.Health.Status}}' tablinum-ci)" = "healthy" ]; then
               echo "container is healthy"
               exit 0
             fi
             sleep 3
           done
           echo "container never became healthy"
-          docker logs gitdocs-ci
+          docker logs tablinum-ci
           exit 1
 
       - name: Container logs
         if: always()
-        run: docker logs gitdocs-ci || true
+        run: docker logs tablinum-ci || true
 
       - name: Stop the container
         if: always()
-        run: docker rm -f gitdocs-ci || true
+        run: docker rm -f tablinum-ci || true

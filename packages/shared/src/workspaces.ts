@@ -6,19 +6,19 @@ import { IconSchema, IsoDateSchema } from './schemas.js';
 /**
  * Workspaces.
  *
- * A workspace is the top level of gitdocs, above spaces. Each one owns a git repository of
+ * A workspace is the top level of tablinum, above spaces. Each one owns a git repository of
  * its own, so its spaces, pages, attachments, search index and agents are separate from every
  * other workspace. A person can belong to many of them and switches between them in the UI.
  *
  * A whole workspace travels as a zip of its repository, so exporting one and importing it into
- * another gitdocs keeps every page and its full history.
+ * another tablinum keeps every page and its full history.
  */
 
 /** Prefix of a workspace id, in the style of the page, user and agent ids. */
 export const WORKSPACE_ID_PREFIX = 'ws_';
 
 /** Header that names the workspace a request is about. */
-export const WORKSPACE_HEADER = 'x-gitdocs-workspace';
+export const WORKSPACE_HEADER = 'x-tablinum-workspace';
 
 /** Query parameter with the same meaning, for links and for the websocket upgrade. */
 export const WORKSPACE_QUERY = 'workspace';
@@ -28,7 +28,7 @@ export const WORKSPACE_QUERY = 'workspace';
  * it renders, so those requests carry no header and no query: the cookie is what tells the
  * server which workspace the image belongs to. It is not a credential.
  */
-export const WORKSPACE_COOKIE = 'gitdocs_workspace';
+export const WORKSPACE_COOKIE = 'tablinum_workspace';
 
 /** Slug of the workspace every install starts with. */
 export const DEFAULT_WORKSPACE_SLUG = 'main';

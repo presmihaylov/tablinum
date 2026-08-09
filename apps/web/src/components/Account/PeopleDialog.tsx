@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { DEFAULT_INVITE_DAYS, type Account, type AccountRole, type Invite } from '@gitdocs/shared';
+import { DEFAULT_INVITE_DAYS, type Account, type AccountRole, type Invite } from '@tablinum/shared';
 import {
   useCreateInvite,
   useDeleteUser,

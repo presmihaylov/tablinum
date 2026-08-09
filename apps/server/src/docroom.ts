@@ -1,4 +1,4 @@
-import { MAX_ROOM_STEPS, type DocBaseline, type DocStep, type PagePath } from '@gitdocs/shared';
+import { MAX_ROOM_STEPS, type DocBaseline, type DocStep, type PagePath } from '@tablinum/shared';
 
 /**
  * One page that tabs are streaming into. The server never parses a step: it puts them in an

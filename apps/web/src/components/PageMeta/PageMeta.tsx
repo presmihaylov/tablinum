@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import type { Page } from '@gitdocs/shared';
+import type { Page } from '@tablinum/shared';
 import { useBacklinks } from '../../api/hooks';
 import { absoluteTime, relativeTime } from '../../lib/format';
 import { pageHref } from '../../lib/href';

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
-import type { TreeNode } from '@gitdocs/shared';
+import type { TreeNode } from '@tablinum/shared';
 import { PageTree } from '../src/components/Sidebar/PageTree';
 import { useContent } from '../src/lib/content';
 import { installFetch, type MockServer } from './mockFetch';

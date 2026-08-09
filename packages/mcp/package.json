@@ -1,13 +1,13 @@
 {
-  "name": "@gitdocs/mcp",
+  "name": "@tablinum/mcp",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "MCP stdio server that lets an agent read and edit gitdocs pages through the gitdocs REST API.",
+  "description": "MCP stdio server that lets an agent read and edit tablinum pages through the tablinum REST API.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "gitdocs-mcp": "./dist/cli.js"
+    "tablinum-mcp": "./dist/cli.js"
   },
   "exports": {
     ".": {
@@ -29,7 +29,7 @@
     "dev": "tsx src/cli.ts"
   },
   "dependencies": {
-    "@gitdocs/shared": "workspace:*",
+    "@tablinum/shared": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.27.1",
     "zod": "^3.25.76"
   },

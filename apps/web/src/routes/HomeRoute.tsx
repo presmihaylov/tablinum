@@ -24,7 +24,7 @@ export function HomeRoute() {
   return (
     <div className="app-content">
       <div className="centered-state">
-        <h2>Welcome to gitdocs</h2>
+        <h2>Welcome to tablinum</h2>
         <p>Every page here is a markdown file with YAML frontmatter, tracked in git.</p>
         <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
           {space ? (

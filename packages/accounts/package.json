@@ -1,9 +1,9 @@
 {
-  "name": "@gitdocs/accounts",
+  "name": "@tablinum/accounts",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "SQLite store for gitdocs accounts: users, passwords, sessions, invites and avatars.",
+  "description": "SQLite store for tablinum accounts: users, passwords, sessions, invites and avatars.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -23,7 +23,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@gitdocs/shared": "workspace:*",
+    "@tablinum/shared": "workspace:*",
     "better-sqlite3": "^11.10.0"
   },
   "devDependencies": {

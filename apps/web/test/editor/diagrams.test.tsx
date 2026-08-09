@@ -90,7 +90,8 @@ describe('the diagram slash command', () => {
 
   it('asks the shell for a canvas instead of inserting an empty node', () => {
     const instance = open('');
-    const item = filterSlashCommands('diagram')[0];
+    // "diagram" also matches the mermaid command, so pick this one by id.
+    const item = filterSlashCommands('diagram').find((command) => command.id === 'diagram');
     const onPickDiagram = vi.fn();
     item?.run(
       instance,

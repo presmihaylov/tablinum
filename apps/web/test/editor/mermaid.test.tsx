@@ -67,6 +67,7 @@ function pick(editor: Editor, id: string): void {
     onPickEmoji: () => undefined,
     onPickVideo: () => undefined,
     onPickPage: () => undefined,
+    onPickDiagram: () => undefined,
   });
 }
 
@@ -168,9 +169,10 @@ describe('mermaidErrorMessage', () => {
 describe('the diagram slash command', () => {
   const ids = (query: string): string[] => filterSlashCommands(query).map((item) => item.id);
 
-  it('answers to both "mermaid" and "diagram"', () => {
+  it('owns "mermaid" alone and shares "diagram" with the drawing canvas', () => {
     expect(ids('mermaid')).toEqual(['mermaid']);
-    expect(ids('diagram')).toEqual(['mermaid']);
+    expect(ids('diagram')).toContain('mermaid');
+    expect(ids('diagram')).toContain('diagram');
   });
 
   it('inserts a starter diagram, not an empty block', () => {

@@ -56,6 +56,12 @@ RULES:
   when a child is created under a leaf page. Removing the last child demotes it back.
 - Attachments live in `content/_assets/<pageId>/<filename>`, referenced as
   `/_assets/<pageId>/<filename>`.
+- An upload carries an allowed extension or it is refused: images, audio, video, `.pdf`, `.txt`,
+  `.csv`, `.md`, `.json`, `.zip`. `.svg` and `.html` are not on the list, because both run script.
+- `GET /_assets/*` answers with the type the extension names, or `application/octet-stream` plus
+  `content-disposition: attachment`. Every attachment also gets `x-content-type-options: nosniff`
+  and `content-security-policy: default-src 'none'; sandbox`, so a stored file never runs on this
+  origin. Files uploaded before this rule are covered too, an old `.svg` included.
 
 ## STATE OUTSIDE THE CONTENT REPO
 
@@ -354,6 +360,12 @@ everything else is open to any credential.
 
 Every content endpoint answers about ONE workspace, chosen as WORKSPACES above describes. A client
 that names none gets its first workspace, which is what a single-workspace install always sees.
+
+Every response carries `x-content-type-options: nosniff` and `referrer-policy: same-origin`. An
+HTML document also carries a `content-security-policy` with `script-src 'self'`, so the web app
+holds no inline script: the theme is painted by `apps/web/public/theme.js`. The policy keeps
+`style-src 'unsafe-inline'` for the editor's style attributes, and `frame-src https:` for the
+video players in `apps/web/src/editor/embeds.ts`.
 
 ```
 GET    /api/v1/health                          -> { ok: true, version, contentDir }

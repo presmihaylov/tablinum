@@ -5,19 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="description" content="tablinum - self-hosted docs backed by markdown files in git." />
     <title>tablinum</title>
-    <script>
-      // Paint the stored theme before first paint so the app never flashes the wrong palette.
-      (function () {
-        try {
-          var mode = localStorage.getItem('tablinum.theme');
-          if (mode === 'light' || mode === 'dark') {
-            document.documentElement.setAttribute('data-theme', mode);
-          }
-        } catch (err) {
-          /* private mode: fall back to the system palette */
-        }
-      })();
-    </script>
+    <!-- Blocking, so the stored theme is on the root element before the first paint. -->
+    <script src="/theme.js"></script>
   </head>
   <body>
     <div id="root"></div>

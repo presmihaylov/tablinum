@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { AssetResponseSchema, ErrorBodySchema } from '@tablinum/shared';
@@ -64,11 +64,11 @@ describe('asset upload', () => {
   it('strips any directory component from the filename', async () => {
     const response = await upload({
       fields: { pageId },
-      filename: '../../../etc/passwd',
+      filename: '../../../etc/passwd.txt',
       data: Buffer.from('root:x:0:0'),
     });
     expect(response.statusCode).toBe(200);
-    expect(bodyOf(response, AssetResponseSchema).path).toBe(`_assets/${pageId}/passwd`);
+    expect(bodyOf(response, AssetResponseSchema).path).toBe(`_assets/${pageId}/passwd.txt`);
   });
 
   it('never overwrites an existing attachment', async () => {
@@ -159,5 +159,56 @@ describe('asset upload', () => {
     });
     expect(response.statusCode).toBe(400);
     expect(bodyOf(response, ErrorBodySchema).error.code).toBe('VALIDATION');
+  });
+});
+
+describe('attachments are never active content', () => {
+  it('refuses an upload a browser would execute', async () => {
+    for (const filename of ['evil.html', 'logo.svg', 'run.js']) {
+      const response = await upload({
+        fields: { pageId },
+        filename,
+        data: Buffer.from('<script>alert(1)</script>'),
+      });
+      expect(`${filename} -> ${response.statusCode}`).toBe(`${filename} -> 400`);
+      expect(bodyOf(response, ErrorBodySchema).error.code).toBe('VALIDATION');
+    }
+  });
+
+  it('serves an image inline, with its own type', async () => {
+    const stored = await upload({
+      fields: { pageId },
+      filename: 'diagram.png',
+      contentType: 'image/png',
+      data: PNG,
+    });
+    const asset = bodyOf(stored, AssetResponseSchema);
+
+    const fetched = await harness.app.inject({
+      method: 'GET',
+      url: asset.url,
+      headers: harness.authHeaders(),
+    });
+    expect(fetched.statusCode).toBe(200);
+    expect(fetched.headers['content-type']).toBe('image/png');
+    expect(fetched.headers['content-disposition']).toBeUndefined();
+    expect(fetched.headers['x-content-type-options']).toBe('nosniff');
+  });
+
+  it('downloads a file that predates the allowlist instead of rendering it', async () => {
+    const dir = join(harness.contentDir, '_assets', pageId);
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, 'legacy.html'), '<script>alert(1)</script>');
+
+    const fetched = await harness.app.inject({
+      method: 'GET',
+      url: `/_assets/${pageId}/legacy.html`,
+      headers: harness.authHeaders(),
+    });
+    expect(fetched.statusCode).toBe(200);
+    expect(fetched.headers['content-type']).toBe('application/octet-stream');
+    expect(fetched.headers['content-disposition']).toBe('attachment');
+    expect(fetched.headers['x-content-type-options']).toBe('nosniff');
+    expect(String(fetched.headers['content-security-policy'])).toContain('sandbox');
   });
 });

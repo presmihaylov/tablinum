@@ -18,6 +18,38 @@ import { API_PREFIX, partsOf, type RouteContext } from '../context.js';
 /** Hard ceiling for one attachment. Also enforced by the multipart parser itself. */
 export const MAX_ASSET_BYTES = 25 * 1024 * 1024;
 
+/**
+ * The only types an attachment is ever served as, keyed by extension. Nothing here can run
+ * script on this origin, so a `.html` or `.svg` already on disk is downloaded instead.
+ */
+const INLINE_TYPES: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.avif': 'image/avif',
+  '.mp4': 'video/mp4',
+  '.m4v': 'video/x-m4v',
+  '.mov': 'video/quicktime',
+  '.webm': 'video/webm',
+  '.ogv': 'video/ogg',
+  '.mp3': 'audio/mpeg',
+  '.wav': 'audio/wav',
+  '.ogg': 'audio/ogg',
+};
+
+/** What an upload may carry. `.svg` and `.html` are absent on purpose: both run script. */
+const ALLOWED_UPLOAD_EXTENSIONS = new Set([
+  ...Object.keys(INLINE_TYPES),
+  '.pdf',
+  '.txt',
+  '.csv',
+  '.md',
+  '.json',
+  '.zip',
+]);
+
 const AssetQuerySchema = z.object({ pageId: z.string().min(1).optional() });
 
 interface UploadedFile {
@@ -76,7 +108,16 @@ export function registerAssetRoutes(app: FastifyInstance, ctx: RouteContext): vo
     const { store } = await partsOf(ctx, request);
     const rel = (request.params as Record<string, string>)['*'] ?? '';
     if (rel.length === 0 || rel.includes('..')) throw notFound('No such attachment');
-    return reply.sendFile(rel, join(store.contentDir, ASSETS_DIR));
+
+    // The type is ours, not the file's: `contentType: false` keeps @fastify/send from
+    // deriving one from the extension. This also covers files stored before the allowlist.
+    const inline = INLINE_TYPES[extname(rel).toLowerCase()];
+    reply
+      .header('x-content-type-options', 'nosniff')
+      .header('content-security-policy', "default-src 'none'; sandbox")
+      .header('content-type', inline ?? 'application/octet-stream');
+    if (inline === undefined) reply.header('content-disposition', 'attachment');
+    return reply.sendFile(rel, join(store.contentDir, ASSETS_DIR), { contentType: false });
   });
 
   app.post(`${API_PREFIX}/assets`, async (request): Promise<AssetResponse> => {
@@ -101,6 +142,13 @@ export function registerAssetRoutes(app: FastifyInstance, ctx: RouteContext): vo
     // assetRelPath() strips any directory component and rejects unsafe characters.
     const safeRel = assetRelPath(page.id, upload.file.filename);
     const safeName = safeRel.slice(safeRel.lastIndexOf('/') + 1);
+
+    // Here and not in assetRelPath(): the store saves attachments through that helper too.
+    const extension = extname(safeName).toLowerCase();
+    if (!ALLOWED_UPLOAD_EXTENSIONS.has(extension)) {
+      const named = extension.length === 0 ? '(none)' : extension;
+      throw validation(`Attachments of type ${named} are not accepted`);
+    }
 
     const dir = join(store.contentDir, ASSETS_DIR, page.id);
     await mkdir(dir, { recursive: true });

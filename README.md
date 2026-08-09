@@ -306,7 +306,10 @@ Rules:
   icon. A new space is created with its home page and is opened at once. **Edit space** renames
   the open space and sets or clears its icon.
 - Attachments live in `_assets/<pageId>/<filename>` and are referenced as
-  `/_assets/<pageId>/<filename>`.
+  `/_assets/<pageId>/<filename>`. An upload must carry an allowed extension: images, audio, video,
+  `.pdf`, `.txt`, `.csv`, `.md`, `.json` or `.zip`. `.svg` and `.html` are refused, because a
+  browser runs script from both. Anything that is not an image, an audio file or a video is served
+  as a download, so an attachment stored before this rule cannot run either.
 
 ### Frontmatter
 

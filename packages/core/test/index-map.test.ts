@@ -117,4 +117,34 @@ describe('IndexMap', () => {
     await index.ensureBuilt();
     expect(index.has('docs/new')).toBe(true);
   });
+
+  it('never shows a gap in the middle of a rebuild', async () => {
+    await writeFileAt(dir, 'docs/index.md', file(ID, 'Docs'));
+    for (let i = 0; i < 40; i += 1) {
+      await writeFileAt(dir, `docs/p${i}.md`, file(`pg_page${String(i).padStart(21, '0')}`, `P${i}`));
+    }
+    const index = makeIndex();
+    await index.ensureBuilt();
+
+    // A reader interleaved with a rebuild used to see the cleared maps and answer 404.
+    const seen: Array<boolean> = [];
+    const reads = (async (): Promise<void> => {
+      for (let i = 0; i < 200; i += 1) {
+        seen.push(index.byId(ID) !== undefined);
+        await Promise.resolve();
+      }
+    })();
+    await Promise.all([index.rebuild(), index.rebuild(), reads]);
+
+    expect(seen.every(Boolean)).toBe(true);
+  });
+
+  it('runs overlapping rebuilds one after another', async () => {
+    await writeFileAt(dir, 'docs/index.md', file(ID, 'Docs'));
+    const index = makeIndex();
+    await Promise.all([index.rebuild(), index.rebuild(), index.rebuild()]);
+
+    expect(index.byId(ID)).toBeDefined();
+    expect(index.size).toBe(1);
+  });
 });

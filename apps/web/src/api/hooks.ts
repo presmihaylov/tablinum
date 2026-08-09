@@ -646,8 +646,13 @@ export function useRemoveWorkspaceMember(): UseMutationResult<OkResponse, ApiErr
 export interface UploadAssetVars {
   file: File;
   pageId?: PageId;
+  /** Write over the attachment of the same name rather than taking a free one beside it. */
+  replace?: boolean;
 }
 
 export function useUploadAsset(): UseMutationResult<AssetResponse, ApiError, UploadAssetVars> {
-  return useMutation({ mutationFn: ({ file, pageId }: UploadAssetVars) => api.uploadAsset(file, pageId) });
+  return useMutation({
+    mutationFn: ({ file, pageId, replace }: UploadAssetVars) =>
+      api.uploadAsset(file, pageId, replace),
+  });
 }

@@ -417,10 +417,12 @@ export const api = {
     return request('/workspaces/import', { method: 'POST', form });
   },
 
-  uploadAsset: (file: File, pageId?: PageId): Promise<AssetResponse> => {
+  // `replace` writes over the file of the same name instead of taking a free one beside it.
+  uploadAsset: (file: File, pageId?: PageId, replace = false): Promise<AssetResponse> => {
     const form = new FormData();
     form.append('file', file, file.name);
     if (pageId) form.append('pageId', pageId);
+    if (replace) form.append('replace', 'true');
     return request('/assets', { method: 'POST', form });
   },
 } as const;

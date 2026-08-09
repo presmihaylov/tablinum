@@ -6,19 +6,23 @@ import { EditorContent, useEditor } from '@tiptap/react';
 import type { Editor } from '@tiptap/core';
 import type { Page } from '@gitdocs/shared';
 import { api } from '../api/client';
-import { useUploadAsset } from '../api/hooks';
+import { useCreatePage, useTree, useUploadAsset, useUsers } from '../api/hooks';
 import { qk } from '../api/keys';
 import { pageHref } from '../lib/href';
 import { useToast } from '../lib/toast';
+import { childPathFor } from '../lib/treeMove';
 import type { SaveState } from '../lib/autosave';
+import type { DocRoom } from '../lib/docRoom';
+import type { IncomingContent } from '../lib/usePageDoc';
 import { PromptDialog } from '../components/ui/PromptDialog';
 import type { PromptRequest } from '../components/ui/PromptDialog';
 import { SaveIndicator } from '../components/ui/SaveIndicator';
 import { EMBED_PROVIDERS, embedHtml, resolveEmbed } from './embeds';
 import { buildExtensions } from './extensions';
-import type { EmbeddedPage, WikilinkItem } from './extensions';
+import type { EmbeddedPage, MentionItem, WikilinkItem } from './extensions';
 import { DEFAULT_FRAME, PARSE_OPTIONS, readMarkdown, writeMarkdown } from './markdown';
 import type { MarkdownFrame } from './markdown';
+import { useDocStream } from './useStream';
 import { BlockHandles } from './ui/BlockHandles';
 import { EmojiPicker } from './ui/EmojiPicker';
 import type { EmojiAnchor } from './ui/EmojiPicker';
@@ -44,6 +48,21 @@ export interface PageEditorProps {
   onTitleChange: (title: string) => void;
   /** Autosave status, for the editor's own indicator. */
   saveState: SaveState;
+  /**
+   * Text merged from another writer. The editor replaces its content whenever `token` changes,
+   * and must not report the replacement back through `onChange`.
+   */
+  incoming?: IncomingContent | null;
+  /**
+   * The page's step stream. When it is present the editor streams every keystroke through it
+   * and draws the other people's carets. Without it the editor behaves exactly as before.
+   */
+  room?: DocRoom | null;
+  /**
+   * Called when the page icon is picked, or cleared with null. Without it the icon on the
+   * title row stays read only.
+   */
+  onIconChange?: (icon: string | null) => void;
 }
 
 /** Callbacks the extensions hold for the life of the editor, read through a ref. */
@@ -55,14 +74,24 @@ interface Handlers {
   insertVideo: (url: string) => void;
   upload: (file: File) => Promise<string | null>;
   search: (query: string) => Promise<WikilinkItem[]>;
+  people: (query: string) => Promise<MentionItem[]>;
   load: (path: string) => Promise<EmbeddedPage | null>;
   open: (path: string) => void;
 }
 
 const SEARCH_LIMIT = 8;
 
-export function PageEditor({ page, onChange, onTitleChange, saveState }: PageEditorProps) {
+export function PageEditor({
+  page,
+  onChange,
+  onTitleChange,
+  saveState,
+  incoming,
+  room,
+  onIconChange,
+}: PageEditorProps) {
   const [title, setTitle] = useState(page.title);
+  const [icon, setIcon] = useState<string | null>(page.icon ?? null);
   const [emojiAt, setEmojiAt] = useState<EmojiAnchor | null>(null);
   const [videoOpen, setVideoOpen] = useState(false);
   const [pageOpen, setPageOpen] = useState(false);
@@ -71,6 +100,7 @@ export function PageEditor({ page, onChange, onTitleChange, saveState }: PageEdi
   const fileRef = useRef<HTMLInputElement>(null);
   const editorRef = useRef<Editor | null>(null);
   const loadedId = useRef(page.id);
+  const adoptedToken = useRef(incoming?.token ?? 0);
   const frameRef = useRef<MarkdownFrame>(initialFrame(page.markdown));
   const lastSent = useRef(page.markdown);
   const onChangeRef = useRef(onChange);
@@ -80,6 +110,12 @@ export function PageEditor({ page, onChange, onTitleChange, saveState }: PageEdi
   const toast = useToast();
   const client = useQueryClient();
   const uploadAsset = useUploadAsset();
+  const createPage = useCreatePage();
+  const tree = useTree();
+  const spaces = useMemo(() => tree.data?.spaces ?? [], [tree.data]);
+  const users = useUsers();
+  const peopleRef = useRef(users.data?.users ?? []);
+  peopleRef.current = users.data?.users ?? [];
 
   const uploadRef = useRef(uploadAsset.mutateAsync);
   uploadRef.current = uploadAsset.mutateAsync;
@@ -115,6 +151,27 @@ export function PageEditor({ page, onChange, onTitleChange, saveState }: PageEdi
     },
     [client],
   );
+
+  // The roster is small and already cached, so the `@` menu filters it in the browser.
+  const searchPeople = useCallback(async (query: string): Promise<MentionItem[]> => {
+    const text = query.trim().toLowerCase();
+    return peopleRef.current
+      .filter((person) => !person.disabled)
+      .filter(
+        (person) =>
+          text.length === 0 ||
+          person.handle.includes(text) ||
+          person.name.toLowerCase().includes(text),
+      )
+      .slice(0, SEARCH_LIMIT)
+      .map((person) => ({
+        id: person.id,
+        handle: person.handle,
+        name: person.name,
+        color: person.color,
+        avatarRev: person.avatarRev,
+      }));
+  }, []);
 
   const loadPage = useCallback(
     async (path: string): Promise<EmbeddedPage | null> => {
@@ -164,6 +221,22 @@ export function PageEditor({ page, onChange, onTitleChange, saveState }: PageEdi
     [toast],
   );
 
+  // The embed points at a page, so the page has to exist before the node goes in.
+  const createAndEmbed = useCallback(
+    (title: string): void => {
+      createPage.mutate(
+        { path: childPathFor(spaces, page.path, title), title },
+        {
+          onSuccess: (data) => {
+            editorRef.current?.chain().focus().insertPageEmbed(data.page.path).run();
+          },
+          onError: (error) => toast.pushError(error, 'The page could not be created'),
+        },
+      );
+    },
+    [createPage, spaces, page.path, toast],
+  );
+
   const openEmoji = useCallback((): void => {
     const editor = editorRef.current;
     if (!editor) return;
@@ -179,6 +252,7 @@ export function PageEditor({ page, onChange, onTitleChange, saveState }: PageEdi
     insertVideo: () => undefined,
     upload: () => Promise.resolve(null),
     search: () => Promise.resolve([]),
+    people: () => Promise.resolve([]),
     load: () => Promise.resolve(null),
     open: () => undefined,
   });
@@ -190,6 +264,7 @@ export function PageEditor({ page, onChange, onTitleChange, saveState }: PageEdi
     insertVideo,
     upload: uploadImage,
     search: searchPages,
+    people: searchPeople,
     load: loadPage,
     open: openPage,
   };
@@ -204,6 +279,7 @@ export function PageEditor({ page, onChange, onTitleChange, saveState }: PageEdi
         onPickPage: () => handlers.current.pickPage(),
         uploadImage: (file) => handlers.current.upload(file),
         searchPages: (query) => handlers.current.search(query),
+        searchPeople: (query) => handlers.current.people(query),
         loadPage: (path) => handlers.current.load(path),
         openPage: (path) => handlers.current.open(path),
       }),
@@ -234,11 +310,31 @@ export function PageEditor({ page, onChange, onTitleChange, saveState }: PageEdi
     frameRef.current = initialFrame(page.markdown);
     lastSent.current = page.markdown;
     setTitle(page.title);
+    setIcon(page.icon ?? null);
     setEmojiAt(null);
     setVideoOpen(false);
     setPageOpen(false);
     editor?.commands.setContent(readMarkdown(page.markdown).body, false, PARSE_OPTIONS);
-  }, [page.id, page.title, page.markdown, editor]);
+  }, [page.id, page.title, page.icon, page.markdown, editor]);
+
+  // Someone else changed the page. The shell already merged the two edits; this only
+  // puts the result on screen, with the caret left as close to where it was as possible.
+  useEffect(() => {
+    if (!editor || !incoming || incoming.token === adoptedToken.current) return;
+    adoptedToken.current = incoming.token;
+    frameRef.current = initialFrame(incoming.markdown);
+    lastSent.current = incoming.markdown;
+    setTitle(incoming.title);
+
+    const { from, to } = editor.state.selection;
+    editor.commands.setContent(readMarkdown(incoming.markdown).body, false, PARSE_OPTIONS);
+    const end = editor.state.doc.content.size;
+    editor.commands.setTextSelection({ from: Math.min(from, end), to: Math.min(to, end) });
+  }, [incoming, editor]);
+
+  // Keystroke streaming. It owns the document while a room is joined: it replaces content,
+  // keeps the frame, and draws the other carets. Without a room nothing here runs.
+  useDocStream({ editor, room: room ?? null, frame: frameRef, page, onTitle: setTitle });
 
   // Held steady while the dialog is open: a new object resets the field the user types in.
   const videoRequest = useMemo<PromptRequest | null>(
@@ -260,6 +356,12 @@ export function PageEditor({ page, onChange, onTitleChange, saveState }: PageEdi
     onTitleChange(value);
   };
 
+  // Shown at once: the save is debounced, and the icon should not lag a click by a second.
+  const changeIcon = (value: string | null): void => {
+    setIcon(value);
+    onIconChange?.(value);
+  };
+
   const insertImage = (file: File): void => {
     void uploadImage(file).then((url) => {
       if (!url || !editorRef.current) return;
@@ -272,9 +374,10 @@ export function PageEditor({ page, onChange, onTitleChange, saveState }: PageEdi
       <header className="editor__head">
         <PageTitle
           value={title}
-          icon={page.icon ?? null}
+          icon={icon}
           onChange={changeTitle}
           onLeave={() => editor?.commands.focus('start')}
+          {...(onIconChange ? { onIconChange: changeIcon } : {})}
         />
         <SaveIndicator state={saveState} />
       </header>
@@ -305,6 +408,7 @@ export function PageEditor({ page, onChange, onTitleChange, saveState }: PageEdi
         search={searchPages}
         onClose={() => setPageOpen(false)}
         onPick={(path) => editorRef.current?.chain().focus().insertPageEmbed(path).run()}
+        onCreate={createAndEmbed}
       />
 
       <input

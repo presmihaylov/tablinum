@@ -38,18 +38,27 @@ importers:
       '@fastify/websocket':
         specifier: ^11.3.0
         version: 11.3.0
+      '@gitdocs/accounts':
+        specifier: workspace:*
+        version: link:../../packages/accounts
       '@gitdocs/core':
         specifier: workspace:*
         version: link:../../packages/core
       '@gitdocs/git-sync':
         specifier: workspace:*
         version: link:../../packages/git-sync
+      '@gitdocs/mcp':
+        specifier: workspace:*
+        version: link:../../packages/mcp
       '@gitdocs/search':
         specifier: workspace:*
         version: link:../../packages/search
       '@gitdocs/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.27.1
+        version: 1.30.0(zod@3.25.76)
       chokidar:
         specifier: ^4.0.3
         version: 4.0.3
@@ -232,6 +241,28 @@ importers:
       vite:
         specifier: ^5.4.11
         version: 5.4.21(@types/node@22.20.1)
+      vitest:
+        specifier: ^3.1.2
+        version: 3.2.7(@types/node@22.20.1)(jsdom@25.0.1)
+
+  packages/accounts:
+    dependencies:
+      '@gitdocs/shared':
+        specifier: workspace:*
+        version: link:../shared
+      better-sqlite3:
+        specifier: ^11.10.0
+        version: 11.10.0
+    devDependencies:
+      '@types/better-sqlite3':
+        specifier: ^7.6.13
+        version: 7.6.13
+      '@types/node':
+        specifier: ^22.15.3
+        version: 22.20.1
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
       vitest:
         specifier: ^3.1.2
         version: 3.2.7(@types/node@22.20.1)(jsdom@25.0.1)

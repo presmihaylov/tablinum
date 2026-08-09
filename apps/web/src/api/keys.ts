@@ -3,6 +3,14 @@ import type { PageId, PagePath, SearchQuery } from '@gitdocs/shared';
 /** Every query key in the app. Keep the prefixes stable: invalidation matches on them. */
 export const qk = {
   health: ['health'] as const,
+  authState: ['auth', 'state'] as const,
+  users: ['users'] as const,
+  invites: ['invites'] as const,
+  agents: ['agents'] as const,
+  workspaces: ['workspaces'] as const,
+  workspaceMembers: (id: string) => ['workspaces', id, 'members'] as const,
+  slack: ['me', 'slack'] as const,
+  invitePreview: (token: string) => ['invite', token] as const,
   spaces: ['spaces'] as const,
   tree: ['tree'] as const,
   pages: ['pages'] as const,

@@ -7,6 +7,7 @@ import {
   SPACE_FILE,
   pagePathToRelFile,
   relFileToPagePath,
+  type LiveAgent,
   type Page,
   type PageId,
   type PagePath,
@@ -112,6 +113,8 @@ export interface MutationRecord {
   skipCommit?: boolean;
   /** The tab that asked for the change, so it can ignore the echo of its own edit. */
   by?: string | null;
+  /** The agent that asked for the change, so the tabs on the page can name it. */
+  agent?: LiveAgent | null;
 }
 
 /**
@@ -149,8 +152,9 @@ export class Wiring {
       await this.#removePage(id);
     }
 
+    const agent = record.agent ?? null;
     for (const page of pages) {
-      this.live.pageChanged(page, 'api', record.by ?? null);
+      this.live.pageChanged(page, 'api', record.by ?? null, agent);
     }
     this.live.pagesRemoved(record.removedPaths ?? []);
 

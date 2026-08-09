@@ -4,7 +4,8 @@ import type { ReactNode } from 'react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { ThemeProvider } from '../src/lib/theme';
 import { ToastProvider } from '../src/lib/toast';
-import { WorkspaceProvider } from '../src/lib/workspace';
+import { ContentProvider } from '../src/lib/content';
+import { WorkspacesProvider } from '../src/lib/workspaces';
 
 /** Retries and background refetches make assertions flaky; both are off here. */
 export function testQueryClient(): QueryClient {
@@ -34,10 +35,12 @@ export function renderApp(ui: ReactNode, options: RenderAppOptions = {}): Render
       <QueryClientProvider client={client}>
         <ToastProvider>
           <MemoryRouter initialEntries={[options.route ?? '/']}>
-            <WorkspaceProvider>
-              <LocationProbe />
-              {ui}
-            </WorkspaceProvider>
+            <WorkspacesProvider>
+              <ContentProvider>
+                <LocationProbe />
+                {ui}
+              </ContentProvider>
+            </WorkspacesProvider>
           </MemoryRouter>
         </ToastProvider>
       </QueryClientProvider>

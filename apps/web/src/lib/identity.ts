@@ -1,11 +1,11 @@
-import { LIVE_COLORS, type LiveUser } from '@gitdocs/shared';
+import { LIVE_COLORS, type Account, type LiveUser } from '@gitdocs/shared';
 import { readStored, writeStored } from './storage';
 
 const USER_KEY = 'live.user';
 
 /**
- * gitdocs has no accounts, so a browser names itself. The name is kept for the life of the
- * profile; the tab id is minted per tab and never persists.
+ * A browser names itself when nobody is signed in. Once an account is, that account wins.
+ * The name is kept for the life of the profile; the tab id is minted per tab and never persists.
  */
 const ANIMALS = [
   'Otter',
@@ -49,9 +49,32 @@ function isUser(value: unknown): value is LiveUser {
 }
 
 let cachedUser: LiveUser | null = null;
+let accountUser: LiveUser | null = null;
 
-/** Who this browser says it is. Stable across reloads, shared by every tab of the profile. */
+type IdentityListener = (user: LiveUser) => void;
+const listeners = new Set<IdentityListener>();
+
+/** Told when the person behind this tab changes, so the live channel can say hello again. */
+export function onIdentityChange(listener: IdentityListener): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+/** The signed-in account replaces the anonymous name. Null goes back to the stored one. */
+export function setAccountIdentity(account: Account | null): void {
+  const next: LiveUser | null =
+    account === null ? null : { id: account.id, name: account.name, color: account.color };
+  if (next?.id === accountUser?.id && next?.name === accountUser?.name) return;
+  accountUser = next;
+  const user = myUser();
+  for (const listener of [...listeners]) listener(user);
+}
+
+/** Who this tab says it is: the signed-in account, or the name this browser gave itself. */
 export function myUser(): LiveUser {
+  if (accountUser !== null) return accountUser;
   if (cachedUser !== null) return cachedUser;
   const stored: unknown = readStored<unknown>(USER_KEY, null);
   const user = isUser(stored) ? stored : mint();
@@ -60,12 +83,20 @@ export function myUser(): LiveUser {
   return user;
 }
 
-/** Change the display name shown to other people. */
+/** True while nobody is signed in, so the anonymous name is the one being shown. */
+export function isAnonymous(): boolean {
+  return accountUser === null;
+}
+
+/** Change the display name shown to other people. Anonymous browsers only. */
 export function renameMe(name: string): LiveUser {
+  const current = myUser();
   const trimmed = name.trim().slice(0, 40);
-  const user = { ...myUser(), name: trimmed.length > 0 ? trimmed : myUser().name };
+  const user = { ...current, name: trimmed.length > 0 ? trimmed : current.name };
+  if (accountUser !== null) return current;
   writeStored(USER_KEY, user);
   cachedUser = user;
+  for (const listener of [...listeners]) listener(user);
   return user;
 }
 

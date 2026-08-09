@@ -326,6 +326,10 @@ function nodeSerializers(scratch: Scratch): NodeSerializers {
       state.closeBlock(node);
     },
 
+    mention: (state, node) => {
+      state.write(`@${stringAttr(node.attrs['handle']) ?? ''}`);
+    },
+
     wikilink: (state, node) => {
       const target = stringAttr(node.attrs['target']) ?? '';
       const alias = rawStringAttr(node.attrs['alias']);

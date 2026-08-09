@@ -1,10 +1,11 @@
 import { useCallback, useState, type DragEvent, type MouseEvent } from 'react';
+import { depth as pathDepth } from '@gitdocs/shared';
 import type { PagePath, TreeNode } from '@gitdocs/shared';
 import { sortNodes } from '../../lib/tree';
 import type { DropPosition } from '../../lib/treeMove';
-import { useWorkspace } from '../../lib/workspace';
+import { useContent } from '../../lib/content';
 import { ContextMenu, type MenuItem } from '../ui/Overlay';
-import { ChevronRight, Copy, DocIcon, Dots, Link, Pencil, Plus, Trash } from '../ui/Icon';
+import { ChevronRight, Copy, DocIcon, Dots, Link, MoveTo, Pencil, Plus, Trash } from '../ui/Icon';
 
 const DRAG_MIME = 'application/x-gitdocs-page';
 
@@ -29,7 +30,7 @@ interface MenuState {
 }
 
 export function PageTree({ nodes, expanded, currentPath, onToggle, onExpand, onOpen }: PageTreeProps) {
-  const { movePage, newPage, renamePage, duplicatePage, deletePage, copyLink } = useWorkspace();
+  const { movePage, moveToSpace, newPage, renamePage, duplicatePage, deletePage, copyLink } = useContent();
   const [dragPath, setDragPath] = useState<PagePath | null>(null);
   const [drop, setDrop] = useState<DropState | null>(null);
   const [menu, setMenu] = useState<MenuState | null>(null);
@@ -46,14 +47,23 @@ export function PageTree({ nodes, expanded, currentPath, onToggle, onExpand, onO
   );
 
   const menuItems = useCallback(
-    (node: TreeNode): MenuItem[] => [
-      { id: 'new', label: 'New child page', icon: <Plus />, onSelect: () => newPage(node.path) },
-      { id: 'rename', label: 'Rename', icon: <Pencil />, onSelect: () => renamePage(node) },
-      { id: 'duplicate', label: 'Duplicate', icon: <Copy />, onSelect: () => duplicatePage(node) },
-      { id: 'link', label: 'Copy link', icon: <Link />, onSelect: () => copyLink(node.path) },
-      { id: 'delete', label: 'Delete', icon: <Trash />, danger: true, onSelect: () => deletePage(node) },
-    ],
-    [newPage, renamePage, duplicatePage, copyLink, deletePage],
+    (node: TreeNode): MenuItem[] => {
+      const items: MenuItem[] = [
+        { id: 'new', label: 'New child page', icon: <Plus />, onSelect: () => newPage(node.path) },
+        { id: 'rename', label: 'Rename', icon: <Pencil />, onSelect: () => renamePage(node) },
+        { id: 'duplicate', label: 'Duplicate', icon: <Copy />, onSelect: () => duplicatePage(node) },
+      ];
+      // A space home page owns its space, so it can never move into another one.
+      if (pathDepth(node.path) > 1) {
+        items.push({ id: 'move', label: 'Move to space', icon: <MoveTo />, onSelect: () => moveToSpace(node) });
+      }
+      items.push(
+        { id: 'link', label: 'Copy link', icon: <Link />, onSelect: () => copyLink(node.path) },
+        { id: 'delete', label: 'Delete', icon: <Trash />, danger: true, onSelect: () => deletePage(node) },
+      );
+      return items;
+    },
+    [newPage, renamePage, duplicatePage, moveToSpace, copyLink, deletePage],
   );
 
   return (

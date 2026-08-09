@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import {
   CreatePageBodySchema,
@@ -24,8 +24,9 @@ import {
   type PageResponse,
   type RevisionContentResponse,
 } from '@gitdocs/shared';
-import { API_PREFIX, type RouteContext } from '../context.js';
-import { clientOf } from '../live.js';
+import { API_PREFIX, partsOf, type RouteContext } from '../context.js';
+import { agentOf, clientOf, type LiveHub } from '../live.js';
+import type { ContentStore } from '../deps.js';
 import { contentRelPath, pageFileVariants } from '../wiring.js';
 
 const DEFAULT_HISTORY_LIMIT = 50;
@@ -61,34 +62,49 @@ const RevisionParamsSchema = z.object({
   sha: z.string().regex(/^[0-9a-fA-F]{4,64}$/, 'Expected a git object id in hexadecimal'),
 });
 
+/** The page behind an id, or a 404. Takes the store, because it is per workspace. */
+async function requirePageIn(store: ContentStore, id: PageId): Promise<Page> {
+  const page = await store.getPageById(id);
+  if (page === null) throw notFound(`No page with id ${id}`);
+  return page;
+}
+
+/**
+ * Sit an agent on the page it just worked on, so the people reading it see it arrive.
+ * A person needs none of this: a browser announces itself over the live socket.
+ */
+function seatAgent(live: LiveHub, request: FastifyRequest, path: PagePath, editing: boolean): void {
+  const agent = agentOf(request);
+  if (agent === null) return;
+  live.noteAgent(agent, path, editing);
+}
+
 export function registerPageRoutes(app: FastifyInstance, ctx: RouteContext): void {
-  const { store, git } = ctx.deps;
-
-  async function requirePage(id: PageId): Promise<Page> {
-    const page = await store.getPageById(id);
-    if (page === null) throw notFound(`No page with id ${id}`);
-    return page;
-  }
-
   app.get(
     `${API_PREFIX}/pages`,
     async (request): Promise<PageResponse | PageListResponse> => {
+      const { store, live } = await partsOf(ctx, request);
       const query = parseOrThrow(PagesQuerySchema, request.query, 'query');
       if (query.path === undefined) return { pages: await store.listPages() };
       const page = await store.getPageByPath(query.path);
       if (page === null) throw notFound(`No page at path ${query.path}`);
+      seatAgent(live, request, page.path, false);
       return { page };
     },
   );
 
   app.get(`${API_PREFIX}/pages/:id`, async (request): Promise<PageResponse> => {
+    const { store, live } = await partsOf(ctx, request);
     const { id } = parseOrThrow(IdParamsSchema, request.params, 'params');
-    return { page: await requirePage(id) };
+    const page = await requirePageIn(store, id);
+    seatAgent(live, request, page.path, false);
+    return { page };
   });
 
   app.post(`${API_PREFIX}/pages`, async (request, reply): Promise<PageResponse> => {
+    const { store, wiring, live } = await partsOf(ctx, request);
     const body = parseOrThrow(CreatePageBodySchema, request.body, 'page');
-    ctx.wiring.markWritten(plannedFiles(body.path));
+    wiring.markWritten(plannedFiles(body.path));
     const page = await store.createPage(body);
 
     const files = new Set(pageFileVariants(page.path));
@@ -102,45 +118,54 @@ export function registerPageRoutes(app: FastifyInstance, ctx: RouteContext): voi
       if (ancestorPage !== null) affected.push(ancestorPage);
     }
 
-    await ctx.wiring.recordMutation({
+    // The seat comes before the broadcast, so the presence chip and the new text land together.
+    seatAgent(live, request, page.path, true);
+    await wiring.recordMutation({
       pages: affected,
       files: [...files],
       message: `Create ${page.path}`,
       by: clientOf(request),
+      agent: agentOf(request),
     });
+    ctx.mentions.pageSaved({ page, before: null, by: request.principal.account });
 
     reply.status(201);
     return { page };
   });
 
   app.patch(`${API_PREFIX}/pages/:id`, async (request): Promise<PageResponse> => {
+    const { store, wiring, live } = await partsOf(ctx, request);
     const { id } = parseOrThrow(IdParamsSchema, request.params, 'params');
     const patch = parseOrThrow(UpdatePageBodySchema, request.body, 'patch');
-    const before = await requirePage(id);
-    ctx.wiring.markWritten(plannedFiles(before.path));
-    if (patch.path !== undefined) ctx.wiring.markWritten(plannedFiles(patch.path));
+    const before = await requirePageIn(store, id);
+    wiring.markWritten(plannedFiles(before.path));
+    if (patch.path !== undefined) wiring.markWritten(plannedFiles(patch.path));
     const page = await store.updatePage(id, patch);
 
     const files = new Set([...pageFileVariants(before.path), ...pageFileVariants(page.path)]);
     const affected = new Map<PageId, Page>([[page.id, page]]);
 
     if (page.path !== before.path) {
-      await collectMoveFallout(before.path, page.path, files, affected);
+      await collectMoveFallout(store, before.path, page.path, files, affected);
     }
 
-    await ctx.wiring.recordMutation({
+    seatAgent(live, request, page.path, true);
+    await wiring.recordMutation({
       pages: [...affected.values()],
       files: [...files],
       message: page.path === before.path ? `Update ${page.path}` : `Move ${before.path} to ${page.path}`,
       by: clientOf(request),
+      agent: agentOf(request),
       ...(page.path === before.path ? {} : { removedPaths: [before.path] }),
     });
+    ctx.mentions.pageSaved({ page, before: before.markdown, by: request.principal.account });
 
     return { page };
   });
 
   /** A move rewrites every descendant path and can promote or demote either parent. */
   async function collectMoveFallout(
+    store: ContentStore,
     fromPath: string,
     toPath: string,
     files: Set<string>,
@@ -165,9 +190,10 @@ export function registerPageRoutes(app: FastifyInstance, ctx: RouteContext): voi
   }
 
   app.delete(`${API_PREFIX}/pages/:id`, async (request): Promise<DeletePageResponse> => {
+    const { store, wiring, live } = await partsOf(ctx, request);
     const { id } = parseOrThrow(IdParamsSchema, request.params, 'params');
     const query = parseOrThrow(DeletePageQuerySchema, request.query, 'query');
-    const page = await requirePage(id);
+    const page = await requirePageIn(store, id);
 
     // Collect the victims before the delete: afterwards their ids are gone from the store.
     const summaries = await store.listPages();
@@ -175,7 +201,7 @@ export function registerPageRoutes(app: FastifyInstance, ctx: RouteContext): voi
       (summary) => summary.id === id || isDescendantOf(summary.path, page.path),
     );
 
-    for (const victim of victims) ctx.wiring.markWritten(plannedFiles(victim.path));
+    for (const victim of victims) wiring.markWritten(plannedFiles(victim.path));
     const deleted = await store.deletePage(id, query.recursive === true);
 
     const files = new Set<string>();
@@ -195,28 +221,34 @@ export function registerPageRoutes(app: FastifyInstance, ctx: RouteContext): voi
       if (parentPage !== null) affected.push(parentPage);
     }
 
-    await ctx.wiring.recordMutation({
+    await wiring.recordMutation({
       pages: affected,
       removedIds: victims.map((victim) => victim.id),
       removedPaths: deleted,
       files: [...files],
       message: `Delete ${page.path}`,
       by: clientOf(request),
+      agent: agentOf(request),
     });
+    // The page it was on may be one of these, and there is nothing left to sit on.
+    const caller = agentOf(request);
+    if (caller !== null) live.dropAgent(caller.id);
 
     return { deleted };
   });
 
   app.get(`${API_PREFIX}/pages/:id/backlinks`, async (request): Promise<BacklinksResponse> => {
+    const { store } = await partsOf(ctx, request);
     const { id } = parseOrThrow(IdParamsSchema, request.params, 'params');
-    await requirePage(id);
+    await requirePageIn(store, id);
     return { backlinks: await store.getBacklinks(id) };
   });
 
   app.get(`${API_PREFIX}/pages/:id/history`, async (request): Promise<HistoryResponse> => {
+    const { store, git } = await partsOf(ctx, request);
     const { id } = parseOrThrow(IdParamsSchema, request.params, 'params');
     const query = parseOrThrow(HistoryQuerySchema, request.query, 'query');
-    const page = await requirePage(id);
+    const page = await requirePageIn(store, id);
     const relFile = contentRelPath(store.contentDir, page.filePath);
     return { revisions: await git.history(relFile, query.limit ?? DEFAULT_HISTORY_LIMIT) };
   });
@@ -224,8 +256,9 @@ export function registerPageRoutes(app: FastifyInstance, ctx: RouteContext): voi
   app.get(
     `${API_PREFIX}/pages/:id/revisions/:sha`,
     async (request): Promise<RevisionContentResponse> => {
+      const { store, git } = await partsOf(ctx, request);
       const { id, sha } = parseOrThrow(RevisionParamsSchema, request.params, 'params');
-      const page = await requirePage(id);
+      const page = await requirePageIn(store, id);
       const relFile = contentRelPath(store.contentDir, page.filePath);
       const raw = await git.readFileAt(relFile, sha);
       if (raw === null) throw notFound(`Revision ${sha} does not contain ${page.path}`);

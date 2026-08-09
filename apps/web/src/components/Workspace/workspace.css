@@ -1,0 +1,151 @@
+/* workspace switcher -------------------------------------------------- */
+
+.workspace-switcher {
+  position: relative;
+  padding: var(--space-2) var(--space-2) 0;
+}
+
+.workspace-switcher__button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  height: 2.1rem;
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--text-strong);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+}
+
+.workspace-switcher__button:hover {
+  background: var(--bg-hover);
+}
+
+.workspace-switcher__mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.3rem;
+  height: 1.3rem;
+  flex: none;
+  border-radius: var(--radius-sm);
+  background: var(--bg-hover);
+  color: var(--text-faint);
+  font-size: var(--text-sm);
+  line-height: 1;
+}
+
+.workspace-switcher__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.workspace-switcher__caret {
+  flex: none;
+  color: var(--text-faint);
+}
+
+.workspace-switcher__menu {
+  position: absolute;
+  z-index: 45;
+  top: calc(100% + 4px);
+  left: var(--space-2);
+  right: var(--space-2);
+  padding: var(--space-1);
+  border-radius: var(--radius-md);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-lg);
+}
+
+.workspace-switcher__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  height: 1.9rem;
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text);
+  font-size: var(--text-sm);
+}
+
+.workspace-switcher__item:hover {
+  background: var(--bg-hover);
+}
+
+.workspace-switcher__item--active {
+  color: var(--accent);
+}
+
+.workspace-switcher__divider {
+  height: 1px;
+  margin: var(--space-1) 0;
+  background: var(--border);
+}
+
+/* The menu opens it; nobody needs to see the control itself. */
+.workspace-switcher__file {
+  display: none;
+}
+
+/* workspace dialog ---------------------------------------------------- */
+
+.workspace-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+
+.workspace-head__mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.4rem;
+  height: 2.4rem;
+  flex: none;
+  border-radius: var(--radius-md);
+  background: var(--bg-hover);
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.workspace-head__who {
+  flex: 1;
+  min-width: 0;
+}
+
+.workspace-head__name {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--text-strong);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-head__slug {
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+}
+
+.workspace-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.workspace-actions .btn {
+  gap: var(--space-2);
+  text-decoration: none;
+}

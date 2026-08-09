@@ -5,23 +5,36 @@ import fastifyCookie from '@fastify/cookie';
 import fastifyMultipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
 import fastifyWebsocket from '@fastify/websocket';
-import Fastify, { type FastifyInstance } from 'fastify';
-import { ASSETS_DIR, OPEN_MODE_WARNING } from '@gitdocs/shared';
+import Fastify, { type FastifyBaseLogger, type FastifyInstance } from 'fastify';
+import {
+  ASSETS_DIR,
+  DEFAULT_WORKSPACE_NAME,
+  DEFAULT_WORKSPACE_SLUG,
+  OPEN_MODE_WARNING,
+} from '@gitdocs/shared';
 import { normalizePathname, registerAuthHook } from './auth.js';
 import { rememberContext, type RouteContext } from './context.js';
 import type { ServerDeps } from './deps.js';
 import { registerErrorHandler } from './errors.js';
 import { LiveHub, registerLiveRoutes } from './live.js';
+import { createMentionNotifier } from './mentions.js';
+import { createSlackApi, type SlackApi } from './slack.js';
+import { registerAgentRoutes } from './routes/agents.js';
 import { registerAssetRoutes, MAX_ASSET_BYTES } from './routes/assets.js';
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerGitRoutes } from './routes/git.js';
 import { registerHealthRoutes } from './routes/health.js';
+import { registerInviteRoutes } from './routes/invites.js';
+import { registerMcpRoutes } from './routes/mcp.js';
 import { registerPageRoutes } from './routes/pages.js';
 import { registerSearchRoutes } from './routes/search.js';
 import { registerSpaceRoutes } from './routes/spaces.js';
 import { registerTreeRoutes } from './routes/tree.js';
+import { registerUserRoutes } from './routes/users.js';
+import { registerWorkspaceRoutes } from './routes/workspaces.js';
 import { VERSION } from './version.js';
 import { Wiring } from './wiring.js';
+import { WorkspaceRegistry, registerWorkspaceHook, type WorkspaceParts } from './workspaces.js';
 
 /** Markdown bodies can be long; multipart uploads use their own, larger limit. */
 const JSON_BODY_LIMIT = 8 * 1024 * 1024;
@@ -34,6 +47,13 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 /** `apps/web/dist`, resolved from either `apps/server/src` or `apps/server/dist`. */
 function defaultWebDist(): string {
   return resolve(HERE, '../../web/dist');
+}
+
+/** An injected transport wins, so tests never reach Slack. */
+function resolveSlack(deps: ServerDeps, log: FastifyBaseLogger): SlackApi | null {
+  if (deps.slack !== undefined) return deps.slack;
+  const token = deps.config.slackBotToken;
+  return token === null ? null : createSlackApi({ token, log });
 }
 
 function resolveWebDist(deps: ServerDeps): string | null {
@@ -65,18 +85,58 @@ export async function buildApp(deps: ServerDeps): Promise<FastifyInstance> {
 
   // The hook must exist before any route is added: Fastify freezes a route's hook chain
   // at registration time, so a route added first would never be protected.
-  registerAuthHook(app, deps.config);
+  registerAuthHook(app, deps);
 
   const live = new LiveHub(app.log);
-  live.start();
-  app.addHook('onClose', async () => {
-    live.closeAll();
+  // A room starts from the file on disk, so a tab that joins late gets the same bytes an
+  // agent would read. Steps are then layered on top of it.
+  live.useDocs(async (path) => {
+    try {
+      const page = await deps.store.getPageByPath(path);
+      return page === null ? null : { markdown: page.markdown, title: page.title, rev: page.rev };
+    } catch {
+      // A page that is not there yet cannot be streamed; the tab falls back to plain saves.
+      return null;
+    }
   });
+  live.start();
 
-  const ctx: RouteContext = {
-    deps,
+  // The configured content directory is the default workspace. An install that predates
+  // workspaces adopts its people, agents and invites into it here, once.
+  const defaultRecord = deps.accounts.ensureWorkspaceForDir(
+    deps.store.contentDir,
+    DEFAULT_WORKSPACE_NAME,
+    DEFAULT_WORKSPACE_SLUG,
+  );
+  const defaultParts: WorkspaceParts = {
+    record: defaultRecord,
+    store: deps.store,
+    git: deps.git,
+    search: deps.search,
     wiring: new Wiring(deps, app.log, live),
     live,
+  };
+  const workspaces = new WorkspaceRegistry(deps, app.log, defaultParts);
+  registerWorkspaceHook(app, workspaces);
+
+  app.addHook('onClose', async () => {
+    live.closeAll();
+    await workspaces.closeAll();
+  });
+
+  const slack = resolveSlack(deps, app.log);
+  const ctx: RouteContext = {
+    deps,
+    workspaces,
+    wiring: defaultParts.wiring,
+    live,
+    slack,
+    mentions: createMentionNotifier({
+      accounts: deps.accounts,
+      slack,
+      log: app.log,
+      publicUrl: deps.config.publicUrl,
+    }),
     version: deps.version ?? VERSION,
   };
   rememberContext(app, ctx);
@@ -84,21 +144,27 @@ export async function buildApp(deps: ServerDeps): Promise<FastifyInstance> {
   registerLiveRoutes(app, ctx);
   registerHealthRoutes(app, ctx);
   registerAuthRoutes(app, ctx);
+  registerUserRoutes(app, ctx);
+  registerWorkspaceRoutes(app, ctx);
+  registerInviteRoutes(app, ctx);
+  registerAgentRoutes(app, ctx);
   registerSpaceRoutes(app, ctx);
   registerTreeRoutes(app, ctx);
   registerPageRoutes(app, ctx);
   registerSearchRoutes(app, ctx);
   registerGitRoutes(app, ctx);
   registerAssetRoutes(app, ctx);
+  // Last, because its tools reach the routes above through app.inject().
+  registerMcpRoutes(app);
 
-  const assetsRoot = join(deps.store.contentDir, ASSETS_DIR);
-  mkdirSync(assetsRoot, { recursive: true });
+  // Attachments are per workspace, so they cannot be one fixed static mount. `serve: false`
+  // registers no route and only adds reply.sendFile(), which the asset route aims at the
+  // directory of whichever workspace the caller is in.
+  mkdirSync(join(deps.store.contentDir, ASSETS_DIR), { recursive: true });
   await app.register(fastifyStatic, {
-    root: assetsRoot,
-    prefix: `/${ASSETS_DIR}/`,
-    decorateReply: false,
-    index: false,
-    list: false,
+    root: join(deps.store.contentDir, ASSETS_DIR),
+    serve: false,
+    decorateReply: true,
   });
 
   const webDist = resolveWebDist(deps);
@@ -109,6 +175,7 @@ export async function buildApp(deps: ServerDeps): Promise<FastifyInstance> {
       root: webDist,
       prefix: '/',
       wildcard: false,
+      decorateReply: false,
       index: ['index.html'],
       list: false,
     });
@@ -124,7 +191,7 @@ export async function buildApp(deps: ServerDeps): Promise<FastifyInstance> {
     const wantsDocument = request.method === 'GET' || request.method === 'HEAD';
 
     if (webDist !== null && wantsDocument && !isApi && !isAsset && !isBundle) {
-      return reply.type('text/html; charset=utf-8').sendFile('index.html');
+      return reply.type('text/html; charset=utf-8').sendFile('index.html', webDist);
     }
 
     return reply.status(404).type('application/json').send({

@@ -31,6 +31,11 @@ export interface CreateServerOptions {
   /** Server name reported in the MCP handshake. */
   name?: string;
   version?: string;
+  /**
+   * Who the connected caller is, as the site defines it. The remote server passes the brief of
+   * the agent behind the token, so an agent reads its own role before it calls a single tool.
+   */
+  identity?: string;
 }
 
 async function runTool(
@@ -51,12 +56,18 @@ export async function treeOutline(client: GitdocsClient): Promise<string> {
   return formatTreeOutline(await client.tree());
 }
 
+/** The handshake instructions, with the caller's own identity in front when there is one. */
+export function instructionsFor(identity?: string): string {
+  const brief = identity?.trim() ?? '';
+  return brief.length === 0 ? INSTRUCTIONS : `${brief}\n\n${INSTRUCTIONS}`;
+}
+
 /** Build a fully wired MCP server: every tool, the tree resource and the style guide prompt. */
 export function createGitdocsMcpServer(options: CreateServerOptions): McpServer {
   const client = options.client;
   const server = new McpServer(
     { name: options.name ?? MCP_SERVER_NAME, version: options.version ?? MCP_SERVER_VERSION },
-    { instructions: INSTRUCTIONS },
+    { instructions: instructionsFor(options.identity) },
   );
 
   for (const spec of TOOL_SPECS) {

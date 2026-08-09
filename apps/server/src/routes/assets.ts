@@ -13,7 +13,7 @@ import {
   validation,
   type AssetResponse,
 } from '@gitdocs/shared';
-import { API_PREFIX, type RouteContext } from '../context.js';
+import { API_PREFIX, partsOf, type RouteContext } from '../context.js';
 
 /** Hard ceiling for one attachment. Also enforced by the multipart parser itself. */
 export const MAX_ASSET_BYTES = 25 * 1024 * 1024;
@@ -70,9 +70,17 @@ async function readUpload(
 }
 
 export function registerAssetRoutes(app: FastifyInstance, ctx: RouteContext): void {
-  const { store } = ctx.deps;
+  // Attachment URLs are written into committed markdown, so they carry no workspace: the
+  // caller's own workspace decides which directory the file is read from.
+  app.get(`/${ASSETS_DIR}/*`, async (request, reply) => {
+    const { store } = await partsOf(ctx, request);
+    const rel = (request.params as Record<string, string>)['*'] ?? '';
+    if (rel.length === 0 || rel.includes('..')) throw notFound('No such attachment');
+    return reply.sendFile(rel, join(store.contentDir, ASSETS_DIR));
+  });
 
   app.post(`${API_PREFIX}/assets`, async (request): Promise<AssetResponse> => {
+    const { store, wiring } = await partsOf(ctx, request);
     if (!request.isMultipart()) {
       throw validation('Expected a multipart/form-data upload');
     }
@@ -101,7 +109,7 @@ export function registerAssetRoutes(app: FastifyInstance, ctx: RouteContext): vo
 
     await writeFile(join(store.contentDir, relPath), upload.file.data);
 
-    await ctx.wiring.recordMutation({
+    await wiring.recordMutation({
       files: [relPath],
       message: `Add attachment ${filename} to ${page.path}`,
     });

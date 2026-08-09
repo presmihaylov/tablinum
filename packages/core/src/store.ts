@@ -8,6 +8,7 @@ import {
   SpaceFileSchema,
   SpaceSlugSchema,
   UpdatePageBodySchema,
+  UpdateSpaceBodySchema,
   assertValidPagePath,
   assetRelPath,
   assetUrl,
@@ -35,6 +36,7 @@ import {
   type PageSummary,
   type Space,
   type TreeNode,
+  type UpdateSpaceBody,
 } from '@gitdocs/shared';
 import {
   frontmatterEqual,
@@ -95,6 +97,8 @@ export interface ContentStoreOptions {
   logger?: Logger;
   /** Clock, injectable so tests get stable timestamps. */
   now?: () => Date;
+  /** Write the starter space into an empty directory. A new workspace brings its own. */
+  starter?: boolean;
 }
 
 export interface SpaceTree extends Space {
@@ -125,6 +129,12 @@ export interface UpdatePageInput {
 interface NewPageFields {
   icon?: string;
   order?: number;
+}
+
+/** Overrides for the home page a new space is created with. */
+interface SpaceHome {
+  title: string;
+  markdown: string;
 }
 
 function compareSpaces(a: Space, b: Space): number {
@@ -183,6 +193,13 @@ function buildTree(pages: readonly IndexedPage[]): TreeNode[] {
   return sortTree(roots);
 }
 
+/** An absent patch keeps the icon, null clears it, and a string replaces it. */
+function patchedIcon(current: string | undefined, patch: string | null | undefined): string | undefined {
+  if (patch === undefined) return current;
+  if (patch === null) return undefined;
+  return normalizeIcon(patch) ?? undefined;
+}
+
 function toSummary(page: IndexedPage): PageSummary {
   const frontmatter = page.frontmatter;
   const summary: PageSummary = {
@@ -209,6 +226,7 @@ export class ContentStore {
   readonly contentDir: string;
   readonly #logger: Logger;
   readonly #now: () => Date;
+  readonly #starter: boolean;
   readonly #index: IndexMap;
   // Fastify serves requests concurrently and every write below is a chain of awaits, so two
   // requests would otherwise interleave between the "is this free" check and the write.
@@ -223,6 +241,7 @@ export class ContentStore {
     this.contentDir = path.resolve(dir);
     this.#logger = options.logger ?? consoleLogger;
     this.#now = options.now ?? ((): Date => new Date());
+    this.#starter = options.starter ?? true;
     this.#index = new IndexMap({ contentDir: this.contentDir, logger: this.#logger });
   }
 
@@ -239,18 +258,19 @@ export class ContentStore {
   // lifecycle
   // -------------------------------------------------------------------------
 
-  /** Create the content directory and, when it is empty, a starter space with a welcome page. */
+  /**
+   * Create the content directory and, when it is empty and `starter` is on, a starter space with
+   * a welcome page.
+   */
   async init(): Promise<void> {
     await this.#writes.runExclusive(async () => {
       await ensureDir(this.contentDir);
       await this.#index.rebuild();
       await this.#persistRepairs();
-      if (this.#index.size > 0) return;
+      if (!this.#starter || this.#index.size > 0) return;
       const slugs = await listSpaceSlugs(this.contentDir);
       if (slugs.length > 0) return;
-      await this.#createSpaceUnlocked(DEFAULT_SPACE_SLUG, DEFAULT_SPACE_NAME);
-      await this.#createPageUnlocked({
-        path: DEFAULT_SPACE_SLUG,
+      await this.#createSpaceUnlocked(DEFAULT_SPACE_SLUG, DEFAULT_SPACE_NAME, undefined, undefined, {
         title: WELCOME_TITLE,
         markdown: WELCOME_MARKDOWN,
       });
@@ -330,6 +350,7 @@ export class ContentStore {
     name: string,
     icon?: string,
     order?: number,
+    home?: SpaceHome,
   ): Promise<Space> {
     const validSlug = parseOrThrow(NewSpaceSlugSchema, slug, 'space slug');
     const details = parseOrThrow(SpaceFileSchema, { name, icon, order }, 'space');
@@ -339,8 +360,35 @@ export class ContentStore {
     if (details.icon !== undefined) space.icon = details.icon;
     if (details.order !== undefined) space.order = details.order;
     await writeText(file, serializeSpaceFile(space));
+
+    // A space with no page cannot be opened, so it gets its home page in the same write.
+    if (!(await this.#pageFileExists(validSlug))) {
+      const fields: NewPageFields = {};
+      if (space.icon !== undefined) fields.icon = space.icon;
+      await this.#writeNewPage(validSlug, home?.title ?? space.name, home?.markdown ?? '', true, fields);
+    }
+
     this.#index.markStale();
     return space;
+  }
+
+  async updateSpace(slug: string, patch: UpdateSpaceBody): Promise<Space> {
+    return this.#writes.runExclusive(() => this.#updateSpaceUnlocked(slug, patch));
+  }
+
+  async #updateSpaceUnlocked(slug: string, patch: UpdateSpaceBody): Promise<Space> {
+    const body = parseOrThrow(UpdateSpaceBodySchema, patch, 'space');
+    const current = await this.getSpace(slug);
+    const next: Space = { slug: current.slug, name: body.name ?? current.name };
+
+    const icon = patchedIcon(current.icon, body.icon);
+    if (icon !== undefined) next.icon = icon;
+    const order = body.order === undefined ? current.order : (body.order ?? undefined);
+    if (order !== undefined) next.order = order;
+
+    await writeText(path.join(this.contentDir, spaceFileRelPath(next.slug)), serializeSpaceFile(next));
+    this.#index.markStale();
+    return next;
   }
 
   async #ensureSpace(slug: string): Promise<void> {

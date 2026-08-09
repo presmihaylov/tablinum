@@ -28,6 +28,7 @@ export {
   STYLE_GUIDE_PROMPT,
   TREE_RESOURCE_URI,
   createGitdocsMcpServer,
+  instructionsFor,
   treeOutline,
   type CreateServerOptions,
 } from './server.js';

@@ -8,8 +8,15 @@ import {
   type UseQueryResult,
 } from '@tanstack/react-query';
 import type {
+  AgentResponse,
+  AgentsResponse,
+  AgentTokenResponse,
   AssetResponse,
+  AuthResponse,
+  AuthStateResponse,
+  AvatarResponse,
   BacklinksResponse,
+  ConnectSlackBody,
   CreatePageBody,
   CreateSpaceBody,
   DeletePageResponse,
@@ -19,7 +26,13 @@ import type {
   GitPushResponse,
   GitStatusResponse,
   HealthResponse,
+  ChangePasswordBody,
+  CreateAgentBody,
+  CreateInviteBody,
   HistoryResponse,
+  InvitePreviewResponse,
+  InviteResponse,
+  InvitesResponse,
   LoginBody,
   OkResponse,
   PageId,
@@ -27,12 +40,27 @@ import type {
   PagePath,
   PageResponse,
   RevisionContentResponse,
+  RegisterBody,
   SearchQuery,
   SearchResponse,
+  SetupBody,
+  SlackStateResponse,
   SpaceResponse,
   SpacesResponse,
   TreeResponse,
+  UpdateAgentBody,
+  UpdateMeBody,
   UpdatePageBody,
+  UpdateSpaceBody,
+  UpdateUserBody,
+  UserResponse,
+  UsersResponse,
+  CreateWorkspaceBody,
+  UpdateWorkspaceBody,
+  WorkspaceMembersResponse,
+  WorkspaceResponse,
+  WorkspaceRole,
+  WorkspacesResponse,
 } from '@gitdocs/shared';
 import { ApiError, api } from './client';
 import { contentPrefixes, qk } from './keys';
@@ -221,6 +249,19 @@ export function useCreateSpace(): UseMutationResult<SpaceResponse, ApiError, Cre
   });
 }
 
+export interface UpdateSpaceVars {
+  slug: string;
+  body: UpdateSpaceBody;
+}
+
+export function useUpdateSpace(): UseMutationResult<SpaceResponse, ApiError, UpdateSpaceVars> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ slug, body }: UpdateSpaceVars) => api.updateSpace(slug, body),
+    onSuccess: () => invalidateContent(client),
+  });
+}
+
 export interface SyncResult {
   pulled: number;
   pushed: boolean;
@@ -249,12 +290,314 @@ export function useGitCommit(): UseMutationResult<GitCommitResponse, ApiError, G
   });
 }
 
-export function useLogin(): UseMutationResult<OkResponse, ApiError, LoginBody> {
+export function useLogin(): UseMutationResult<AuthResponse, ApiError, LoginBody> {
   return useMutation({ mutationFn: (body: LoginBody) => api.login(body) });
 }
 
 export function useLogout(): UseMutationResult<OkResponse, ApiError, void> {
   return useMutation({ mutationFn: () => api.logout() });
+}
+
+// ---------------------------------------------------------------------------
+// accounts
+// ---------------------------------------------------------------------------
+
+/** Who is signed in and which sign-in form this server needs. Public, so it never 401s. */
+export function useAuthState(): UseQueryResult<AuthStateResponse, ApiError> {
+  return useQuery({
+    queryKey: qk.authState,
+    queryFn: ({ signal }) => api.authState(signal),
+    staleTime: 30_000,
+    retry: false,
+  });
+}
+
+export function useSetup(): UseMutationResult<AuthResponse, ApiError, SetupBody> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: SetupBody) => api.setup(body),
+    onSuccess: () => void client.invalidateQueries({ queryKey: qk.authState }),
+  });
+}
+
+export function useRegister(): UseMutationResult<AuthResponse, ApiError, RegisterBody> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: RegisterBody) => api.register(body),
+    onSuccess: () => void client.invalidateQueries({ queryKey: qk.authState }),
+  });
+}
+
+export function useInvitePreview(token: string | undefined): UseQueryResult<InvitePreviewResponse, ApiError> {
+  return useQuery({
+    queryKey: qk.invitePreview(token ?? ''),
+    queryFn: ({ signal }) => api.invitePreview(token ?? '', signal),
+    enabled: token !== undefined && token.length > 0,
+    retry: false,
+  });
+}
+
+export function useUpdateMe(): UseMutationResult<UserResponse, ApiError, UpdateMeBody> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: UpdateMeBody) => api.updateMe(body),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: qk.authState });
+      void client.invalidateQueries({ queryKey: qk.users });
+    },
+  });
+}
+
+export function useChangePassword(): UseMutationResult<OkResponse, ApiError, ChangePasswordBody> {
+  return useMutation({ mutationFn: (body: ChangePasswordBody) => api.changePassword(body) });
+}
+
+export function useUploadAvatar(): UseMutationResult<AvatarResponse, ApiError, File> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (file: File) => api.uploadAvatar(file),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: qk.authState });
+      void client.invalidateQueries({ queryKey: qk.users });
+    },
+  });
+}
+
+export function useRemoveAvatar(): UseMutationResult<OkResponse, ApiError, void> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.removeAvatar(),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: qk.authState });
+      void client.invalidateQueries({ queryKey: qk.users });
+    },
+  });
+}
+
+export function useSlackState(enabled = true): UseQueryResult<SlackStateResponse, ApiError> {
+  return useQuery({
+    queryKey: qk.slack,
+    queryFn: ({ signal }) => api.slackState(signal),
+    enabled,
+  });
+}
+
+export function useConnectSlack(): UseMutationResult<SlackStateResponse, ApiError, ConnectSlackBody> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: ConnectSlackBody) => api.connectSlack(body),
+    onSuccess: (data) => client.setQueryData(qk.slack, data),
+  });
+}
+
+export function useDisconnectSlack(): UseMutationResult<SlackStateResponse, ApiError, void> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.disconnectSlack(),
+    onSuccess: (data) => client.setQueryData(qk.slack, data),
+  });
+}
+
+export function useUsers(enabled = true): UseQueryResult<UsersResponse, ApiError> {
+  return useQuery({
+    queryKey: qk.users,
+    queryFn: ({ signal }) => api.listUsers(signal),
+    enabled,
+  });
+}
+
+export interface UpdateUserVars {
+  id: string;
+  patch: UpdateUserBody;
+}
+
+export function useUpdateUser(): UseMutationResult<UserResponse, ApiError, UpdateUserVars> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, patch }: UpdateUserVars) => api.updateUser(id, patch),
+    onSuccess: () => void client.invalidateQueries({ queryKey: qk.users }),
+  });
+}
+
+export function useDeleteUser(): UseMutationResult<OkResponse, ApiError, string> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteUser(id),
+    onSuccess: () => void client.invalidateQueries({ queryKey: qk.users }),
+  });
+}
+
+export function useInvites(enabled = true): UseQueryResult<InvitesResponse, ApiError> {
+  return useQuery({
+    queryKey: qk.invites,
+    queryFn: ({ signal }) => api.listInvites(signal),
+    enabled,
+  });
+}
+
+export function useCreateInvite(): UseMutationResult<InviteResponse, ApiError, CreateInviteBody> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateInviteBody) => api.createInvite(body),
+    onSuccess: () => void client.invalidateQueries({ queryKey: qk.invites }),
+  });
+}
+
+export function useRevokeInvite(): UseMutationResult<OkResponse, ApiError, string> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.revokeInvite(id),
+    onSuccess: () => void client.invalidateQueries({ queryKey: qk.invites }),
+  });
+}
+
+export function useAgents(enabled = true): UseQueryResult<AgentsResponse, ApiError> {
+  return useQuery({
+    queryKey: qk.agents,
+    queryFn: ({ signal }) => api.listAgents(signal),
+    enabled,
+  });
+}
+
+export function useCreateAgent(): UseMutationResult<AgentTokenResponse, ApiError, CreateAgentBody> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateAgentBody) => api.createAgent(body),
+    onSuccess: () => void client.invalidateQueries({ queryKey: qk.agents }),
+  });
+}
+
+export interface UpdateAgentVars {
+  id: string;
+  patch: UpdateAgentBody;
+}
+
+export function useUpdateAgent(): UseMutationResult<AgentResponse, ApiError, UpdateAgentVars> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, patch }: UpdateAgentVars) => api.updateAgent(id, patch),
+    onSuccess: () => void client.invalidateQueries({ queryKey: qk.agents }),
+  });
+}
+
+export function useDeleteAgent(): UseMutationResult<OkResponse, ApiError, string> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteAgent(id),
+    onSuccess: () => void client.invalidateQueries({ queryKey: qk.agents }),
+  });
+}
+
+export function useRotateAgentToken(): UseMutationResult<AgentTokenResponse, ApiError, string> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.rotateAgentToken(id),
+    onSuccess: () => void client.invalidateQueries({ queryKey: qk.agents }),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// workspaces
+// ---------------------------------------------------------------------------
+
+export function useWorkspaces(): UseQueryResult<WorkspacesResponse, ApiError> {
+  return useQuery({
+    queryKey: qk.workspaces,
+    queryFn: ({ signal }) => api.listWorkspaces(signal),
+    staleTime: 60_000,
+  });
+}
+
+export function useCreateWorkspace(): UseMutationResult<WorkspaceResponse, ApiError, CreateWorkspaceBody> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateWorkspaceBody) => api.createWorkspace(body),
+    onSuccess: () => void client.invalidateQueries({ queryKey: qk.workspaces }),
+  });
+}
+
+export interface UpdateWorkspaceVars {
+  id: string;
+  patch: UpdateWorkspaceBody;
+}
+
+export function useUpdateWorkspace(): UseMutationResult<WorkspaceResponse, ApiError, UpdateWorkspaceVars> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, patch }: UpdateWorkspaceVars) => api.updateWorkspace(id, patch),
+    onSuccess: () => void client.invalidateQueries({ queryKey: qk.workspaces }),
+  });
+}
+
+export function useDeleteWorkspace(): UseMutationResult<OkResponse, ApiError, string> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteWorkspace(id),
+    onSuccess: () => void client.invalidateQueries({ queryKey: qk.workspaces }),
+  });
+}
+
+export interface ImportWorkspaceVars {
+  file: File;
+  name?: string;
+}
+
+export function useImportWorkspace(): UseMutationResult<WorkspaceResponse, ApiError, ImportWorkspaceVars> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ file, name }: ImportWorkspaceVars) => api.importWorkspace(file, name),
+    onSuccess: () => void client.invalidateQueries({ queryKey: qk.workspaces }),
+  });
+}
+
+export function useWorkspaceMembers(
+  id: string | null,
+): UseQueryResult<WorkspaceMembersResponse, ApiError> {
+  return useQuery({
+    queryKey: qk.workspaceMembers(id ?? ''),
+    queryFn: ({ signal }) => api.workspaceMembers(id ?? '', signal),
+    enabled: id !== null,
+  });
+}
+
+export interface WorkspaceMemberVars {
+  id: string;
+  userId: string;
+  role?: WorkspaceRole;
+}
+
+export function useAddWorkspaceMember(): UseMutationResult<OkResponse, ApiError, WorkspaceMemberVars> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, userId, role }: WorkspaceMemberVars) =>
+      api.addWorkspaceMember(id, { userId, ...(role === undefined ? {} : { role }) }),
+    onSuccess: (_data, vars) =>
+      void client.invalidateQueries({ queryKey: qk.workspaceMembers(vars.id) }),
+  });
+}
+
+/** Changes the role of somebody already in the workspace. */
+export function useSetWorkspaceMemberRole(): UseMutationResult<
+  OkResponse,
+  ApiError,
+  WorkspaceMemberVars & { role: WorkspaceRole }
+> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, userId, role }: WorkspaceMemberVars & { role: WorkspaceRole }) =>
+      api.updateWorkspaceMember(id, userId, { role }),
+    onSuccess: (_data, vars) =>
+      void client.invalidateQueries({ queryKey: qk.workspaceMembers(vars.id) }),
+  });
+}
+
+export function useRemoveWorkspaceMember(): UseMutationResult<OkResponse, ApiError, WorkspaceMemberVars> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, userId }: WorkspaceMemberVars) => api.removeWorkspaceMember(id, userId),
+    onSuccess: (_data, vars) =>
+      void client.invalidateQueries({ queryKey: qk.workspaceMembers(vars.id) }),
+  });
 }
 
 export interface UploadAssetVars {

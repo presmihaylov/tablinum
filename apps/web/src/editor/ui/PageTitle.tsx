@@ -1,6 +1,9 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
+import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from 'react';
+import { Smiley } from '../../components/ui/Icon';
 import { EmojiList } from './EmojiList';
+import { EmojiPicker } from './EmojiPicker';
+import type { EmojiAnchor } from './EmojiPicker';
 import { findEmojiTrigger, matchEmoji } from './emoji';
 import type { EmojiEntry, EmojiTrigger } from './emoji';
 
@@ -10,6 +13,8 @@ export interface PageTitleProps {
   onChange: (title: string) => void;
   /** Enter or Down at the end of the title moves the caret into the body. */
   onLeave: () => void;
+  /** Sets the page icon, or clears it with null. Without it the icon is read only. */
+  onIconChange?: (icon: string | null) => void;
 }
 
 /**
@@ -17,11 +22,12 @@ export interface PageTitleProps {
  * lives in frontmatter, not in the markdown body, so it must never become an H1
  * in the file. A textarea has no ProseMirror plugins, so `:emoji` is matched here.
  */
-export function PageTitle({ value, icon, onChange, onLeave }: PageTitleProps) {
+export function PageTitle({ value, icon, onChange, onLeave, onIconChange }: PageTitleProps) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const caretAfter = useRef<number | null>(null);
   const [trigger, setTrigger] = useState<EmojiTrigger | null>(null);
   const [active, setActive] = useState(0);
+  const [iconAt, setIconAt] = useState<EmojiAnchor | null>(null);
 
   const items = useMemo(() => (trigger ? matchEmoji(trigger.query) : []), [trigger]);
 
@@ -75,13 +81,59 @@ export function PageTitle({ value, icon, onChange, onLeave }: PageTitleProps) {
     return true;
   };
 
-  return (
-    <div className="editor__title-row">
-      {icon ? (
+  const openIcons = (event: ReactMouseEvent<HTMLButtonElement>): void => {
+    const box = event.currentTarget.getBoundingClientRect();
+    setIconAt((current) => (current ? null : { left: box.left, top: box.bottom }));
+  };
+
+  // The picker closes on a mousedown outside it, and its own button is outside it.
+  const holdOpen = (event: ReactMouseEvent<HTMLButtonElement>): void => event.stopPropagation();
+
+  const setIcon = (next: string | null): void => {
+    setIconAt(null);
+    onIconChange?.(next);
+  };
+
+  /** The emoji left of the title: a button that opens the picker, once the shell can save it. */
+  function iconSlot() {
+    if (!onIconChange) {
+      if (!icon) return null;
+      return (
         <span className="editor__icon" aria-label="Page icon">
           {icon}
         </span>
-      ) : null}
+      );
+    }
+    if (icon) {
+      return (
+        <button
+          type="button"
+          className="editor__icon"
+          aria-label="Page icon"
+          onMouseDown={holdOpen}
+          onClick={openIcons}
+        >
+          {icon}
+        </button>
+      );
+    }
+    return (
+      <button
+        type="button"
+        className="editor__icon-add"
+        aria-label="Add an icon"
+        onMouseDown={holdOpen}
+        onClick={openIcons}
+      >
+        <Smiley size={13} />
+        Add icon
+      </button>
+    );
+  }
+
+  return (
+    <div className="editor__title-row">
+      {iconSlot()}
       <div className="editor__title-field">
         <textarea
           ref={ref}
@@ -117,6 +169,17 @@ export function PageTitle({ value, icon, onChange, onLeave }: PageTitleProps) {
           />
         ) : null}
       </div>
+
+      {iconAt ? (
+        <EmojiPicker
+          wide
+          label="Choose a page icon"
+          anchor={iconAt}
+          onClose={() => setIconAt(null)}
+          onPick={setIcon}
+          {...(icon ? { onRemove: () => setIcon(null) } : {})}
+        />
+      ) : null}
     </div>
   );
 }

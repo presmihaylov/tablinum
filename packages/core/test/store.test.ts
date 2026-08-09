@@ -59,6 +59,14 @@ describe('init', () => {
     expect(await exists(dir, 'docs/index.md')).toBe(false);
     expect((await store.listPages()).map((page) => page.path)).toEqual(['eng']);
   });
+
+  it('writes no starter space when the caller turns it off', async () => {
+    const bare = new ContentStore({ contentDir: dir, logger: silentLogger, starter: false });
+    await bare.init();
+    expect(await exists(dir, 'docs/_space.yml')).toBe(false);
+    expect(await bare.listSpaces()).toEqual([]);
+    expect(await bare.listPages()).toEqual([]);
+  });
 });
 
 describe('spaces', () => {
@@ -81,6 +89,44 @@ describe('spaces', () => {
   it('rejects a duplicate slug', async () => {
     await store.createSpace('eng', 'Engineering');
     expect(await codeOf(() => store.createSpace('eng', 'Again'))).toBe('CONFLICT');
+  });
+
+  it('gives every new space a home page', async () => {
+    await store.createSpace('eng', 'Engineering', '🚀');
+    expect(await exists(dir, 'eng/index.md')).toBe(true);
+    const home = await store.getPageByPath('eng');
+    expect(home.title).toBe('Engineering');
+    expect(home.icon).toBe('🚀');
+    expect(home.markdown).toBe('');
+  });
+
+  it('keeps a home page that already sits in the directory', async () => {
+    await writeFileAt(dir, 'eng/index.md', '# Kept\n');
+    const before = await readFileAt(dir, 'eng/index.md');
+    await store.createSpace('eng', 'Engineering');
+    expect(await readFileAt(dir, 'eng/index.md')).toBe(before);
+  });
+
+  it('renames a space and sets, keeps and clears its icon', async () => {
+    await store.createSpace('eng', 'Engineering', 'E');
+
+    const renamed = await store.updateSpace('eng', { name: 'Platform' });
+    expect(renamed).toEqual({ slug: 'eng', name: 'Platform', icon: 'E' });
+
+    const iconed = await store.updateSpace('eng', { icon: '🚀' });
+    expect(iconed.icon).toBe('🚀');
+    expect(iconed.name).toBe('Platform');
+
+    const cleared = await store.updateSpace('eng', { icon: null });
+    expect(cleared.icon).toBeUndefined();
+    expect(await readFileAt(dir, 'eng/_space.yml')).toBe('name: Platform\n');
+    expect((await store.listSpaces())[0]?.name).toBe('Platform');
+  });
+
+  it('rejects an update of an unknown space and an empty patch', async () => {
+    expect(await codeOf(() => store.updateSpace('ghost', { name: 'X' }))).toBe('NOT_FOUND');
+    await store.createSpace('eng', 'Engineering');
+    expect(await codeOf(() => store.updateSpace('eng', {}))).toBe('VALIDATION');
   });
 
   it('rejects an invalid slug', async () => {
@@ -273,6 +319,23 @@ describe('updatePage', () => {
     expect(await exists(dir, 'docs/b.md')).toBe(true);
   });
 
+  it('moves a page into another existing space with its subtree', async () => {
+    await store.createSpace('ops', 'Operations');
+    await store.createPage({ path: 'ops/oncall', title: 'On call' });
+    const guide = await store.createPage({ path: 'docs/guide', title: 'Guide' });
+    const step = await store.createPage({ path: 'docs/guide/step', title: 'Step' });
+
+    const moved = await store.updatePage(guide.id, { path: 'ops/guide', order: 6 });
+    expect(moved.path).toBe('ops/guide');
+    expect(moved.space).toBe('ops');
+    expect(moved.order).toBe(6);
+    expect((await store.getPageById(step.id)).path).toBe('ops/guide/step');
+    expect(await exists(dir, 'ops/guide/index.md')).toBe(true);
+    expect(await exists(dir, 'docs/guide')).toBe(false);
+    // the target space keeps the space file it already had
+    expect(await readFileAt(dir, 'ops/_space.yml')).toContain('Operations');
+  });
+
   it('rejects a move into its own descendant', async () => {
     const a = await store.createPage({ path: 'docs/a', title: 'A' });
     await store.createPage({ path: 'docs/a/b', title: 'B' });
@@ -340,6 +403,67 @@ describe('updatePage', () => {
     const before = await readFileAt(dir, 'docs/guide.md');
     await store.updatePage(page.id, { title: 'Guide', markdown: 'Body' });
     expect(await readFileAt(dir, 'docs/guide.md')).toBe(before);
+  });
+});
+
+describe('updatePage with baseRev', () => {
+  beforeEach(async () => {
+    await store.init();
+  });
+
+  it('accepts an edit written against the current body', async () => {
+    const page = await store.createPage({ path: 'docs/guide', title: 'Guide', markdown: 'one' });
+    const next = await store.updatePage(page.id, { markdown: 'two', baseRev: page.rev });
+    expect(next.markdown).toBe('two');
+    expect(next.rev).not.toBe(page.rev);
+  });
+
+  it('rejects an edit written against an older body', async () => {
+    const page = await store.createPage({ path: 'docs/guide', title: 'Guide', markdown: 'one' });
+    await store.updatePage(page.id, { markdown: 'from the other tab' });
+
+    const failed = await codeOf(() =>
+      store.updatePage(page.id, { markdown: 'two', baseRev: page.rev }),
+    );
+    expect(failed).toBe('CONFLICT');
+  });
+
+  it('hands the current body back so the caller can merge it', async () => {
+    const page = await store.createPage({ path: 'docs/guide', title: 'Guide', markdown: 'one' });
+    const theirs = await store.updatePage(page.id, { markdown: 'from the other tab' });
+
+    await expect(
+      store.updatePage(page.id, { markdown: 'two', baseRev: page.rev }),
+    ).rejects.toMatchObject({
+      code: 'CONFLICT',
+      info: { markdown: theirs.markdown, rev: theirs.rev, updated: theirs.updated },
+    });
+  });
+
+  it('lets a title-only edit through, whatever the body says', async () => {
+    const page = await store.createPage({ path: 'docs/guide', title: 'Guide', markdown: 'one' });
+    await store.updatePage(page.id, { markdown: 'from the other tab' });
+
+    const next = await store.updatePage(page.id, { title: 'Guide v2', baseRev: page.rev });
+    expect(next.title).toBe('Guide v2');
+    expect(next.markdown).toBe('from the other tab');
+  });
+
+  it('rejects even a save of the identical body, and the client sorts it out', async () => {
+    const page = await store.createPage({ path: 'docs/guide', title: 'Guide', markdown: 'one' });
+    await store.updatePage(page.id, { markdown: 'same text' });
+    // The rule is about the revision, not the bytes. The caller compares the two copies itself.
+    const failed = await codeOf(() =>
+      store.updatePage(page.id, { markdown: 'same text', baseRev: page.rev }),
+    );
+    expect(failed).toBe('CONFLICT');
+  });
+
+  it('lets an edit through when no baseRev is given at all', async () => {
+    const page = await store.createPage({ path: 'docs/guide', title: 'Guide', markdown: 'one' });
+    await store.updatePage(page.id, { markdown: 'from the other tab' });
+    const next = await store.updatePage(page.id, { markdown: 'last writer wins' });
+    expect(next.markdown).toBe('last writer wins');
   });
 });
 

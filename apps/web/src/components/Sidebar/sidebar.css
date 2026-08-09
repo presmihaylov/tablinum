@@ -330,3 +330,9 @@
   background: var(--danger-soft);
   color: var(--danger);
 }
+
+.git-pill__conflict {
+  border: none;
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+}

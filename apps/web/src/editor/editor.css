@@ -20,24 +20,73 @@
 
 .editor__title-row {
   display: flex;
+  flex-direction: column;
   align-items: flex-start;
-  gap: var(--space-3);
+  gap: var(--space-1);
   flex: 1;
   min-width: 0;
 }
 
+/* Negative margin so the glyph, not its hover box, lines up with the title. */
 .editor__icon {
-  font-size: var(--text-2xl);
-  line-height: var(--leading-tight);
+  font-size: 3rem;
+  line-height: 1.15;
   flex: none;
   user-select: none;
+  margin-left: calc(var(--space-1) * -1);
+  padding: 0 var(--space-1);
+  border: 0;
+  background: none;
+  color: inherit;
+  font-family: inherit;
+}
+
+button.editor__icon {
+  cursor: pointer;
+  border-radius: var(--radius-md);
+}
+
+button.editor__icon:hover {
+  background: var(--bg-hover);
+}
+
+/*
+ * Offered only on hover, so an empty title row stays quiet. It keeps its space while
+ * invisible: appearing would push the title down under the pointer.
+ */
+.editor__icon-add {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex: none;
+  margin-left: calc(var(--space-2) * -1);
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--text-faint);
+  font: inherit;
+  font-size: var(--text-xs);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.editor__title-row:hover .editor__icon-add,
+.editor__icon-add:focus-visible {
+  opacity: 1;
+}
+
+.editor__icon-add:hover {
+  background: var(--bg-hover);
+  color: var(--text);
 }
 
 /* Holds the `:emoji` menu, which is placed against the field rather than the caret. */
 .editor__title-field {
   position: relative;
   display: flex;
-  flex: 1;
+  width: 100%;
   min-width: 0;
 }
 
@@ -213,6 +262,19 @@
   border-bottom: 1px solid var(--accent-soft);
   padding: 0 1px;
   cursor: pointer;
+}
+
+.gd-editor-mention {
+  padding: 0 3px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.gd-editor-mention.ProseMirror-selectednode {
+  outline: 2px solid var(--accent);
 }
 
 .gd-editor-surface code {
@@ -825,6 +887,10 @@
   letter-spacing: 0.03em;
 }
 
+.gd-editor-menu__face {
+  flex: none;
+}
+
 .gd-editor-menu__text {
   display: flex;
   flex-direction: column;
@@ -944,10 +1010,16 @@
   box-shadow: var(--shadow-lg);
 }
 
-.gd-editor-emoji__search {
-  width: 100%;
-  height: 1.75rem;
+.gd-editor-emoji__head {
+  display: flex;
+  gap: var(--space-2);
   margin-bottom: var(--space-2);
+}
+
+.gd-editor-emoji__search {
+  flex: 1;
+  min-width: 0;
+  height: 1.75rem;
   padding: 0 var(--space-2);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
@@ -992,6 +1064,39 @@
   font-size: var(--text-sm);
 }
 
+.gd-editor-emoji__remove {
+  flex: none;
+  height: 1.75rem;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.gd-editor-emoji__remove:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+/* The page icon is picked once and looked at often, so its grid gets more room. */
+.gd-editor-emoji--wide {
+  width: 21.5rem;
+}
+
+.gd-editor-emoji--wide .gd-editor-emoji__grid {
+  grid-template-columns: repeat(10, 1fr);
+  max-height: 16rem;
+}
+
+.gd-editor-emoji--wide .gd-editor-emoji__item {
+  height: 2.2rem;
+  font-size: var(--text-lg);
+}
+
 /* ------------------------------------------------------------------ */
 /* save indicator (shared component, styled here)                      */
 /* ------------------------------------------------------------------ */
@@ -1013,4 +1118,62 @@
 
 .save-indicator--saved {
   color: var(--success);
+}
+
+/* ------------------------------------------------------------------ */
+/* Remote carets                                                       */
+/* ------------------------------------------------------------------ */
+
+.gd-caret {
+  position: relative;
+  display: inline-block;
+  width: 0;
+  height: 0;
+  vertical-align: baseline;
+  pointer-events: none;
+}
+
+.gd-caret::before {
+  content: '';
+  position: absolute;
+  top: -0.15em;
+  bottom: -0.25em;
+  left: -1px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--gd-caret-color, var(--accent));
+}
+
+.gd-caret__name {
+  position: absolute;
+  bottom: 100%;
+  left: -1px;
+  margin-bottom: 2px;
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--gd-caret-color, var(--accent));
+  color: #fff;
+  font-family: var(--font-sans);
+  font-size: var(--text-2xs);
+  line-height: 1.4;
+  font-weight: 500;
+  white-space: nowrap;
+  user-select: none;
+  opacity: 0;
+  transform: translateY(2px);
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease;
+}
+
+/* The label would cover the text it sits above, so it only shows while the caret moves. */
+.gd-caret--active .gd-caret__name,
+.gd-editor-surface:hover .gd-caret__name {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.gd-caret__range {
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--gd-caret-color, var(--accent)) 22%, transparent);
 }

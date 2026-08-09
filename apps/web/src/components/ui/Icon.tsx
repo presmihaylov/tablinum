@@ -107,6 +107,13 @@ export const Copy = (props: IconProps) => (
   </Svg>
 );
 
+export const MoveTo = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="M2 8h7.5M7 5.5 9.5 8 7 10.5" />
+    <path d="M9.5 3h3A1.5 1.5 0 0 1 14 4.5v7a1.5 1.5 0 0 1-1.5 1.5h-3" />
+  </Svg>
+);
+
 export const Link = (props: IconProps) => (
   <Svg {...props}>
     <path d="M6.5 9.5a2.5 2.5 0 0 0 3.6 0l2-2a2.5 2.5 0 0 0-3.6-3.6l-.8.8" />
@@ -139,5 +146,62 @@ export const Branch = (props: IconProps) => (
     <circle cx="4.5" cy="12.5" r="1.6" />
     <circle cx="11.5" cy="6" r="1.6" />
     <path d="M4.5 5.1v5.8M11.5 7.6c0 2-1.6 2.6-3.4 2.9-1.4.2-2.6.5-3.6 1" />
+  </Svg>
+);
+
+export const UserIcon = (props: IconProps) => (
+  <Svg {...props}>
+    <circle cx="8" cy="5.5" r="2.6" />
+    <path d="M2.8 13.4a5.2 5.2 0 0 1 10.4 0" />
+  </Svg>
+);
+
+export const People = (props: IconProps) => (
+  <Svg {...props}>
+    <circle cx="6" cy="6" r="2.3" />
+    <path d="M1.8 13a4.2 4.2 0 0 1 8.4 0" />
+    <path d="M10.6 4.1a2.3 2.3 0 0 1 0 4.4M11.6 9.6A4.2 4.2 0 0 1 14.2 13" />
+  </Svg>
+);
+
+export const Bot = (props: IconProps) => (
+  <Svg {...props}>
+    <rect x="2.5" y="5.5" width="11" height="8" rx="2" />
+    <path d="M8 2v3.5M5.5 9.5h.01M10.5 9.5h.01M1 8.5v2M15 8.5v2" />
+  </Svg>
+);
+
+export const Smiley = (props: IconProps) => (
+  <Svg {...props}>
+    <circle cx="8" cy="8" r="5.8" />
+    <path d="M5.9 6.4v.6M10.1 6.4v.6M5.7 9.6a2.9 2.9 0 0 0 4.6 0" />
+  </Svg>
+);
+
+export const SignOut = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="M6.5 2.8H3.4v10.4h3.1" />
+    <path d="M9 5.5 11.8 8 9 10.5M11.8 8H6.2" />
+  </Svg>
+);
+
+export const Settings = (props: IconProps) => (
+  <Svg {...props}>
+    <circle cx="8" cy="8" r="2.2" />
+    <path d="M8 1.8v1.6M8 12.6v1.6M14.2 8h-1.6M3.4 8H1.8M12.4 3.6l-1.1 1.1M4.7 11.3l-1.1 1.1M12.4 12.4l-1.1-1.1M4.7 4.7 3.6 3.6" />
+  </Svg>
+);
+
+export const Upload = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="M8 10.5V2.6M5.2 5.4 8 2.6l2.8 2.8" />
+    <path d="M2.8 10.6v1.8a1 1 0 0 0 1 1h8.4a1 1 0 0 0 1-1v-1.8" />
+  </Svg>
+);
+
+export const Download = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="M8 2.6v7.9M5.2 7.7 8 10.5l2.8-2.8" />
+    <path d="M2.8 10.6v1.8a1 1 0 0 0 1 1h8.4a1 1 0 0 0 1-1v-1.8" />
   </Svg>
 );

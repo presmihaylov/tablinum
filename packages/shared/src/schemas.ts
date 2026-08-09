@@ -177,7 +177,14 @@ const intParam = (min: number, max: number) =>
 // request bodies
 // ---------------------------------------------------------------------------
 
-export const LoginBodySchema = z.object({ password: z.string().min(1) });
+/**
+ * Sign in. Without `email` this is the legacy shared-password login, which still works.
+ * With `email` it is an account login and the reply carries an account session instead.
+ */
+export const LoginBodySchema = z.object({
+  email: z.string().trim().min(3).max(200).optional(),
+  password: z.string().min(1),
+});
 
 export const CreateSpaceBodySchema = z.object({
   slug: NewSpaceSlugSchema,
@@ -185,6 +192,14 @@ export const CreateSpaceBodySchema = z.object({
   icon: IconSchema.optional(),
   order: z.number().optional(),
 });
+
+export const UpdateSpaceBodySchema = z
+  .object({
+    name: z.string().min(1).optional(),
+    icon: IconSchema.nullable().optional(),
+    order: z.number().nullable().optional(),
+  })
+  .refine((body) => Object.keys(body).length > 0, 'Provide at least one field to update');
 
 export const CreatePageBodySchema = z.object({
   path: PagePathSchema,
@@ -293,6 +308,7 @@ export type SpaceFile = z.infer<typeof SpaceFileSchema>;
 
 export type LoginBody = z.infer<typeof LoginBodySchema>;
 export type CreateSpaceBody = z.infer<typeof CreateSpaceBodySchema>;
+export type UpdateSpaceBody = z.infer<typeof UpdateSpaceBodySchema>;
 export type CreatePageBody = z.infer<typeof CreatePageBodySchema>;
 export type UpdatePageBody = z.infer<typeof UpdatePageBodySchema>;
 export type GitCommitBody = z.infer<typeof GitCommitBodySchema>;

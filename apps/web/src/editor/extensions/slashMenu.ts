@@ -212,9 +212,9 @@ export const SLASH_COMMANDS: readonly SlashCommandItem[] = [
   {
     id: 'page',
     title: 'Page',
-    hint: 'Show another page inside this one',
+    hint: 'Embed a page, or make a new one here',
     glyph: 'PAGE',
-    keywords: ['page', 'embed', 'include', 'transclude', 'doc', 'link'],
+    keywords: ['page', 'embed', 'include', 'transclude', 'doc', 'link', 'new', 'sub', 'child'],
     available: outsideTableCell,
     run: (editor, range, options) => {
       editor.chain().focus().deleteRange(range).run();

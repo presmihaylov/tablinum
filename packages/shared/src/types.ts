@@ -164,4 +164,8 @@ export interface Config {
   autopushMs: number;
   /** True when no token and no password are configured: the API is unauthenticated. */
   openMode: boolean;
+  /** Slack bot token (`xoxb-…`). Null disables the mention notifications. */
+  slackBotToken: string | null;
+  /** Origin gitdocs is reached on, used for the page link in a notification. */
+  publicUrl: string | null;
 }

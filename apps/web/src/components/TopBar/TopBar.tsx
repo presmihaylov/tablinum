@@ -3,7 +3,9 @@ import { Link } from 'react-router-dom';
 import { pageHref } from '../../lib/href';
 import { useTheme } from '../../lib/theme';
 import { breadcrumbFor } from '../../lib/tree';
-import { useWorkspace } from '../../lib/workspace';
+import { useContent } from '../../lib/content';
+import { AccountMenu } from '../Account/AccountMenu';
+import { Presence } from '../Presence/Presence';
 import { Moon, PanelLeft, PanelRight, Search, Sun } from '../ui/Icon';
 import './topbar.css';
 
@@ -16,7 +18,7 @@ interface TopBarProps {
 }
 
 export function TopBar({ sidebarOpen, metaOpen, onToggleSidebar, onToggleMeta, onOpenPalette }: TopBarProps) {
-  const { spaces, currentPath } = useWorkspace();
+  const { spaces, currentPath } = useContent();
   const { resolved, toggle } = useTheme();
 
   const crumbs = useMemo(
@@ -49,6 +51,8 @@ export function TopBar({ sidebarOpen, metaOpen, onToggleSidebar, onToggleMeta, o
       </nav>
 
       <div className="topbar__right">
+        <Presence />
+
         <button type="button" className="btn btn--icon" onClick={onOpenPalette} title="Search (⌘K)" aria-label="Search">
           <Search />
         </button>
@@ -72,6 +76,8 @@ export function TopBar({ sidebarOpen, metaOpen, onToggleSidebar, onToggleMeta, o
         >
           <PanelRight />
         </button>
+
+        <AccountMenu />
       </div>
     </header>
   );

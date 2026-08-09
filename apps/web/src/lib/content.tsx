@@ -1,20 +1,40 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { isDescendantOf, parentPath, segments, slugify } from '@gitdocs/shared';
+import { depth, isDescendantOf, parentPath, segments, slugify, spaceOf } from '@gitdocs/shared';
 import type { PagePath, TreeNode } from '@gitdocs/shared';
 import { api } from '../api/client';
-import { useCreatePage, useCreateSpace, useDeletePage, useTree, useUpdatePage } from '../api/hooks';
+import {
+  useCreatePage,
+  useCreateSpace,
+  useDeletePage,
+  useTree,
+  useUpdatePage,
+  useUpdateSpace,
+} from '../api/hooks';
 import { ConfirmDialog, type ConfirmRequest } from '../components/ui/ConfirmDialog';
 import { PromptDialog, type PromptRequest } from '../components/ui/PromptDialog';
+import { SpaceDialog, type SpaceDialogRequest } from '../components/ui/SpaceDialog';
+import {
+  SpacePickerDialog,
+  type SpaceOption,
+  type SpacePickerRequest,
+} from '../components/ui/SpacePickerDialog';
 import { absolutePageUrl, pageHref, pathFromSplat } from './href';
 import { readStored, writeStored } from './storage';
-import { childPathFor, computeMove, renamedPath, type DropPosition } from './treeMove';
+import {
+  childPathFor,
+  computeMove,
+  computeSpaceMove,
+  renamedPath,
+  type DropPosition,
+  type MovePatch,
+} from './treeMove';
 import { childrenOf, type SpaceTree } from './tree';
 import { useToast } from './toast';
 
 const SPACE_KEY = 'space';
 
-interface WorkspaceValue {
+interface ContentValue {
   spaces: SpaceTree[];
   isLoadingTree: boolean;
   currentPath: PagePath;
@@ -22,16 +42,24 @@ interface WorkspaceValue {
   setCurrentSpace: (slug: string) => void;
   newPage: (parent: PagePath | null) => void;
   newSpace: () => void;
+  editSpace: (slug: string) => void;
   renamePage: (node: TreeNode) => void;
   duplicatePage: (node: TreeNode) => void;
   deletePage: (node: TreeNode) => void;
   copyLink: (path: PagePath) => void;
   movePage: (sourcePath: PagePath, targetPath: PagePath, position: DropPosition) => void;
+  moveToSpace: (node: TreeNode) => void;
 }
 
-const WorkspaceContext = createContext<WorkspaceValue | null>(null);
+const ContentContext = createContext<ContentValue | null>(null);
 
-export function WorkspaceProvider({ children }: { children: ReactNode }) {
+interface MoveOptions {
+  message?: string;
+  /** Open the page that moved even when another page is on screen. */
+  follow?: boolean;
+}
+
+export function ContentProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { push, pushError } = useToast();
@@ -39,10 +67,13 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const createPage = useCreatePage();
   const createSpace = useCreateSpace();
   const updatePage = useUpdatePage();
+  const updateSpaceMutation = useUpdateSpace();
   const deletePageMutation = useDeletePage();
 
   const [prompt, setPrompt] = useState<PromptRequest | null>(null);
   const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
+  const [spacePick, setSpacePick] = useState<SpacePickerRequest | null>(null);
+  const [spaceEdit, setSpaceEdit] = useState<SpaceDialogRequest | null>(null);
   const [storedSpace, setStoredSpace] = useState<string>(() => readStored<string>(SPACE_KEY, ''));
 
   const spaces = useMemo<SpaceTree[]>(() => tree.data?.spaces ?? [], [tree.data]);
@@ -91,26 +122,49 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   );
 
   const newSpace = useCallback(() => {
-    setPrompt({
+    setSpaceEdit({
       title: 'New space',
-      label: 'Space name',
-      placeholder: 'Engineering',
       confirmLabel: 'Create',
-      onConfirm: (name) => {
+      onConfirm: ({ name, icon }) => {
         const slug = slugify(name);
         createSpace.mutate(
-          { slug, name },
+          { slug, name, ...(icon ? { icon } : {}) },
           {
-            onSuccess: () => {
-              setCurrentSpace(slug);
-              push(`Space "${name}" created.`, 'success');
+            onSuccess: (data) => {
+              setCurrentSpace(data.space.slug);
+              // The server gives the space a home page, so open it right away.
+              navigate(pageHref(data.space.slug));
+              push(`Space "${data.space.name}" created.`, 'success');
             },
             onError: (error) => pushError(error, 'Could not create the space.'),
           },
         );
       },
     });
-  }, [createSpace, push, pushError, setCurrentSpace]);
+  }, [createSpace, navigate, push, pushError, setCurrentSpace]);
+
+  const editSpace = useCallback(
+    (slug: string) => {
+      const space = spaces.find((candidate) => candidate.slug === slug);
+      if (!space) return;
+      setSpaceEdit({
+        title: 'Edit space',
+        confirmLabel: 'Save',
+        initialName: space.name,
+        initialIcon: space.icon ?? null,
+        onConfirm: ({ name, icon }) => {
+          updateSpaceMutation.mutate(
+            { slug, body: { name, icon } },
+            {
+              onSuccess: () => push('Space updated.', 'success'),
+              onError: (error) => pushError(error, 'Could not update the space.'),
+            },
+          );
+        },
+      });
+    },
+    [spaces, updateSpaceMutation, push, pushError],
+  );
 
   const renamePage = useCallback(
     (node: TreeNode) => {
@@ -203,24 +257,69 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     [push],
   );
 
-  const movePage = useCallback(
-    (sourcePath: PagePath, targetPath: PagePath, position: DropPosition) => {
-      const patch = computeMove({ spaces, sourcePath, targetPath, position });
-      if (!patch) return;
+  /**
+   * Send one move PATCH. The open document always follows its page. `follow` opens the page
+   * that moved even when it was not the open one, so the person sees where it landed.
+   */
+  const applyMove = useCallback(
+    (sourcePath: PagePath, patch: MovePatch, options: MoveOptions = {}) => {
       updatePage.mutate(patch, {
         onSuccess: (data) => {
-          if (currentPath === sourcePath || isDescendantOf(currentPath, sourcePath)) {
-            const suffix = currentPath.slice(sourcePath.length);
-            navigate(pageHref(`${data.page.path}${suffix}`), { replace: true });
-          }
+          if (options.message) push(options.message, 'success');
+          const open = currentPath === sourcePath || isDescendantOf(currentPath, sourcePath);
+          if (!open && !options.follow) return;
+          const suffix = open ? currentPath.slice(sourcePath.length) : '';
+          navigate(pageHref(`${data.page.path}${suffix}`), { replace: open });
         },
         onError: (error) => pushError(error, 'Could not move the page.'),
       });
     },
-    [spaces, updatePage, currentPath, navigate, pushError],
+    [updatePage, currentPath, navigate, push, pushError],
   );
 
-  const value = useMemo<WorkspaceValue>(
+  const movePage = useCallback(
+    (sourcePath: PagePath, targetPath: PagePath, position: DropPosition) => {
+      const patch = computeMove({ spaces, sourcePath, targetPath, position });
+      if (!patch) return;
+      applyMove(sourcePath, patch);
+    },
+    [spaces, applyMove],
+  );
+
+  const moveToSpace = useCallback(
+    (node: TreeNode) => {
+      if (depth(node.path) === 1) {
+        push('A space home page cannot be moved.', 'error');
+        return;
+      }
+      const options: SpaceOption[] = spaces
+        .filter((space) => space.slug !== spaceOf(node.path))
+        .map((space) => ({
+          slug: space.slug,
+          name: space.name,
+          ...(space.icon ? { icon: space.icon } : {}),
+        }));
+      if (options.length === 0) {
+        push('There is no other space to move it to.', 'error');
+        return;
+      }
+      setSpacePick({
+        title: 'Move to space',
+        label: `Move "${node.title}" to`,
+        options,
+        confirmLabel: 'Move',
+        onConfirm: (slug) => {
+          const patch = computeSpaceMove({ spaces, sourcePath: node.path, spaceSlug: slug });
+          if (!patch) return;
+          const name = options.find((option) => option.slug === slug)?.name ?? slug;
+          applyMove(node.path, patch, { message: `Moved to ${name}.`, follow: true });
+        },
+      });
+    },
+    [spaces, applyMove, push],
+  );
+
+  const value = useMemo<ContentValue>(
     () => ({
       spaces,
       isLoadingTree: tree.isLoading,
@@ -229,11 +328,13 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       setCurrentSpace,
       newPage,
       newSpace,
+      editSpace,
       renamePage,
       duplicatePage,
       deletePage,
       copyLink,
       movePage,
+      moveToSpace,
     }),
     [
       spaces,
@@ -243,25 +344,29 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       setCurrentSpace,
       newPage,
       newSpace,
+      editSpace,
       renamePage,
       duplicatePage,
       deletePage,
       copyLink,
       movePage,
+      moveToSpace,
     ],
   );
 
   return (
-    <WorkspaceContext.Provider value={value}>
+    <ContentContext.Provider value={value}>
       {children}
       <PromptDialog request={prompt} onClose={() => setPrompt(null)} />
       <ConfirmDialog request={confirm} onClose={() => setConfirm(null)} />
-    </WorkspaceContext.Provider>
+      <SpacePickerDialog request={spacePick} onClose={() => setSpacePick(null)} />
+      <SpaceDialog request={spaceEdit} onClose={() => setSpaceEdit(null)} />
+    </ContentContext.Provider>
   );
 }
 
-export function useWorkspace(): WorkspaceValue {
-  const value = useContext(WorkspaceContext);
-  if (!value) throw new Error('useWorkspace must be used inside <WorkspaceProvider>');
+export function useContent(): ContentValue {
+  const value = useContext(ContentContext);
+  if (!value) throw new Error('useContent must be used inside <ContentProvider>');
   return value;
 }

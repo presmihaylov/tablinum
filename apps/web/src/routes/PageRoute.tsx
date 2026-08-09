@@ -3,7 +3,8 @@ import { useParams } from 'react-router-dom';
 import { usePage } from '../api/hooks';
 import { PageEditor } from '../editor';
 import { pathFromSplat } from '../lib/href';
-import { useAutosave } from '../lib/useAutosave';
+import { usePageDoc } from '../lib/usePageDoc';
+import { ConflictDialog } from '../components/Conflict/ConflictDialog';
 import { PageMeta } from '../components/PageMeta/PageMeta';
 import { NotFoundRoute } from './NotFoundRoute';
 
@@ -17,17 +18,17 @@ export function PageRoute({ metaOpen }: PageRouteProps) {
   const path = pathFromSplat(params['*']);
   const query = usePage(path);
   const page = query.data?.page;
-  const autosave = useAutosave(page?.id);
+  const doc = usePageDoc(page);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
       if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 's') return;
       event.preventDefault();
-      void autosave.flush();
+      void doc.flush();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [autosave]);
+  }, [doc]);
 
   if (query.isLoading) {
     return (
@@ -57,14 +58,19 @@ export function PageRoute({ metaOpen }: PageRouteProps) {
         <div className="page-shell">
           <PageEditor
             page={page}
-            saveState={autosave.saveState}
-            onChange={(markdown) => autosave.queue({ markdown })}
-            onTitleChange={(title) => autosave.queue({ title })}
+            saveState={doc.saveState}
+            incoming={doc.incoming}
+            room={doc.room}
+            onChange={doc.queueMarkdown}
+            onTitleChange={doc.queueTitle}
+            onIconChange={doc.queueIcon}
           />
         </div>
       </div>
 
       {metaOpen ? <PageMeta page={page} /> : null}
+
+      <ConflictDialog conflict={doc.conflict} onResolve={doc.resolveConflict} />
     </>
   );
 }

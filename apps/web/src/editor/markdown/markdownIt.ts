@@ -3,6 +3,7 @@ import type Token from 'markdown-it/lib/token.mjs';
 import type StateBlock from 'markdown-it/lib/rules_block/state_block.mjs';
 import type StateCore from 'markdown-it/lib/rules_core/state_core.mjs';
 import type StateInline from 'markdown-it/lib/rules_inline/state_inline.mjs';
+import { HANDLE_PATTERN } from '@gitdocs/shared';
 import { DATA, isCalloutType } from './dialect';
 import { encodeRaw, escapeHtml } from './html';
 
@@ -13,6 +14,7 @@ const SPACE = 0x20;
 const TAB = 0x09;
 const BACKSLASH = 0x5c;
 const BRACKET = 0x5b;
+const AT = 0x40;
 
 /** markdown-it instances are reused across parses; only configure each one once. */
 const configured = new WeakSet<MarkdownIt>();
@@ -43,6 +45,7 @@ export function configureMarkdownIt(md: MarkdownIt): MarkdownIt {
 
   md.inline.ruler.before('newline', 'gd_break', breakRule);
   md.inline.ruler.before('link', 'gd_wikilink', wikilinkRule);
+  md.inline.ruler.before('link', 'gd_mention', mentionRule);
 
   // No `alt` list, so the rule never interrupts an open paragraph. `Intro:\n![[a]]`
   // stays one paragraph, which is what every other markdown reader sees.
@@ -130,6 +133,32 @@ function wikilinkRule(state: StateInline, silent: boolean): boolean {
     token.content = target;
     token.attrSet(DATA.wikilink, target);
     if (alias !== undefined) token.attrSet(DATA.alias, alias);
+  }
+
+  state.pos += match[0].length;
+  return true;
+}
+
+const MENTION_RE = new RegExp(`^@(${HANDLE_PATTERN})`, 'i');
+
+/** Only at the start of a word, so `mail@example.com` is an address and not a mention. */
+const MENTION_OPENER_RE = /[\s([{<"'*_~]/;
+
+function mentionRule(state: StateInline, silent: boolean): boolean {
+  if (state.src.charCodeAt(state.pos) !== AT) return false;
+
+  const before = state.pos === 0 ? '' : state.src.charAt(state.pos - 1);
+  if (before !== '' && !MENTION_OPENER_RE.test(before)) return false;
+
+  const match = MENTION_RE.exec(state.src.slice(state.pos, state.posMax));
+  if (!match) return false;
+
+  if (!silent) {
+    const handle = match[1] ?? '';
+    const token = state.push('gd_mention', 'span', 0);
+    token.markup = '@';
+    token.content = handle;
+    token.attrSet(DATA.mention, handle);
   }
 
   state.pos += match[0].length;
@@ -620,6 +649,11 @@ function installRenderers(md: MarkdownIt): void {
     const token = tokens[idx];
     const target = token?.attrGet(DATA.embed) ?? '';
     return `<div ${DATA.embed}="${escapeHtml(target)}"${gapAttr(token)}></div>`;
+  };
+
+  rules['gd_mention'] = (tokens, idx) => {
+    const handle = tokens[idx]?.attrGet(DATA.mention) ?? '';
+    return `<span ${DATA.mention}="${escapeHtml(handle)}">@${escapeHtml(handle)}</span>`;
   };
 
   rules['gd_wikilink'] = (tokens, idx) => {

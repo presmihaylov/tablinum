@@ -47,6 +47,11 @@ docker compose logs -f gitdocs
 
 Open <http://localhost:4000> and log in with `GITDOCS_PASSWORD`.
 
+**Then give people real accounts.** Click the avatar in the top bar, choose "Create your account"
+and become the admin. After that, invite everybody else with a link from "People and invites"
+instead of sharing one password. `GITDOCS_PASSWORD` keeps working beside accounts; drop it from
+`.env` and restart once nobody needs it. `GITDOCS_API_TOKENS` is for agents and is unaffected.
+
 Check it from the shell:
 
 ```bash
@@ -57,9 +62,10 @@ curl -fsS -H "Authorization: Bearer $GITDOCS_API_TOKENS" \
   http://localhost:4000/api/v1/tree | head
 ```
 
-> **If you set neither `GITDOCS_PASSWORD` nor `GITDOCS_API_TOKENS`, gitdocs starts in OPEN mode.**
-> Every REST endpoint is then unauthenticated and the container logs a loud warning at boot. That is
-> fine on a laptop and wrong anywhere else.
+> **If you set neither `GITDOCS_PASSWORD` nor `GITDOCS_API_TOKENS`, and no account exists yet,
+> gitdocs starts in OPEN mode.** Every REST endpoint is then unauthenticated and the container logs
+> a loud warning at boot. That is fine on a laptop and wrong anywhere else. Creating the first
+> account closes the server, so an open instance can also be shut with the setup screen.
 
 ### What lives where
 
@@ -67,7 +73,12 @@ curl -fsS -H "Authorization: Bearer $GITDOCS_API_TOKENS" \
 | --- | --- | --- |
 | `/data/content` | the content git repo, one markdown file per page | yes, named volume |
 | `/data/search.db` | SQLite full-text index, derived data | yes, but disposable |
+| `/data/accounts.db` | people, passwords, sessions, invites, avatars | yes, and **not** disposable |
 | `/app` | the compiled server, the packages and `apps/web/dist` | no, it is the image |
+
+`accounts.db` sits beside the content repo, never inside it, so no password or avatar is ever
+committed or pushed. That also makes it the only state the git remote does not back up. See
+section 5.
 
 The volume is `gitdocs_gitdocs-data`. The container runs as the non-root `node` user (uid 1000),
 which owns `/data`.
@@ -297,8 +308,25 @@ because gitdocs never trusts request headers for identity).
 ## 5. Backup and restore
 
 **The backup is a git remote.** Once section 3 is done, every edit is committed and pushed within
-seconds, and the remote holds the full history. There is nothing else to back up: the search index
-rebuilds itself and the container is rebuilt from the repository.
+seconds, and the remote holds the full history. The search index rebuilds itself and the container
+is rebuilt from the repository.
+
+**One file is not covered by that: `/data/accounts.db`.** It holds the accounts, the password
+hashes, the live sessions, the open invites and the avatars, and nothing pushes it anywhere. If you
+use accounts, copy it on a schedule. The database runs in WAL mode, so copy the three files
+together, and stop the service first so the copy cannot catch a half-written transaction:
+
+```bash
+docker compose stop gitdocs
+docker compose cp gitdocs:/data/accounts.db      ./accounts-$(date +%F).db
+docker compose cp gitdocs:/data/accounts.db-wal  ./accounts-$(date +%F).db-wal   # may not exist
+docker compose cp gitdocs:/data/accounts.db-shm  ./accounts-$(date +%F).db-shm   # may not exist
+docker compose start gitdocs
+```
+
+The volume snapshot below covers the same file and needs no downtime, so prefer it if you already
+run one. Losing this file loses no documents at all: recreate the first admin with the setup screen
+and send new invites.
 
 ### Verify that the backup is real
 
@@ -337,6 +365,15 @@ docker compose up -d
 
 With `GITDOCS_GIT_REMOTE` set, gitdocs clones the remote into the empty volume on first boot and
 rebuilds the search index from the markdown. Expect a few seconds for a few thousand pages.
+
+That brings back every document, but **not the accounts**: the empty volume has no `accounts.db`.
+Copy your backup of it in before the first boot, or claim the server again and re-invite everybody.
+
+```bash
+docker compose cp ./accounts-2026-08-08.db gitdocs:/data/accounts.db
+docker compose exec -u root gitdocs chown node:node /data/accounts.db
+docker compose restart gitdocs
+```
 
 To restore from a tarball instead:
 
@@ -561,6 +598,32 @@ errors everywhere else.
 docker compose exec gitdocs df -h /data
 ```
 
+### Nobody can sign in, or the last admin lost their password
+
+A browser cannot reset a password without a password, so the escape hatch runs on the server that
+owns the file. It works while the service is running.
+
+```bash
+# who exists
+docker compose exec gitdocs node /app/apps/server/dist/accounts-cli.js list
+
+# hand somebody a new password; it prints one when you do not supply one
+docker compose exec gitdocs node /app/apps/server/dist/accounts-cli.js \
+  reset-password ada@example.com
+
+# make a second admin, so this cannot happen again
+docker compose exec gitdocs node /app/apps/server/dist/accounts-cli.js promote sam@example.com
+
+# an invite link when the UI is out of reach; open <your url>/invite/<token>
+docker compose exec gitdocs node /app/apps/server/dist/accounts-cli.js invite --role admin
+```
+
+Run it with no arguments for the full list. It signs out every session of the account it touches.
+
+The last resort, if `accounts.db` itself is damaged: delete it and restart. Every account, invite
+and avatar goes with it, and **no document is affected**. The server then has no accounts, so the
+setup screen reappears for whoever holds `GITDOCS_PASSWORD` or a bearer token.
+
 ---
 
 ## 9. Useful commands
@@ -571,6 +634,10 @@ docker compose ps
 docker compose logs -f gitdocs
 docker compose restart gitdocs
 docker compose exec gitdocs sh
+
+# accounts
+docker compose exec gitdocs node /app/apps/server/dist/accounts-cli.js list
+docker compose exec gitdocs node /app/apps/server/dist/accounts-cli.js invite ada@example.com
 
 # content
 docker compose exec gitdocs git -C /data/content log --oneline -20

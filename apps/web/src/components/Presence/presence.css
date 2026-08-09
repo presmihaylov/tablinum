@@ -1,0 +1,53 @@
+.presence {
+  display: flex;
+  align-items: center;
+  padding-right: var(--space-1);
+}
+
+.presence__chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  margin-left: -0.35rem;
+  padding: 0;
+  border: 2px solid var(--bg);
+  border-radius: var(--radius-full);
+  color: #fff;
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.02em;
+  cursor: default;
+}
+
+.presence__chip--me {
+  cursor: pointer;
+}
+
+/* An agent gets square shoulders and a mark, so it never reads as one of the people. */
+.presence__chip--agent {
+  border-radius: var(--radius-md);
+}
+
+/* A pulse says the person has unsaved edits, so the page is about to move. */
+.presence__chip--editing {
+  box-shadow: 0 0 0 2px var(--accent-soft);
+  animation: presence-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes presence-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .presence__chip--editing {
+    animation: none;
+  }
+}

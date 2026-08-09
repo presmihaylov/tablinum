@@ -1,8 +1,15 @@
-import { CLIENT_HEADER } from '@gitdocs/shared';
+import { CLIENT_HEADER, WORKSPACE_HEADER } from '@gitdocs/shared';
 import type {
+  AgentResponse,
+  AgentsResponse,
+  AgentTokenResponse,
   AssetResponse,
+  AuthResponse,
+  AuthStateResponse,
+  AvatarResponse,
   BacklinksResponse,
   ConflictInfo,
+  ConnectSlackBody,
   CreatePageBody,
   CreateSpaceBody,
   DeletePageResponse,
@@ -17,22 +24,46 @@ import type {
   GitResolveResponse,
   GitStatusResponse,
   HealthResponse,
+  ChangePasswordBody,
+  CreateAgentBody,
+  CreateInviteBody,
   HistoryQuery,
   HistoryResponse,
+  InvitePreviewResponse,
+  InviteResponse,
+  InvitesResponse,
   LoginBody,
+  MeResponse,
   OkResponse,
   PageId,
   PageListResponse,
   PagePath,
   PageResponse,
+  RegisterBody,
   RevisionContentResponse,
   SearchQuery,
   SearchResponse,
+  SetupBody,
+  SlackStateResponse,
   SpaceResponse,
   SpacesResponse,
   TreeResponse,
+  UpdateAgentBody,
+  UpdateMeBody,
   UpdatePageBody,
+  UpdateSpaceBody,
+  UpdateUserBody,
+  UserResponse,
+  UsersResponse,
+  AddWorkspaceMemberBody,
+  CreateWorkspaceBody,
+  UpdateWorkspaceBody,
+  UpdateWorkspaceMemberBody,
+  WorkspaceMembersResponse,
+  WorkspaceResponse,
+  WorkspacesResponse,
 } from '@gitdocs/shared';
+import { currentWorkspace } from '../lib/currentWorkspace';
 import { myClientId } from '../lib/identity';
 
 export const API_BASE = '/api/v1';
@@ -157,6 +188,9 @@ async function toApiError(response: Response): Promise<ApiError> {
 async function request<T>(pathname: string, options: RequestOptions = {}): Promise<T> {
   // Names the tab. The live channel echoes it back, so this tab ignores its own change.
   const headers: Record<string, string> = { Accept: 'application/json', [CLIENT_HEADER]: myClientId() };
+  // Every request says which workspace it is about. Without it the server picks the first one.
+  const workspace = currentWorkspace();
+  if (workspace !== null) headers[WORKSPACE_HEADER] = workspace;
   const init: RequestInit = {
     method: options.method ?? 'GET',
     credentials: 'same-origin',
@@ -193,15 +227,84 @@ async function request<T>(pathname: string, options: RequestOptions = {}): Promi
 export const api = {
   health: (signal?: AbortSignal): Promise<HealthResponse> => request('/health', { signal }),
 
-  login: (body: LoginBody): Promise<OkResponse> =>
+  /** Public: the sign-in screen asks this before it knows which form to draw. */
+  authState: (signal?: AbortSignal): Promise<AuthStateResponse> =>
+    request('/auth/state', { signal, ignoreUnauthorized: true }),
+
+  login: (body: LoginBody): Promise<AuthResponse> =>
     request('/auth/login', { method: 'POST', body, ignoreUnauthorized: true }),
 
   logout: (): Promise<OkResponse> => request('/auth/logout', { method: 'POST' }),
+
+  setup: (body: SetupBody): Promise<AuthResponse> =>
+    request('/auth/setup', { method: 'POST', body }),
+
+  invitePreview: (token: string, signal?: AbortSignal): Promise<InvitePreviewResponse> =>
+    request(`/auth/invite/${encodeURIComponent(token)}`, { signal, ignoreUnauthorized: true }),
+
+  register: (body: RegisterBody): Promise<AuthResponse> =>
+    request('/auth/register', { method: 'POST', body, ignoreUnauthorized: true }),
+
+  me: (signal?: AbortSignal): Promise<MeResponse> => request('/me', { signal }),
+
+  updateMe: (body: UpdateMeBody): Promise<UserResponse> =>
+    request('/me', { method: 'PATCH', body }),
+
+  changePassword: (body: ChangePasswordBody): Promise<OkResponse> =>
+    request('/me/password', { method: 'POST', body, ignoreUnauthorized: true }),
+
+  uploadAvatar: (file: File): Promise<AvatarResponse> => {
+    const form = new FormData();
+    form.append('file', file, file.name);
+    return request('/me/avatar', { method: 'POST', form });
+  },
+
+  removeAvatar: (): Promise<OkResponse> => request('/me/avatar', { method: 'DELETE' }),
+
+  slackState: (signal?: AbortSignal): Promise<SlackStateResponse> => request('/me/slack', { signal }),
+
+  connectSlack: (body: ConnectSlackBody): Promise<SlackStateResponse> =>
+    request('/me/slack', { method: 'POST', body }),
+
+  disconnectSlack: (): Promise<SlackStateResponse> => request('/me/slack', { method: 'DELETE' }),
+
+  listUsers: (signal?: AbortSignal): Promise<UsersResponse> => request('/users', { signal }),
+
+  updateUser: (id: string, body: UpdateUserBody): Promise<UserResponse> =>
+    request(`/users/${encodeURIComponent(id)}`, { method: 'PATCH', body }),
+
+  deleteUser: (id: string): Promise<OkResponse> =>
+    request(`/users/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  listInvites: (signal?: AbortSignal): Promise<InvitesResponse> => request('/invites', { signal }),
+
+  createInvite: (body: CreateInviteBody): Promise<InviteResponse> =>
+    request('/invites', { method: 'POST', body }),
+
+  revokeInvite: (id: string): Promise<OkResponse> =>
+    request(`/invites/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  listAgents: (signal?: AbortSignal): Promise<AgentsResponse> => request('/agents', { signal }),
+
+  createAgent: (body: CreateAgentBody): Promise<AgentTokenResponse> =>
+    request('/agents', { method: 'POST', body }),
+
+  updateAgent: (id: string, body: UpdateAgentBody): Promise<AgentResponse> =>
+    request(`/agents/${encodeURIComponent(id)}`, { method: 'PATCH', body }),
+
+  deleteAgent: (id: string): Promise<OkResponse> =>
+    request(`/agents/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  rotateAgentToken: (id: string): Promise<AgentTokenResponse> =>
+    request(`/agents/${encodeURIComponent(id)}/token`, { method: 'POST' }),
 
   listSpaces: (signal?: AbortSignal): Promise<SpacesResponse> => request('/spaces', { signal }),
 
   createSpace: (body: CreateSpaceBody): Promise<SpaceResponse> =>
     request('/spaces', { method: 'POST', body }),
+
+  updateSpace: (slug: string, body: UpdateSpaceBody): Promise<SpaceResponse> =>
+    request(`/spaces/${encodeURIComponent(slug)}`, { method: 'PATCH', body }),
 
   getTree: (signal?: AbortSignal): Promise<TreeResponse> => request('/tree', { signal }),
 
@@ -255,6 +358,50 @@ export const api = {
 
   gitResolve: (body: GitResolveBody): Promise<GitResolveResponse> =>
     request('/git/resolve', { method: 'POST', body }),
+
+  listWorkspaces: (signal?: AbortSignal): Promise<WorkspacesResponse> =>
+    request('/workspaces', { signal }),
+
+  createWorkspace: (body: CreateWorkspaceBody): Promise<WorkspaceResponse> =>
+    request('/workspaces', { method: 'POST', body }),
+
+  updateWorkspace: (id: string, body: UpdateWorkspaceBody): Promise<WorkspaceResponse> =>
+    request(`/workspaces/${encodeURIComponent(id)}`, { method: 'PATCH', body }),
+
+  deleteWorkspace: (id: string): Promise<OkResponse> =>
+    request(`/workspaces/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  workspaceMembers: (id: string, signal?: AbortSignal): Promise<WorkspaceMembersResponse> =>
+    request(`/workspaces/${encodeURIComponent(id)}/members`, { signal }),
+
+  addWorkspaceMember: (id: string, body: AddWorkspaceMemberBody): Promise<OkResponse> =>
+    request(`/workspaces/${encodeURIComponent(id)}/members`, { method: 'POST', body }),
+
+  updateWorkspaceMember: (
+    id: string,
+    userId: string,
+    body: UpdateWorkspaceMemberBody,
+  ): Promise<OkResponse> =>
+    request(
+      `/workspaces/${encodeURIComponent(id)}/members/${encodeURIComponent(userId)}`,
+      { method: 'PATCH', body },
+    ),
+
+  removeWorkspaceMember: (id: string, userId: string): Promise<OkResponse> =>
+    request(`/workspaces/${encodeURIComponent(id)}/members/${encodeURIComponent(userId)}`, {
+      method: 'DELETE',
+    }),
+
+  /** Where the browser downloads the zip from. A plain link, so the file never enters memory. */
+  workspaceExportUrl: (id: string): string =>
+    `${API_BASE}/workspaces/${encodeURIComponent(id)}/export`,
+
+  importWorkspace: (file: File, name?: string): Promise<WorkspaceResponse> => {
+    const form = new FormData();
+    if (name !== undefined && name.length > 0) form.append('name', name);
+    form.append('file', file, file.name);
+    return request('/workspaces/import', { method: 'POST', form });
+  },
 
   uploadAsset: (file: File, pageId?: PageId): Promise<AssetResponse> => {
     const form = new FormData();

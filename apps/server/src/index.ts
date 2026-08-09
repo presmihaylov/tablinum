@@ -4,10 +4,16 @@ export { MAX_ASSET_BYTES } from './routes/assets.js';
 export {
   SESSION_COOKIE,
   SESSION_TTL_MS,
+  accountTokenOf,
   isPublicPath,
   normalizePathname,
+  principalOf,
   registerAuthHook,
+  requireAccount,
+  requireAdmin,
+  setAccountCookie,
 } from './auth.js';
+export type { Principal, PrincipalKind } from './auth.js';
 export { registerErrorHandler, toErrorResponse } from './errors.js';
 export { LiveHub, clientOf, readClientId, registerLiveRoutes } from './live.js';
 export type { LiveClient } from './live.js';

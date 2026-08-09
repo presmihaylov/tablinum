@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { pageHref } from '../../lib/href';
-import { useWorkspace } from '../../lib/workspace';
-import { ChevronDown, Plus } from '../ui/Icon';
+import { useContent } from '../../lib/content';
+import { ChevronDown, Pencil, Plus } from '../ui/Icon';
 
 export function SpaceSwitcher() {
   const navigate = useNavigate();
-  const { spaces, currentSpace, setCurrentSpace, newSpace } = useWorkspace();
+  const { spaces, currentSpace, setCurrentSpace, newSpace, editSpace } = useContent();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
 
@@ -58,6 +58,22 @@ export function SpaceSwitcher() {
             </button>
           ))}
           <div className="space-switcher__divider" />
+          {active ? (
+            <button
+              type="button"
+              role="menuitem"
+              className="space-switcher__item"
+              onClick={() => {
+                setOpen(false);
+                editSpace(active.slug);
+              }}
+            >
+              <span className="space-switcher__icon">
+                <Pencil size={12} />
+              </span>
+              <span className="space-switcher__name">Edit space</span>
+            </button>
+          ) : null}
           <button
             type="button"
             role="menuitem"

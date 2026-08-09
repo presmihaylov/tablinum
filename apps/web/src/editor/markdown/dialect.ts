@@ -25,6 +25,7 @@ export const DATA = {
   wikilink: 'data-gd-wikilink',
   alias: 'data-gd-alias',
   embed: 'data-gd-embed',
+  mention: 'data-gd-mention',
   callout: 'data-callout',
 } as const;
 

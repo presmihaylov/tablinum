@@ -2,11 +2,17 @@ import { randomUUID } from 'node:crypto';
 import type { WebSocket } from '@fastify/websocket';
 import type { FastifyBaseLogger, FastifyInstance, FastifyRequest } from 'fastify';
 import {
+  AGENT_PRESENCE_MS,
   CLIENT_HEADER,
   ClientMessageSchema,
   LIVE_PATH,
   LIVE_PING_MS,
+  colorForId,
+  type ClientMessage,
+  type DocBaseline,
+  type DocResetReason,
   type GitStatus,
+  type LiveAgent,
   type LivePresence,
   type LiveUser,
   type Page,
@@ -14,6 +20,12 @@ import {
   type ServerMessage,
 } from '@gitdocs/shared';
 import type { RouteContext } from './context.js';
+import { DocRooms, writerOf, type DocRoom } from './docroom.js';
+
+/** Reads the markdown a new room starts from. Null when the page is gone. */
+export type BaselineLoader = (path: PagePath) => Promise<DocBaseline | null>;
+
+type DocMessage = Extract<ClientMessage, { type: `doc-${string}` }>;
 
 /** A socket is dropped once it has been silent for this many heartbeats. */
 const MISSED_HEARTBEATS = 3;
@@ -31,6 +43,15 @@ export interface LiveClient {
   lastSeen: number;
 }
 
+/** An agent on a page. It holds no socket, so the seat is given up on a timer instead. */
+interface AgentSeat {
+  agent: LiveAgent;
+  path: PagePath;
+  /** True once the agent has written the page, rather than only read it. */
+  editing: boolean;
+  expiresAt: number;
+}
+
 /** Read the tab id off the upgrade URL. Tabs mint their own, so an odd one is replaced. */
 export function readClientId(request: FastifyRequest): string {
   const query: unknown = request.query;
@@ -41,6 +62,13 @@ export function readClientId(request: FastifyRequest): string {
   if (typeof raw !== 'string') return randomUUID();
   const trimmed = raw.trim().slice(0, MAX_CLIENT_ID);
   return CLIENT_ID_RE.test(trimmed) ? trimmed : randomUUID();
+}
+
+/** The agent behind a request, in the shape the live channel broadcasts. Null for a person. */
+export function agentOf(request: FastifyRequest): LiveAgent | null {
+  const agent = request.principal.agent;
+  if (agent === null) return null;
+  return { id: agent.id, name: agent.name, handle: agent.handle };
 }
 
 /** The tab that sent a REST request, from its `x-gitdocs-client` header. */
@@ -58,12 +86,25 @@ export function clientOf(request: FastifyRequest): string | null {
  */
 export class LiveHub {
   readonly #clients = new Map<string, LiveClient>();
+  /** Agents on a page, by agent id. An agent holds one seat, on the page it touched last. */
+  readonly #agents = new Map<string, AgentSeat>();
+  readonly #rooms = new DocRooms();
   #heartbeat: ReturnType<typeof setInterval> | null = null;
+  #loadBaseline: BaselineLoader | null = null;
 
   constructor(private readonly log: FastifyBaseLogger) {}
 
   get size(): number {
     return this.#clients.size;
+  }
+
+  get rooms(): DocRooms {
+    return this.#rooms;
+  }
+
+  /** Turn keystroke streaming on. Without a loader the hub only does presence and broadcasts. */
+  useDocs(load: BaselineLoader): void {
+    this.#loadBaseline = load;
   }
 
   /** Register a socket. An id already in use is disconnected first, so ids stay unique. */
@@ -88,6 +129,7 @@ export class LiveHub {
     const current = this.#clients.get(client.id);
     if (current !== client) return;
     this.#clients.delete(client.id);
+    for (const path of this.#rooms.closeAllFor(client.id)) this.#afterLeaveRoom(path, client.id);
     if (client.watching !== null) this.#announcePresence(client.watching);
   }
 
@@ -119,6 +161,17 @@ export class LiveHub {
       if (client.watching !== null) this.#announcePresence(client.watching);
       return;
     }
+    if (
+      message.type === 'doc-open' ||
+      message.type === 'doc-close' ||
+      message.type === 'doc-steps' ||
+      message.type === 'doc-caret' ||
+      message.type === 'doc-baseline'
+    ) {
+      this.#receiveDoc(client, message);
+      return;
+    }
+    if (message.type !== 'watch') return;
 
     const previous = client.watching;
     if (previous === message.path) return;
@@ -129,8 +182,39 @@ export class LiveHub {
     if (client.watching !== null) this.#announcePresence(client.watching);
   }
 
+  /**
+   * Put an agent on a page, or keep it there. `editing` says it wrote the page rather than
+   * only read it. The seat lapses on its own, because an agent never says goodbye.
+   */
+  noteAgent(agent: LiveAgent, path: PagePath, editing: boolean, now: number = Date.now()): void {
+    const previous = this.#agents.get(agent.id);
+    this.#agents.set(agent.id, {
+      agent,
+      path,
+      editing,
+      expiresAt: now + AGENT_PRESENCE_MS,
+    });
+    if (previous !== undefined && previous.path !== path) {
+      this.#announcePresence(previous.path, now);
+    }
+    this.#announcePresence(path, now);
+  }
+
+  /** Take an agent off every page at once, e.g. when its token is revoked. */
+  dropAgent(agentId: string): void {
+    const seat = this.#agents.get(agentId);
+    if (seat === undefined) return;
+    this.#agents.delete(agentId);
+    this.#announcePresence(seat.path);
+  }
+
   /** Tell every tab that a page now holds different bytes. */
-  pageChanged(page: Page, source: 'api' | 'disk' | 'pull', by: string | null): void {
+  pageChanged(
+    page: Page,
+    source: 'api' | 'disk' | 'pull',
+    by: string | null,
+    agent: LiveAgent | null = null,
+  ): void {
     this.#broadcast({
       type: 'page',
       id: page.id,
@@ -138,11 +222,20 @@ export class LiveHub {
       title: page.title,
       rev: page.rev,
       by,
+      agent,
       source,
     });
+
+    // The writer's own save is the one change a room already knows about. Anything else -
+    // an agent, a text editor, a pull - moved the file under the room, so it starts again.
+    const room = this.#rooms.get(page.path);
+    if (room === null) return;
+    if (source === 'api' && by !== null && by === writerOf(room)) return;
+    this.#resetRoom(page.path, 'disk');
   }
 
   pagesRemoved(paths: PagePath[]): void {
+    for (const path of paths) this.#resetRoom(path, 'gone');
     if (paths.length === 0) return;
     this.#broadcast({ type: 'removed', paths });
   }
@@ -151,12 +244,22 @@ export class LiveHub {
     this.#broadcast({ type: 'git', status });
   }
 
-  /** Who is on a page right now. Only tabs that introduced themselves are listed. */
-  presence(path: PagePath): LivePresence[] {
+  /** Who is on a page right now: tabs that introduced themselves, plus agents at work. */
+  presence(path: PagePath, now: number = Date.now()): LivePresence[] {
     const users: LivePresence[] = [];
     for (const client of this.#clients.values()) {
       if (client.watching !== path || client.user === null) continue;
-      users.push({ ...client.user, editing: client.editing });
+      users.push({ ...client.user, editing: client.editing, agent: null });
+    }
+    for (const seat of this.#agents.values()) {
+      if (seat.path !== path || seat.expiresAt <= now) continue;
+      users.push({
+        id: seat.agent.id,
+        name: seat.agent.name,
+        color: colorForId(seat.agent.id),
+        editing: seat.editing,
+        agent: seat.agent,
+      });
     }
     return users;
   }
@@ -177,6 +280,8 @@ export class LiveHub {
   /** Drop tabs that have gone quiet, and close the rest down. */
   closeAll(): void {
     this.stop();
+    this.#rooms.clear();
+    this.#agents.clear();
     for (const client of [...this.#clients.values()]) {
       this.#clients.delete(client.id);
       this.#close(client);
@@ -190,10 +295,121 @@ export class LiveHub {
       this.leave(client);
       this.#close(client);
     }
+    this.#expireAgents(now);
   }
 
-  #announcePresence(path: PagePath): void {
-    const users = this.presence(path);
+  /** Take lapsed agents off the pages they were on, and tell the tabs still there. */
+  #expireAgents(now: number): void {
+    const emptied = new Set<PagePath>();
+    for (const [id, seat] of this.#agents) {
+      if (seat.expiresAt > now) continue;
+      this.#agents.delete(id);
+      emptied.add(seat.path);
+    }
+    for (const path of emptied) this.#announcePresence(path, now);
+  }
+
+  /** One frame about a shared document. Anything the room cannot honour ends in a reset. */
+  #receiveDoc(client: LiveClient, message: DocMessage): void {
+    if (message.type === 'doc-open') {
+      void this.#openRoom(client, message.path);
+      return;
+    }
+    if (message.type === 'doc-close') {
+      const room = this.#rooms.close(message.path, client.id);
+      this.#afterLeaveRoom(message.path, client.id, room);
+      return;
+    }
+    if (message.type === 'doc-caret') {
+      this.#relayCaret(client, message.path, message.anchor, message.head);
+      return;
+    }
+    if (message.type === 'doc-baseline') {
+      this.#rooms.rebaseline(message.path, client.id, message.version, {
+        markdown: message.markdown,
+        title: message.title,
+        rev: message.rev,
+      });
+      return;
+    }
+
+    const result = this.#rooms.submit(message.path, client.id, message.version, message.steps);
+    if (result.ok) {
+      const room = this.#rooms.get(message.path);
+      if (room !== null) {
+        this.#toRoom(room, { type: 'doc-steps', path: message.path, version: result.version, steps: result.steps });
+      }
+      return;
+    }
+    // A stale submission is normal: the tab rebases against the steps it is about to receive
+    // and sends again. The other two mean the room can no longer serve this tab.
+    if (result.reason === 'stale') return;
+    this.#resetRoom(message.path, result.reason === 'overflow' ? 'overflow' : 'gone');
+  }
+
+  async #openRoom(client: LiveClient, path: PagePath): Promise<void> {
+    const load = this.#loadBaseline;
+    if (load === null) return;
+
+    const existing = this.#rooms.get(path);
+    let baseline = existing?.baseline ?? null;
+    if (baseline === null) {
+      try {
+        baseline = await load(path);
+      } catch (err) {
+        this.log.debug({ err, path }, 'could not read the baseline for a room');
+        return;
+      }
+    }
+    // The tab may have navigated away while the file was read.
+    if (baseline === null || this.#clients.get(client.id) !== client) {
+      if (baseline === null) this.#send(client, { type: 'doc-reset', path, reason: 'gone' });
+      return;
+    }
+
+    const room = this.#rooms.open(path, client.id, baseline);
+    this.#send(client, {
+      type: 'doc-init',
+      path,
+      baseline: room.baseline,
+      baseVersion: room.baseVersion,
+      steps: room.steps,
+      writer: writerOf(room),
+    });
+    this.#toRoom(room, { type: 'doc-writer', path, writer: writerOf(room) }, client.id);
+  }
+
+  #relayCaret(client: LiveClient, path: PagePath, anchor: number, head: number): void {
+    const room = this.#rooms.get(path);
+    if (room === null || client.user === null) return;
+    if (!room.members.includes(client.id)) return;
+    this.#toRoom(room, { type: 'doc-caret', path, client: client.id, user: client.user, anchor, head }, client.id);
+  }
+
+  /** Take a tab's caret off the other screens, and hand the pen on if it was the writer. */
+  #afterLeaveRoom(path: PagePath, clientId: string, room: DocRoom | null = this.#rooms.get(path)): void {
+    if (room === null) return;
+    this.#toRoom(room, { type: 'doc-left', path, client: clientId });
+    this.#toRoom(room, { type: 'doc-writer', path, writer: writerOf(room) });
+  }
+
+  #resetRoom(path: PagePath, reason: DocResetReason): void {
+    const room = this.#rooms.drop(path);
+    if (room === null) return;
+    this.#toRoom(room, { type: 'doc-reset', path, reason });
+  }
+
+  /** Send to everyone in a room. `except` skips the tab that caused the message. */
+  #toRoom(room: DocRoom, message: ServerMessage, except?: string): void {
+    for (const id of room.members) {
+      if (id === except) continue;
+      const client = this.#clients.get(id);
+      if (client !== undefined) this.#send(client, message);
+    }
+  }
+
+  #announcePresence(path: PagePath, now: number = Date.now()): void {
+    const users = this.presence(path, now);
     for (const client of this.#clients.values()) {
       if (client.watching !== path) continue;
       this.#send(client, { type: 'presence', path, users });
@@ -223,18 +439,41 @@ export class LiveHub {
 
 export function registerLiveRoutes(app: FastifyInstance, ctx: RouteContext): void {
   app.get(LIVE_PATH, { websocket: true }, (socket: WebSocket, request: FastifyRequest) => {
-    const client = ctx.live.join(readClientId(request), socket);
+    // Each workspace has its own hub, and opening one can take a moment, so anything the tab
+    // sends in the meantime is held rather than dropped.
+    let hub: LiveHub | null = null;
+    let client: LiveClient | null = null;
+    const queued: string[] = [];
+
     socket.on('message', (raw: unknown) => {
-      ctx.live.receive(client, String(raw));
+      const text = String(raw);
+      if (hub === null || client === null) {
+        queued.push(text);
+        return;
+      }
+      hub.receive(client, text);
     });
     socket.on('pong', () => {
-      client.lastSeen = Date.now();
+      if (client !== null) client.lastSeen = Date.now();
     });
     socket.on('close', () => {
-      ctx.live.leave(client);
+      if (hub !== null && client !== null) hub.leave(client);
     });
     socket.on('error', () => {
-      ctx.live.leave(client);
+      if (hub !== null && client !== null) hub.leave(client);
     });
+
+    void ctx.workspaces
+      .of(request)
+      .then((parts) => {
+        if (socket.readyState !== socket.OPEN) return;
+        hub = parts.live;
+        client = hub.join(readClientId(request), socket);
+        for (const text of queued.splice(0)) hub.receive(client, text);
+      })
+      .catch((err: unknown) => {
+        request.log.warn({ err }, 'a live connection asked for a workspace it cannot open');
+        socket.close();
+      });
   });
 }

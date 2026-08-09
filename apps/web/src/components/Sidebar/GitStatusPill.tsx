@@ -1,16 +1,20 @@
+import { useState } from 'react';
 import { useGitStatus, useGitSync } from '../../api/hooks';
 import { useToast } from '../../lib/toast';
+import { GitConflictDialog } from '../Conflict/GitConflictDialog';
 import { Branch, Sync } from '../ui/Icon';
 
 export function GitStatusPill() {
   const status = useGitStatus();
   const sync = useGitSync();
   const { push, pushError } = useToast();
+  const [conflictOpen, setConflictOpen] = useState(false);
 
   const git = status.data?.status;
   const dirty = git?.dirtyFiles.length ?? 0;
   const ahead = git?.ahead ?? 0;
   const behind = git?.behind ?? 0;
+  const conflict = git?.conflict ?? null;
 
   const runSync = (): void => {
     sync.mutate(undefined, {
@@ -35,6 +39,17 @@ export function GitStatusPill() {
         {status.isError ? <span className="git-pill__badge git-pill__badge--error">offline</span> : null}
       </div>
 
+      {conflict ? (
+        <button
+          type="button"
+          className="git-pill__badge git-pill__badge--error git-pill__conflict"
+          onClick={() => setConflictOpen(true)}
+          title={conflict.message}
+        >
+          {conflict.files.length} conflict{conflict.files.length === 1 ? '' : 's'}
+        </button>
+      ) : null}
+
       <button
         type="button"
         className="btn btn--icon"
@@ -45,6 +60,8 @@ export function GitStatusPill() {
       >
         {sync.isPending ? <span className="spinner" /> : <Sync size={13} />}
       </button>
+
+      <GitConflictDialog open={conflictOpen} onClose={() => setConflictOpen(false)} />
     </div>
   );
 }

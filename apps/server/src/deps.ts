@@ -1,3 +1,6 @@
+import type { AccountStore, WorkspaceRecord } from '@gitdocs/accounts';
+import type { SlackApi } from './slack.js';
+import type { WorkspaceInstance } from './workspaces.js';
 import type {
   Backlink,
   Config,
@@ -14,6 +17,7 @@ import type {
   Space,
   TreeNode,
   UpdatePageBody,
+  UpdateSpaceBody,
 } from '@gitdocs/shared';
 
 /** A space plus its rendered page tree, as returned by GET /api/v1/tree. */
@@ -68,6 +72,9 @@ export interface ContentStore {
 
   listSpaces(): Promise<Space[]>;
   createSpace(input: CreateSpaceBody): Promise<Space>;
+
+  /** Change the name, icon or order of a space. Its slug never changes. */
+  updateSpace(slug: string, patch: UpdateSpaceBody): Promise<Space>;
 
   /** Every space with its full page tree, ready for the sidebar. */
   getTree(): Promise<SpaceTree[]>;
@@ -155,9 +162,22 @@ export interface SearchIndex {
 /** Everything buildApp() needs. Every field is injected so tests can swap it out. */
 export interface ServerDeps {
   config: Config;
+  /** The default workspace's content. Its directory is the one named by the config. */
   store: ContentStore;
   git: GitEngine;
   search: SearchIndex;
+  /**
+   * Build the content, git and search parts of a workspace other than the default one.
+   * Without it the server serves the configured content directory and nothing else.
+   */
+  openWorkspace?: (record: WorkspaceRecord) => Promise<WorkspaceInstance>;
+  /** Where a new workspace's git repository is created. Defaults to `<contentDir>/../workspaces`. */
+  workspacesDir?: string;
+  /**
+   * Accounts, passwords, sessions, invites and avatars. It is a plain SQLite file beside the
+   * search index, never inside the content repo, so none of it is ever committed.
+   */
+  accounts: AccountStore;
   /** Reported by GET /api/v1/health. */
   version?: string;
   /**
@@ -171,4 +191,6 @@ export interface ServerDeps {
   logger?: boolean | Record<string, unknown>;
   /** Trust `X-Forwarded-*`. Enable only behind a reverse proxy you control. */
   trustProxy?: boolean;
+  /** Slack transport for mention notifications. Built from the config when absent. */
+  slack?: SlackApi | null;
 }

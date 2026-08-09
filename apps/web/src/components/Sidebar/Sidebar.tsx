@@ -3,11 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import type { PagePath } from '@gitdocs/shared';
 import { ancestorPaths } from '../../lib/tree';
 import { usePersistedState } from '../../lib/storage';
-import { useWorkspace } from '../../lib/workspace';
+import { useContent } from '../../lib/content';
 import { Plus, Search } from '../ui/Icon';
 import { GitStatusPill } from './GitStatusPill';
 import { PageTree } from './PageTree';
 import { SpaceSwitcher } from './SpaceSwitcher';
+import { WorkspaceSwitcher } from '../Workspace/WorkspaceSwitcher';
 import './sidebar.css';
 
 interface SidebarProps {
@@ -16,7 +17,7 @@ interface SidebarProps {
 
 export function Sidebar({ onOpenPalette }: SidebarProps) {
   const navigate = useNavigate();
-  const { spaces, currentSpace, currentPath, newPage, isLoadingTree } = useWorkspace();
+  const { spaces, currentSpace, currentPath, newPage, isLoadingTree } = useContent();
   const [expanded, setExpanded] = usePersistedState<string[]>('tree.expanded', []);
 
   const space = useMemo(
@@ -47,6 +48,8 @@ export function Sidebar({ onOpenPalette }: SidebarProps) {
 
   return (
     <aside className="sidebar">
+      <WorkspaceSwitcher />
+
       <div className="sidebar__top">
         <SpaceSwitcher />
         <button type="button" className="btn btn--icon" onClick={onOpenPalette} title="Search (⌘K)" aria-label="Search">

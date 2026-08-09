@@ -7,7 +7,7 @@ import { filterActions, type PaletteAction } from '../../lib/palette';
 import { useTheme } from '../../lib/theme';
 import { useToast } from '../../lib/toast';
 import { useDebouncedValue } from '../../lib/useDebouncedValue';
-import { useWorkspace } from '../../lib/workspace';
+import { useContent } from '../../lib/content';
 import { DocIcon, Moon, Plus, Search, Sun, Sync } from '../ui/Icon';
 import './palette.css';
 
@@ -29,7 +29,7 @@ const SEARCH_DEBOUNCE_MS = 160;
 
 export function CommandPalette({ open, onClose }: CommandPaletteProps) {
   const navigate = useNavigate();
-  const { newPage, currentSpace, currentPath } = useWorkspace();
+  const { newPage, currentSpace, currentPath } = useContent();
   const { toggle: toggleTheme, resolved } = useTheme();
   const { push, pushError } = useToast();
   const sync = useGitSync();

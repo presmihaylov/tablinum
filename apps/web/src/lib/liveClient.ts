@@ -1,5 +1,13 @@
-import { LIVE_PATH, LIVE_PING_MS, type ClientMessage, type PagePath, type ServerMessage } from '@gitdocs/shared';
-import { myClientId, myUser } from './identity';
+import {
+  LIVE_PATH,
+  LIVE_PING_MS,
+  WORKSPACE_QUERY,
+  type ClientMessage,
+  type PagePath,
+  type ServerMessage,
+} from '@gitdocs/shared';
+import { currentWorkspace } from './currentWorkspace';
+import { myClientId, myUser, onIdentityChange } from './identity';
 
 const RECONNECT_BASE_MS = 500;
 const RECONNECT_MAX_MS = 15_000;
@@ -11,7 +19,10 @@ export type StatusListener = (connected: boolean) => void;
 
 function liveUrl(): string {
   const scheme = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  return `${scheme}//${window.location.host}${LIVE_PATH}?client=${encodeURIComponent(myClientId())}`;
+  // The upgrade carries no headers of ours, so the workspace rides in the query string.
+  const workspace = currentWorkspace();
+  const suffix = workspace === null ? '' : `&${WORKSPACE_QUERY}=${encodeURIComponent(workspace)}`;
+  return `${scheme}//${window.location.host}${LIVE_PATH}?client=${encodeURIComponent(myClientId())}${suffix}`;
 }
 
 function parse(raw: unknown): ServerMessage | null {
@@ -38,9 +49,12 @@ export class LiveConnection {
   #stopped = false;
   #watching: PagePath | null = null;
   #editing = false;
+  #unwatchIdentity: (() => void) | null = null;
 
   readonly #messages = new Set<MessageListener>();
   readonly #statuses = new Set<StatusListener>();
+  /** Rooms this tab is streaming into, so a reconnect can rejoin them. */
+  readonly #rooms = new Set<PagePath>();
 
   constructor(private readonly url: () => string = liveUrl) {}
 
@@ -50,11 +64,15 @@ export class LiveConnection {
 
   start(): void {
     this.#stopped = false;
+    // Signing in renames this tab; the others must be told without a reconnect.
+    this.#unwatchIdentity ??= onIdentityChange((user) => this.#send({ type: 'hello', user }));
     this.#open();
   }
 
   stop(): void {
     this.#stopped = true;
+    this.#unwatchIdentity?.();
+    this.#unwatchIdentity = null;
     this.#clearRetry();
     this.#clearPing();
     const socket = this.#socket;
@@ -79,6 +97,22 @@ export class LiveConnection {
     if (this.#editing === editing) return;
     this.#editing = editing;
     this.#send({ type: 'editing', editing });
+  }
+
+  /** Join a page's shared document. A reconnect rejoins it without being asked. */
+  openDoc(path: PagePath): void {
+    this.#rooms.add(path);
+    this.#send({ type: 'doc-open', path });
+  }
+
+  closeDoc(path: PagePath): void {
+    if (!this.#rooms.delete(path)) return;
+    this.#send({ type: 'doc-close', path });
+  }
+
+  /** Send one frame about a shared document. Dropped silently while the socket is down. */
+  sendDoc(message: ClientMessage): void {
+    this.#send(message);
   }
 
   onMessage(listener: MessageListener): () => void {
@@ -114,6 +148,9 @@ export class LiveConnection {
       this.#send({ type: 'hello', user: myUser() });
       this.#send({ type: 'watch', path: this.#watching });
       if (this.#editing) this.#send({ type: 'editing', editing: true });
+      // The server forgot the room when the socket died; rejoining brings back a fresh
+      // baseline, which is exactly what a tab that missed steps needs.
+      for (const path of this.#rooms) this.#send({ type: 'doc-open', path });
       this.#startPing();
     };
 

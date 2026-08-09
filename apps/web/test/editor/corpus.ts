@@ -524,6 +524,39 @@ export const CORPUS: Record<string, string> = {
 
   'wikilink with an emoji alias': 'See [[a|🚀 go]].\n',
 
+  // --- mentions -------------------------------------------------------------
+  'mention on its own': '@ada\n',
+
+  'mention in a sentence': 'Ask @ada.lovelace about it.\n',
+
+  'mention at the start of a line': '@ada wrote the runbook.\n',
+
+  'mention in a heading': '# Owned by @ada\n',
+
+  'mention in a list item': '- [ ] Ask @ada\n',
+
+  'mention in a table cell': '| Owner |\n| --- |\n| @ada |\n',
+
+  'mention inside brackets': '(@ada) and (@sam)\n',
+
+  'mention next to punctuation': 'Ask @ada, then @sam.\n',
+
+  'mention pair': '@ada @sam\n',
+
+  'mention with a dash and an underscore': '@ada-l_1 shipped it.\n',
+
+  'email address is not a mention': 'Write to ada@example.com.\n',
+
+  'at sign on its own': 'Cost is 3 @ 5 each.\n',
+
+  'at sign before an uppercase word': 'See @Ada.\n',
+
+  'mention inside code stays code': 'Run `ping @ada` now.\n',
+
+  'mention inside a fence stays code': '```sh\nping @ada\n```\n',
+
+  'escaped at sign': 'Not a mention: \\@ada\n',
+
   // --- html -----------------------------------------------------------------
   'html comment multiline': '<!--\nline one\nline two\n-->\n',
 

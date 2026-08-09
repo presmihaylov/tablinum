@@ -26,6 +26,8 @@ export const ENV_KEYS = [
   'GITDOCS_AUTOCOMMIT_MS',
   'GITDOCS_AUTOPULL_MS',
   'GITDOCS_AUTOPUSH_MS',
+  'GITDOCS_SLACK_BOT_TOKEN',
+  'GITDOCS_PUBLIC_URL',
 ] as const;
 
 export type EnvKey = (typeof ENV_KEYS)[number];
@@ -101,6 +103,12 @@ export function loadConfig(env: EnvSource = process.env): Config {
     throw validation(`GITDOCS_GIT_AUTHOR_EMAIL must be an email address, got ${JSON.stringify(gitAuthorEmail)}`);
   }
 
+  // A Slack message links back to the page, and Slack cannot resolve "localhost".
+  const publicUrl = read(env, 'GITDOCS_PUBLIC_URL') ?? null;
+  if (publicUrl !== null && !/^https?:\/\//.test(publicUrl)) {
+    throw validation(`GITDOCS_PUBLIC_URL must start with http:// or https://, got ${JSON.stringify(publicUrl)}`);
+  }
+
   const config: Config = {
     contentDir: contentDir.replace(/\/+$/, '') || '/',
     port,
@@ -115,6 +123,8 @@ export function loadConfig(env: EnvSource = process.env): Config {
     autopullMs: readInt(env, 'GITDOCS_AUTOPULL_MS', DEFAULT_AUTOPULL_MS, 0, 86400000),
     autopushMs: readInt(env, 'GITDOCS_AUTOPUSH_MS', DEFAULT_AUTOPUSH_MS, 0, 3600000),
     openMode: apiTokens.length === 0 && password === null,
+    slackBotToken: read(env, 'GITDOCS_SLACK_BOT_TOKEN') ?? null,
+    publicUrl: publicUrl === null ? null : publicUrl.replace(/\/+$/, ''),
   };
 
   return Object.freeze(config);
@@ -149,6 +159,8 @@ export function redactConfig(config: Config): Record<string, string | number | b
     autopullMs: config.autopullMs,
     autopushMs: config.autopushMs,
     openMode: config.openMode,
+    slackBotToken: config.slackBotToken === null ? 'unset' : 'set',
+    publicUrl: config.publicUrl,
   };
 }
 

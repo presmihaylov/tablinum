@@ -4,6 +4,8 @@ export interface RecordedCall {
   method: string;
   url: URL;
   body: unknown;
+  /** Lower-case names, so a test can look for one without guessing the case. */
+  headers: Record<string, string>;
 }
 
 export type RouteHandler = (url: URL, body: unknown) => unknown;
@@ -19,12 +21,22 @@ export interface MockServer {
 const ORIGIN = 'http://localhost';
 
 function parseBody(init: RequestInit): unknown {
+  // An upload arrives as it was built, so a test can look at the parts.
+  if (init.body instanceof FormData) return init.body;
   if (typeof init.body !== 'string') return null;
   try {
     return JSON.parse(init.body);
   } catch {
     return init.body;
   }
+}
+
+function headersOf(init: RequestInit): Record<string, string> {
+  const out: Record<string, string> = {};
+  new Headers(init.headers ?? {}).forEach((value, name) => {
+    out[name.toLowerCase()] = value;
+  });
+  return out;
 }
 
 function targetOf(input: RequestInfo | URL): string {
@@ -49,7 +61,7 @@ export function installFetch(routes: Routes): MockServer {
     const url = new URL(targetOf(input), ORIGIN);
     const method = (init.method ?? 'GET').toUpperCase();
     const body = parseBody(init);
-    calls.push({ method, url, body });
+    calls.push({ method, url, body, headers: headersOf(init) });
 
     const route = routes[`${method} ${url.pathname}`];
     if (route === undefined) {

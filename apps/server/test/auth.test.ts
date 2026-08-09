@@ -89,11 +89,42 @@ describe('mutation audit', () => {
     { method: 'PATCH', url: '/api/v1/pages/pg_00000000000000000000000000' },
     { method: 'DELETE', url: '/api/v1/pages/pg_00000000000000000000000000' },
     { method: 'POST', url: '/api/v1/spaces' },
+    { method: 'PATCH', url: '/api/v1/spaces/eng' },
     { method: 'POST', url: '/api/v1/assets' },
     { method: 'POST', url: '/api/v1/git/pull' },
     { method: 'POST', url: '/api/v1/git/push' },
     { method: 'POST', url: '/api/v1/git/commit' },
     { method: 'POST', url: '/api/v1/git/resolve' },
+    { method: 'POST', url: '/api/v1/auth/setup' },
+    { method: 'PATCH', url: '/api/v1/me' },
+    { method: 'POST', url: '/api/v1/me/password' },
+    { method: 'POST', url: '/api/v1/me/avatar' },
+    { method: 'DELETE', url: '/api/v1/me/avatar' },
+    { method: 'POST', url: '/api/v1/me/slack' },
+    { method: 'DELETE', url: '/api/v1/me/slack' },
+    { method: 'PATCH', url: '/api/v1/users/us_00000000000000000000000000' },
+    { method: 'DELETE', url: '/api/v1/users/us_00000000000000000000000000' },
+    { method: 'POST', url: '/api/v1/invites' },
+    { method: 'DELETE', url: '/api/v1/invites/iv_00000000000000000000000000' },
+    { method: 'POST', url: '/api/v1/agents' },
+    { method: 'PATCH', url: '/api/v1/agents/ag_00000000000000000000000000' },
+    { method: 'DELETE', url: '/api/v1/agents/ag_00000000000000000000000000' },
+    { method: 'POST', url: '/api/v1/agents/ag_00000000000000000000000000/token' },
+    { method: 'POST', url: '/api/v1/mcp' },
+    { method: 'DELETE', url: '/api/v1/mcp' },
+    { method: 'POST', url: '/api/v1/workspaces' },
+    { method: 'POST', url: '/api/v1/workspaces/import' },
+    { method: 'PATCH', url: '/api/v1/workspaces/ws_00000000000000000000000000' },
+    { method: 'DELETE', url: '/api/v1/workspaces/ws_00000000000000000000000000' },
+    { method: 'POST', url: '/api/v1/workspaces/ws_00000000000000000000000000/members' },
+    {
+      method: 'PATCH',
+      url: '/api/v1/workspaces/ws_00000000000000000000000000/members/us_00000000000000000000000000',
+    },
+    {
+      method: 'DELETE',
+      url: '/api/v1/workspaces/ws_00000000000000000000000000/members/us_00000000000000000000000000',
+    },
   ];
 
   it('answers 401 on every mutation route when no credential is sent', async () => {
@@ -121,8 +152,8 @@ describe('mutation audit', () => {
       .map((verb) => verb.trim())
       .filter((verb) => verb.length > 0 && !['GET', 'HEAD', 'OPTIONS'].includes(verb));
 
-    // The two /auth routes must stay reachable without a credential; everything else is audited.
-    expect(verbs).toHaveLength(MUTATIONS.length + 2);
+    // Login, logout and register must stay reachable without a credential; the rest is audited.
+    expect(verbs).toHaveLength(MUTATIONS.length + 3);
   });
 });
 

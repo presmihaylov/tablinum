@@ -1,10 +1,10 @@
 import { Navigate } from 'react-router-dom';
 import { pageHref } from '../lib/href';
-import { useWorkspace } from '../lib/workspace';
+import { useContent } from '../lib/content';
 
 /** Sends the user to the first page of the active space. */
 export function HomeRoute() {
-  const { spaces, currentSpace, isLoadingTree, newSpace, newPage } = useWorkspace();
+  const { spaces, currentSpace, isLoadingTree, newSpace, newPage } = useContent();
 
   if (isLoadingTree) {
     return (

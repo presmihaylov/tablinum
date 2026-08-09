@@ -4,9 +4,12 @@ import { CommandPalette } from './components/CommandPalette/CommandPalette';
 import { Sidebar } from './components/Sidebar/Sidebar';
 import { TopBar } from './components/TopBar/TopBar';
 import { AuthProvider, useAuth } from './lib/auth';
+import { LiveProvider } from './lib/live';
 import { usePersistedState } from './lib/storage';
-import { WorkspaceProvider } from './lib/workspace';
+import { ContentProvider } from './lib/content';
+import { WorkspacesProvider, useWorkspace } from './lib/workspaces';
 import { HomeRoute } from './routes/HomeRoute';
+import { InviteRoute } from './routes/InviteRoute';
 import { LoginRoute } from './routes/LoginRoute';
 import { NotFoundRoute } from './routes/NotFoundRoute';
 import { PageRoute } from './routes/PageRoute';
@@ -14,7 +17,11 @@ import { PageRoute } from './routes/PageRoute';
 export function App() {
   return (
     <AuthProvider>
-      <AuthGate />
+      <Routes>
+        {/* Outside the gate: an invited person has no credential until this form runs. */}
+        <Route path="/invite/:token" element={<InviteRoute />} />
+        <Route path="*" element={<AuthGate />} />
+      </Routes>
     </AuthProvider>
   );
 }
@@ -23,9 +30,21 @@ function AuthGate() {
   const { loginRequired } = useAuth();
   if (loginRequired) return <LoginRoute />;
   return (
-    <WorkspaceProvider>
-      <AppShell />
-    </WorkspaceProvider>
+    <WorkspacesProvider>
+      <WorkspaceScope />
+    </WorkspacesProvider>
+  );
+}
+
+function WorkspaceScope() {
+  const { current } = useWorkspace();
+  return (
+    // The key throws away the tree on a switch: no page, no editor and no socket survives it.
+    <ContentProvider key={current?.id ?? 'none'}>
+      <LiveProvider>
+        <AppShell />
+      </LiveProvider>
+    </ContentProvider>
   );
 }
 

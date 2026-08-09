@@ -58,6 +58,49 @@ describe('spaces', () => {
     expect(bodyOf(again, ErrorBodySchema).error.code).toBe('CONFLICT');
   });
 
+  it('renames a space and sets then clears its icon', async () => {
+    await seed(harness);
+
+    const renamed = await harness.app.inject({
+      method: 'PATCH',
+      url: '/api/v1/spaces/eng',
+      headers: harness.authHeaders(),
+      payload: { name: 'Platform', icon: '🚀' },
+    });
+    expect(renamed.statusCode).toBe(200);
+    expect(bodyOf(renamed, SpaceResponseSchema).space).toEqual({
+      slug: 'eng',
+      name: 'Platform',
+      icon: '🚀',
+    });
+
+    const cleared = await harness.app.inject({
+      method: 'PATCH',
+      url: '/api/v1/spaces/eng',
+      headers: harness.authHeaders(),
+      payload: { icon: null },
+    });
+    expect(bodyOf(cleared, SpaceResponseSchema).space).toEqual({ slug: 'eng', name: 'Platform' });
+
+    const listed = await harness.app.inject({
+      method: 'GET',
+      url: '/api/v1/spaces',
+      headers: harness.authHeaders(),
+    });
+    expect(bodyOf(listed, SpacesResponseSchema).spaces[0]?.name).toBe('Platform');
+  });
+
+  it('answers NOT_FOUND when the space is unknown', async () => {
+    const response = await harness.app.inject({
+      method: 'PATCH',
+      url: '/api/v1/spaces/ghost',
+      headers: harness.authHeaders(),
+      payload: { name: 'Ghost' },
+    });
+    expect(response.statusCode).toBe(404);
+    expect(bodyOf(response, ErrorBodySchema).error.code).toBe('NOT_FOUND');
+  });
+
   it('rejects a multi-segment slug with VALIDATION', async () => {
     const response = await harness.app.inject({
       method: 'POST',

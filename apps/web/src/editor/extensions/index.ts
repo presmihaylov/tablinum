@@ -21,6 +21,9 @@ import { createHtmlBlock, HtmlInline } from './htmlNodes';
 import { ImageUpload } from './imageUpload';
 import { ListShortcuts, OrderedListParen } from './lists';
 import { MdEscape } from './mdEscape';
+import { Mention } from './mention';
+import { MentionSuggestion } from './mentionSuggestion';
+import type { MentionItem } from './mentionSuggestion';
 import { createPageEmbed } from './pageEmbed';
 import type { EmbeddedPage } from './pageEmbed';
 import { SlashMenuExtension } from './slashMenu';
@@ -41,6 +44,8 @@ export interface EditorExtensionOptions {
   onPickPage: () => void;
   uploadImage: (file: File) => Promise<string | null>;
   searchPages: (query: string) => Promise<WikilinkItem[]>;
+  /** Resolves people for the `@` menu. */
+  searchPeople: (query: string) => Promise<MentionItem[]>;
   /** Fetches the page an embed names, or null when there is no page at that path. */
   loadPage: (path: string) => Promise<EmbeddedPage | null>;
   /** Opens a page in the shell, from an embed's header. */
@@ -57,6 +62,7 @@ export const DEFAULT_EXTENSION_OPTIONS: EditorExtensionOptions = {
   onPickPage: () => undefined,
   uploadImage: () => Promise.resolve(null),
   searchPages: () => Promise.resolve([]),
+  searchPeople: () => Promise.resolve([]),
   loadPage: () => Promise.resolve(null),
   openPage: () => undefined,
   interactive: true,
@@ -106,6 +112,7 @@ export function buildExtensions(overrides: Partial<EditorExtensionOptions> = {})
     GitdocsTaskItem,
     Callout,
     Wikilink,
+    Mention,
     createHtmlBlock(options.interactive),
     HtmlInline,
     createPageEmbed(options.interactive, { load: options.loadPage, open: options.openPage }),
@@ -142,11 +149,13 @@ export function buildExtensions(overrides: Partial<EditorExtensionOptions> = {})
       onPickPage: options.onPickPage,
     }),
     WikilinkSuggestion.configure({ search: options.searchPages }),
+    MentionSuggestion.configure({ search: options.searchPeople }),
     EmojiSuggestion,
   ];
 }
 
 export type { WikilinkItem } from './wikilinkSuggestion';
+export type { MentionItem } from './mentionSuggestion';
 export type { EmbeddedPage } from './pageEmbed';
 export { SLASH_COMMANDS, filterSlashCommands } from './slashMenu';
 export type { SlashCommandItem } from './slashMenu';

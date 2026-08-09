@@ -1,5 +1,7 @@
+import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { FastifyBaseLogger } from 'fastify';
+import { AccountStore, defaultAccountsDbPath, type WorkspaceRecord } from '@gitdocs/accounts';
 import { ContentStore as CoreContentStore, parse } from '@gitdocs/core';
 import { GitEngine as CoreGitEngine } from '@gitdocs/git-sync';
 import { SearchIndex as CoreSearchIndex, defaultDbPath } from '@gitdocs/search';
@@ -22,6 +24,7 @@ import {
   type SearchHit,
   type Space,
   type UpdatePageBody,
+  type UpdateSpaceBody,
 } from '@gitdocs/shared';
 import { buildApp } from './app.js';
 import { contextOf } from './context.js';
@@ -38,6 +41,7 @@ import type {
 } from './deps.js';
 import { VERSION } from './version.js';
 import { startContentWatcher, type ContentWatcher } from './wiring.js';
+import type { WorkspaceInstance } from './workspaces.js';
 
 /** A NOT_FOUND from a package becomes a null here; the routes turn null into a 404. */
 async function orNull<T>(work: Promise<T>): Promise<T | null> {
@@ -71,6 +75,10 @@ class CoreStoreAdapter implements ContentStore {
 
   createSpace(input: CreateSpaceBody): Promise<Space> {
     return this.core.createSpace(input.slug, input.name, input.icon, input.order);
+  }
+
+  updateSpace(slug: string, patch: UpdateSpaceBody): Promise<Space> {
+    return this.core.updateSpace(slug, patch);
   }
 
   getTree(): Promise<SpaceTree[]> {
@@ -214,6 +222,35 @@ export interface RunningServer {
 }
 
 /**
+ * The real parts of a workspace other than the default one. It gets its own repository and its
+ * own index file. The configured git remote belongs to the default workspace alone, so an
+ * extra workspace is local until somebody gives it a remote by hand.
+ */
+function openRealWorkspace(config: Config): (record: WorkspaceRecord) => Promise<WorkspaceInstance> {
+  return async (record) => {
+    // The create route writes the starter space, so the store must not add a second one.
+    const core = new CoreContentStore({ contentDir: record.dir, starter: false });
+    const git = new CoreGitEngine({
+      contentDir: record.dir,
+      branch: config.gitBranch,
+      authorName: config.gitAuthorName,
+      authorEmail: config.gitAuthorEmail,
+      autocommitMs: config.autocommitMs,
+    });
+    // Named after the directory, not after the slug: a rename must not orphan the index.
+    const search = new CoreSearchIndex({ dbPath: `${record.dir}.search.db` });
+    return {
+      store: new CoreStoreAdapter(core),
+      git: new CoreGitAdapter(git),
+      search: new CoreSearchAdapter(search),
+      close: async () => {
+        await git.flushPendingCommit().catch(() => null);
+      },
+    };
+  };
+}
+
+/**
  * Commit anything the working tree still carries at boot. A crash between a write and its
  * debounced commit leaves the edit uncommitted for good: the watcher only reports changes made
  * after it starts, so nothing else would ever pick it up.
@@ -244,18 +281,26 @@ export async function start(config: Config = loadConfig()): Promise<RunningServe
   const coreStore = new CoreContentStore({ contentDir: config.contentDir });
   const coreGit = CoreGitEngine.fromConfig(config);
   const coreSearch = new CoreSearchIndex({ dbPath: defaultDbPath(config.contentDir) });
+  // Beside the search index, one level above the content root: passwords and avatars must
+  // never land inside the git repo.
+  const accounts = new AccountStore({ dbPath: defaultAccountsDbPath(config.contentDir) });
 
   const deps: ServerDeps = {
     config,
     store: new CoreStoreAdapter(coreStore),
     git: new CoreGitAdapter(coreGit),
     search: new CoreSearchAdapter(coreSearch),
+    accounts,
+    openWorkspace: openRealWorkspace(config),
+    workspacesDir: resolve(config.contentDir, '..', 'workspaces'),
     version: VERSION,
   };
 
   await deps.store.init();
   await deps.git.init();
   await deps.search.init();
+  accounts.init();
+  accounts.purgeExpiredSessions();
 
   const app = await buildApp(deps);
   app.log.info(redactConfig(config), 'gitdocs configuration');
@@ -275,6 +320,14 @@ export async function start(config: Config = loadConfig()): Promise<RunningServe
   await watcher.whenReady();
   deps.git.startAutoPull(config.autopullMs);
 
+  // Every other workspace gets the same treatment the moment it is first opened.
+  const extraWatchers: ContentWatcher[] = [];
+  ctx.workspaces.onOpened((parts) => {
+    const scoped: ServerDeps = { ...deps, store: parts.store, git: parts.git, search: parts.search };
+    extraWatchers.push(startContentWatcher(scoped, parts.wiring, app.log, parts.live));
+    parts.git.startAutoPull(config.autopullMs);
+  });
+
   await app.listen({ port: config.port, host: '0.0.0.0' });
 
   let closing: Promise<void> | null = null;
@@ -286,6 +339,7 @@ export async function start(config: Config = loadConfig()): Promise<RunningServe
         await watcher.close();
         watcher = null;
       }
+      for (const extra of extraWatchers.splice(0)) await extra.close();
       await app.close();
       // close() stops the timers and commits whatever the last writes scheduled.
       await coreGit.flushPendingCommit().catch((err: unknown) => {
@@ -294,6 +348,7 @@ export async function start(config: Config = loadConfig()): Promise<RunningServe
       });
       await deps.git.stop();
       await deps.search.close();
+      accounts.close();
       app.log.info('shutdown complete');
     })();
     return closing;

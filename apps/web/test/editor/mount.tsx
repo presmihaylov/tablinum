@@ -5,7 +5,7 @@ import { EditorContent, useEditor } from '@tiptap/react';
 import type { Editor } from '@tiptap/core';
 import type { Transaction } from '@tiptap/pm/state';
 import { buildExtensions } from '../../src/editor/extensions';
-import type { WikilinkItem } from '../../src/editor/extensions';
+import type { MentionItem, WikilinkItem } from '../../src/editor/extensions';
 import { MarkMenu } from '../../src/editor/ui/MarkMenu';
 import { TableControls } from '../../src/editor/ui/TableControls';
 import { TableMenu } from '../../src/editor/ui/TableMenu';
@@ -27,6 +27,7 @@ export interface MountOptions {
   /** Markdown, exactly as the real editor receives it. */
   content?: string;
   searchPages?: (query: string) => Promise<WikilinkItem[]>;
+  searchPeople?: (query: string) => Promise<MentionItem[]>;
   onPickImage?: () => void;
   onPickEmoji?: () => void;
   onPickVideo?: () => void;
@@ -43,6 +44,7 @@ function Harness({
   const editor = useEditor({
     extensions: buildExtensions({
       ...(options.searchPages ? { searchPages: options.searchPages } : {}),
+      ...(options.searchPeople ? { searchPeople: options.searchPeople } : {}),
       ...(options.onPickImage ? { onPickImage: options.onPickImage } : {}),
       ...(options.onPickEmoji ? { onPickEmoji: options.onPickEmoji } : {}),
       ...(options.onPickVideo ? { onPickVideo: options.onPickVideo } : {}),

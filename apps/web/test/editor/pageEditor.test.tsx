@@ -17,6 +17,7 @@ afterEach(() => {
 interface Spies {
   onChange: ReturnType<typeof vi.fn>;
   onTitleChange: ReturnType<typeof vi.fn>;
+  onIconChange: ReturnType<typeof vi.fn>;
 }
 
 /** Holds the page in state, so a test can hand the editor a new one. */
@@ -38,6 +39,7 @@ function Host({
       page={current}
       onChange={spies.onChange}
       onTitleChange={spies.onTitleChange}
+      onIconChange={spies.onIconChange}
       saveState="idle"
     />
   );
@@ -53,7 +55,7 @@ async function mount(initial: Page, routes: Routes = {}): Promise<Mounted> {
     'GET /api/v1/tree': { spaces: [space('eng', [node('eng/deploy', { title: 'Deploy' })])] },
     ...routes,
   });
-  const spies: Spies = { onChange: vi.fn(), onTitleChange: vi.fn() };
+  const spies: Spies = { onChange: vi.fn(), onTitleChange: vi.fn(), onIconChange: vi.fn() };
   let setPage: ((next: Page) => void) | null = null;
   renderApp(<Host initial={initial} spies={spies} onReady={(setter) => (setPage = setter)} />);
   await waitFor(() => expect(setPage).not.toBeNull());
@@ -165,6 +167,56 @@ describe('PageEditor', () => {
 
     expect(screen.getByLabelText('Page icon').textContent).toBe('🚀');
     expect(document.querySelector('.save-indicator')?.textContent).toContain('Saved to git');
+  });
+
+  it('picks a new page icon from the emoji picker', async () => {
+    const { spies } = await mount(page({ icon: '\u{1F680}' }));
+
+    fireEvent.click(screen.getByLabelText('Page icon'));
+    expect(screen.getByRole('dialog', { name: 'Choose a page icon' })).toBeTruthy();
+
+    fireEvent.click(screen.getByLabelText('party popper'));
+
+    expect(spies.onIconChange).toHaveBeenCalledWith('\u{1F389}');
+    expect(screen.getByLabelText('Page icon').textContent).toBe('\u{1F389}');
+    expect(screen.queryByRole('dialog', { name: 'Choose a page icon' })).toBeNull();
+    expect(spies.onChange).not.toHaveBeenCalled();
+  });
+
+  it('offers an icon on a page that has none', async () => {
+    const { spies } = await mount(page({}));
+
+    expect(screen.queryByLabelText('Page icon')).toBeNull();
+    fireEvent.click(screen.getByLabelText('Add an icon'));
+    fireEvent.click(screen.getByLabelText('rocket'));
+
+    expect(spies.onIconChange).toHaveBeenCalledWith('\u{1F680}');
+    expect(screen.getByLabelText('Page icon').textContent).toBe('\u{1F680}');
+  });
+
+  it('removes the icon, and only offers that when there is one', async () => {
+    const { spies } = await mount(page({}));
+
+    fireEvent.click(screen.getByLabelText('Add an icon'));
+    expect(screen.queryByText('Remove')).toBeNull();
+    fireEvent.click(screen.getByLabelText('rocket'));
+
+    fireEvent.click(screen.getByLabelText('Page icon'));
+    fireEvent.click(screen.getByText('Remove'));
+
+    expect(spies.onIconChange).toHaveBeenLastCalledWith(null);
+    expect(screen.queryByLabelText('Page icon')).toBeNull();
+    expect(screen.getByLabelText('Add an icon')).toBeTruthy();
+  });
+
+  it('closes the icon picker on a second click of the icon', async () => {
+    await mount(page({ icon: '\u{1F680}' }));
+
+    fireEvent.click(screen.getByLabelText('Page icon'));
+    expect(screen.getByRole('dialog', { name: 'Choose a page icon' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Page icon' }));
+    expect(screen.queryByRole('dialog', { name: 'Choose a page icon' })).toBeNull();
   });
 
   it('plays a video embed instead of showing its markup', async () => {

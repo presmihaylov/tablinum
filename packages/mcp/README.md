@@ -1,6 +1,8 @@
 # @gitdocs/mcp
 
-An MCP stdio server that lets Claude Code, or any other MCP client, read and edit a gitdocs site.
+An MCP server that lets Claude Code, or any other MCP client, read and edit a gitdocs site. It runs
+two ways: as the stdio CLI in this package, and as the remote endpoint the gitdocs server hosts at
+`POST /api/v1/mcp`. Both expose the same tools, the same resource and the same prompt.
 
 The server is a thin, model-friendly front end over the gitdocs REST API. It never touches the
 content directory itself, so every change made by an agent goes through exactly the same code path
@@ -100,6 +102,31 @@ The local, unpublished form of the same file:
 }
 ```
 
+## The remote endpoint
+
+`@gitdocs/server` mounts these same tools at `POST /api/v1/mcp`, so an agent needs no local process.
+Add an agent in the web UI (account menu, then **Agents**), copy its token, and point the client at
+the address:
+
+```json
+{
+  "mcpServers": {
+    "gitdocs": {
+      "type": "http",
+      "url": "http://127.0.0.1:4000/api/v1/mcp",
+      "headers": { "Authorization": "Bearer gda_your-agent-token" }
+    }
+  }
+}
+```
+
+The endpoint is stateless: every request carries its own credential, so nothing expires and nothing
+is lost when the server restarts. An agent token also gives the agent an identity: the handshake
+instructions start with its name, its `@handle` and the brief an admin wrote for it.
+
+Any other credential works too, for example one of `GITDOCS_API_TOKENS`. Those name nobody, so the
+instructions carry the shared tool guidance alone.
+
 ## Tools
 
 | Tool | Arguments | Returns |
@@ -174,6 +201,10 @@ const client = new GitdocsClient({ baseUrl: 'http://127.0.0.1:4000', token: proc
 
 // A fully wired MCP server, ready for any transport.
 const server = createGitdocsMcpServer({ client });
+
+// `identity` goes in front of the standard instructions, which is how the remote endpoint
+// tells one agent from another.
+const briefed = createGitdocsMcpServer({ client, identity: 'You are Doc Bot. Keep the runbooks tidy.' });
 
 // Or run one tool directly and get the same text a model would see.
 const outline = await getToolSpec('gitdocs_list_tree').run(client, {});

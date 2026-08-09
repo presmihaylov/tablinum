@@ -5,6 +5,8 @@ import { api, saveConflictOf } from '../api/client';
 import { useUpdatePage } from '../api/hooks';
 import { qk } from '../api/keys';
 import { Autosave, type SaveState } from './autosave';
+import type { DocRoom } from './docRoom';
+import { myClientId } from './identity';
 import { useLive } from './live';
 import { LiveDoc, type DocConflict } from './livedoc';
 
@@ -20,8 +22,14 @@ export interface PageDocHandle {
   /** Null until something arrives from elsewhere. */
   incoming: IncomingContent | null;
   conflict: DocConflict | null;
+  /** The page's step stream. Null while the live channel is off. */
+  room: DocRoom | null;
+  /** True while another tab is on this page and steps are flowing. */
+  streaming: boolean;
   queueMarkdown: (markdown: string) => void;
   queueTitle: (title: string) => void;
+  /** Sets the page icon, or clears it with null. */
+  queueIcon: (icon: string | null) => void;
   flush: () => Promise<void>;
   isDirty: () => boolean;
   /** Take the text the user chose in the conflict dialog and save it. */
@@ -46,10 +54,19 @@ export function usePageDoc(page: Page | undefined): PageDocHandle {
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [incoming, setIncoming] = useState<IncomingContent | null>(null);
   const [conflict, setConflict] = useState<DocConflict | null>(null);
+  const [room, setRoom] = useState<DocRoom | null>(null);
+  const [streaming, setStreaming] = useState(false);
+  const [isWriter, setIsWriter] = useState(true);
 
   const docRef = useRef<LiveDoc | null>(null);
   const controllerRef = useRef<Autosave | null>(null);
   const tokenRef = useRef(0);
+  /** A tab that is not the writer holds its text here until the pen is handed to it. */
+  const heldRef = useRef<string | null>(null);
+  const streamingRef = useRef(false);
+  streamingRef.current = streaming;
+  const writerRef = useRef(true);
+  writerRef.current = isWriter;
 
   const updateRef = useRef(updatePage.mutateAsync);
   updateRef.current = updatePage.mutateAsync;
@@ -58,6 +75,7 @@ export function usePageDoc(page: Page | undefined): PageDocHandle {
   setEditingRef.current = live.setEditing;
 
   const pageId = page?.id;
+  const pagePath = page?.path;
   const pageMarkdown = page?.markdown ?? '';
   const pageRev = page?.rev ?? '';
   const pageTitle = page?.title ?? '';
@@ -106,6 +124,35 @@ export function usePageDoc(page: Page | undefined): PageDocHandle {
     // `save` is a module-level function, so the controller is rebuilt only on a page change.
   }, [pageId]);
 
+  // One room per page. It streams steps between every tab on this page, and it names the one
+  // tab that writes the file; the others would only save the same bytes over the top.
+  const openRoom = live.openRoom;
+  useEffect(() => {
+    if (pagePath === undefined) return;
+    const created = openRoom(pagePath, {
+      onInit: () => setStreaming(true),
+      onReset: () => setStreaming(false),
+      onWriter: (writer) => setIsWriter(writer === null || writer === myClientId()),
+    });
+    setRoom(created);
+    return () => {
+      created?.close();
+      setRoom(null);
+      setStreaming(false);
+      setIsWriter(true);
+      heldRef.current = null;
+    };
+  }, [pagePath, openRoom]);
+
+  // The writer left mid-sentence and this tab took over. Save what it was holding back.
+  useEffect(() => {
+    if (!isWriter) return;
+    const held = heldRef.current;
+    heldRef.current = null;
+    if (held === null) return;
+    controllerRef.current?.queue({ markdown: held });
+  }, [isWriter]);
+
   /** Fetch the page and fold it into the local copy. */
   const pullRemote = useCallback(
     async (id: PageId, fromGit: boolean): Promise<void> => {
@@ -122,6 +169,9 @@ export function usePageDoc(page: Page | undefined): PageDocHandle {
 
       client.setQueryData(qk.page(id), data);
       client.setQueryData(qk.pageByPath(data.page.path), data);
+      // While steps are flowing the shared document is the truth on screen. A file that
+      // changed underneath it resets the room, and the merge happens there instead.
+      if (streamingRef.current) return;
 
       const outcome = doc.reconcile(
         { markdown: data.page.markdown, rev: data.page.rev, title: data.page.title },
@@ -154,6 +204,11 @@ export function usePageDoc(page: Page | undefined): PageDocHandle {
   const queueMarkdown = useCallback((markdown: string) => {
     docRef.current?.edit(markdown);
     setEditingRef.current(true);
+    // Every tab holds the same document while steps flow, so only one of them writes it.
+    if (streamingRef.current && !writerRef.current) {
+      heldRef.current = markdown;
+      return;
+    }
     controllerRef.current?.queue({ markdown });
   }, []);
 
@@ -161,6 +216,11 @@ export function usePageDoc(page: Page | undefined): PageDocHandle {
     docRef.current?.editTitle(title);
     setEditingRef.current(true);
     controllerRef.current?.queue({ title });
+  }, []);
+
+  // The icon is not part of the document text, so it needs no revision and no merge.
+  const queueIcon = useCallback((icon: string | null) => {
+    controllerRef.current?.queue({ icon });
   }, []);
 
   const flush = useCallback(async () => {
@@ -175,7 +235,19 @@ export function usePageDoc(page: Page | undefined): PageDocHandle {
     controllerRef.current?.queue({ markdown: resolved });
   }, []);
 
-  return { saveState, incoming, conflict, queueMarkdown, queueTitle, flush, isDirty, resolveConflict };
+  return {
+    saveState,
+    incoming,
+    conflict,
+    room,
+    streaming,
+    queueMarkdown,
+    queueTitle,
+    queueIcon,
+    flush,
+    isDirty,
+    resolveConflict,
+  };
 
   /**
    * Send one patch, merging and retrying while the server says the page moved on.

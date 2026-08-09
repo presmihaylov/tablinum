@@ -1,12 +1,12 @@
 import { Link } from 'react-router-dom';
-import { useWorkspace } from '../lib/workspace';
+import { useContent } from '../lib/content';
 
 interface NotFoundRouteProps {
   path?: string;
 }
 
 export function NotFoundRoute({ path }: NotFoundRouteProps) {
-  const { newPage, currentSpace } = useWorkspace();
+  const { newPage, currentSpace } = useContent();
 
   return (
     <div className="app-content">

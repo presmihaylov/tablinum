@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import type { z } from 'zod';
+import { AccountStore } from '@gitdocs/accounts';
 import {
   PageResponseSchema,
   loadConfig,
@@ -12,6 +13,7 @@ import {
 } from '@gitdocs/shared';
 import { buildApp } from '../../src/app.js';
 import type { ServerDeps } from '../../src/deps.js';
+import type { SlackApi } from '../../src/slack.js';
 import { FsContentStore } from './fs-store.js';
 import { TestGitEngine } from './git-double.js';
 import { MemorySearchIndex } from './search-double.js';
@@ -25,6 +27,7 @@ export interface Harness {
   config: Config;
   deps: ServerDeps;
   store: FsContentStore;
+  accounts: AccountStore;
   git: TestGitEngine;
   search: MemorySearchIndex;
   root: string;
@@ -39,6 +42,8 @@ export interface HarnessOptions {
   env?: EnvSource;
   /** Drop the default token and password so the app runs in OPEN mode. */
   open?: boolean;
+  /** A stub Slack transport. Undefined leaves Slack off unless the env configures a token. */
+  slack?: SlackApi | null;
 }
 
 export async function makeHarness(options: HarnessOptions = {}): Promise<Harness> {
@@ -65,16 +70,31 @@ export async function makeHarness(options: HarnessOptions = {}): Promise<Harness
   await git.init();
   const search = new MemorySearchIndex();
   await search.init();
+  const accounts = new AccountStore({ dbPath: ':memory:' });
+  accounts.init();
+
+  const extra: Array<{ git: TestGitEngine; search: MemorySearchIndex }> = [];
 
   const deps: ServerDeps = {
     config,
     store,
     git,
     search,
+    accounts,
+    workspacesDir: join(root, 'workspaces'),
+    // The same doubles as the default workspace, one set per directory.
+    openWorkspace: async (record) => {
+      const other = new FsContentStore(record.dir);
+      const otherGit = new TestGitEngine(record.dir, 60_000);
+      const otherSearch = new MemorySearchIndex();
+      extra.push({ git: otherGit, search: otherSearch });
+      return { store: other, git: otherGit, search: otherSearch };
+    },
     logger: false,
     webDistDir: null,
     echoSuppressMs: 500,
   };
+  if (options.slack !== undefined) deps.slack = options.slack;
 
   const app = await buildApp(deps);
 
@@ -85,6 +105,7 @@ export async function makeHarness(options: HarnessOptions = {}): Promise<Harness
     store,
     git,
     search,
+    accounts,
     root,
     contentDir: config.contentDir,
     authHeaders: (): Record<string, string> => {
@@ -96,6 +117,11 @@ export async function makeHarness(options: HarnessOptions = {}): Promise<Harness
       await app.close();
       await git.stop();
       await search.close();
+      for (const other of extra) {
+        await other.git.stop();
+        await other.search.close();
+      }
+      accounts.close();
       await rm(root, { recursive: true, force: true });
     },
   };

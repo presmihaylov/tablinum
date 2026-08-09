@@ -32,6 +32,7 @@ import type {
   Space,
   TreeNode,
   UpdatePageBody,
+  UpdateSpaceBody,
 } from '@gitdocs/shared';
 import type { ContentStore, ParsedPageFile, SpaceTree } from '../../src/deps.js';
 import {
@@ -171,6 +172,31 @@ export class FsContentStore implements ContentStore {
     if (input.icon !== undefined) space.icon = input.icon;
     if (input.order !== undefined) space.order = input.order;
     return space;
+  }
+
+  async updateSpace(slug: string, patch: UpdateSpaceBody): Promise<Space> {
+    const file = join(this.contentDir, spaceFileRelPath(slug));
+    if (!existsSync(file)) throw notFound(`No space ${slug}`);
+    const record = parseFlatYaml(await readFile(file, 'utf8'));
+
+    const current: Space = {
+      slug,
+      name: typeof record.name === 'string' ? record.name : slug,
+    };
+    if (typeof record.icon === 'string') current.icon = record.icon;
+    if (typeof record.order === 'number') current.order = record.order;
+
+    const next: Space = { slug, name: patch.name ?? current.name };
+    const icon = patch.icon === undefined ? current.icon : (patch.icon ?? undefined);
+    if (icon !== undefined) next.icon = icon;
+    const order = patch.order === undefined ? current.order : (patch.order ?? undefined);
+    if (order !== undefined) next.order = order;
+
+    const descriptor: Record<string, Scalar> = { name: next.name };
+    if (next.icon !== undefined) descriptor.icon = next.icon;
+    if (next.order !== undefined) descriptor.order = next.order;
+    await writeFile(file, serializeFlatYaml(descriptor), 'utf8');
+    return next;
   }
 
   async getTree(): Promise<SpaceTree[]> {

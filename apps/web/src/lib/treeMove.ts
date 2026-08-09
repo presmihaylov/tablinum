@@ -91,6 +91,35 @@ export function computeMove(request: MoveRequest): MovePatch | null {
   return { id: source.id, body };
 }
 
+export interface SpaceMoveRequest {
+  spaces: readonly SpaceTree[];
+  sourcePath: PagePath;
+  spaceSlug: string;
+}
+
+/**
+ * Translate "move this page to another space" into the single PATCH that realises it.
+ * The page lands at the top level of the target space, after its last page.
+ * Returns null when the space is unknown or the page already sits there.
+ */
+export function computeSpaceMove(request: SpaceMoveRequest): MovePatch | null {
+  const { spaces, sourcePath, spaceSlug } = request;
+  const source = findNode(spaces, sourcePath);
+  if (!source) return null;
+  if (depth(source.path) === 1) return null; // a space home page cannot be moved
+  if (!spaces.some((space) => space.slug === spaceSlug)) return null;
+  if (parentPath(source.path) === spaceSlug) return null; // already at the top of that space
+
+  const siblings = sortNodes(childrenOf(spaces, spaceSlug)).filter((node) => node.path !== source.path);
+  const taken = siblings.map((node) => baseName(node.path));
+  const order = orderForIndex(effectiveOrders(siblings), siblings.length);
+
+  return {
+    id: source.id,
+    body: { order, path: `${spaceSlug}/${uniqueSlug(baseName(source.path), taken)}` },
+  };
+}
+
 /** Path a page gets when it is renamed inside its current parent. */
 export function renamedPath(spaces: readonly SpaceTree[], path: PagePath, title: string): PagePath {
   const parent = parentPath(path);

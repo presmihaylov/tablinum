@@ -76,7 +76,10 @@ const pathArg = z
 
 const pageRefShape = { id: idArg, path: pathArg };
 
-const iconArg = IconSchema.optional().describe('A single emoji shown next to the page title.');
+const iconArg = IconSchema.optional().describe(
+  'The icon shown next to the page title: a single emoji, or ":shortcode:" naming a custom emoji ' +
+    'somebody uploaded.',
+);
 
 // ---------------------------------------------------------------------------
 // tools
@@ -221,7 +224,10 @@ const updatePageTool = defineTool({
       ),
     icon: IconSchema.nullable()
       .optional()
-      .describe('New emoji icon, or null to remove the icon. Omit to keep it.'),
+      .describe(
+        'New icon: a single emoji or ":shortcode:" for a custom one. Pass null to remove the ' +
+          'icon. Omit to keep it.',
+      ),
     order: z
       .number()
       .nullable()

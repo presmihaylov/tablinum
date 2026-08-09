@@ -251,6 +251,21 @@ and sends a direct message for each handle that is new. Nothing is stored: there
 notification table to fall out of step with the pages, and you never hear about your own mention.
 A save never fails because Slack is unreachable.
 
+## Custom emoji
+
+Anybody who is signed in can upload an image and give it a name. Open the avatar menu, pick
+"Custom emoji", choose a PNG, JPEG, WebP or GIF of up to 256 KB, and name it with lower-case
+letters, digits, `_` and `-`.
+
+After that `:name:` works wherever a unicode emoji works: in the body of a page, in the `:`
+autocomplete, in the emoji picker, as a page icon and as a space or workspace icon. You delete your
+own uploads; an admin deletes anybody's.
+
+The page file keeps the plain `:name:` text and the image is resolved when the page is drawn, so
+the content repo stays a tree of markdown and no `<img>` is ever written into a page. Only a name
+somebody has uploaded is treated as an emoji, so `10:30:45` stays a time. The images live in
+`accounts.db` beside the avatars, which means a git remote does not back them up.
+
 ## Content format
 
 The content directory is a git repo. It looks like this:
@@ -342,6 +357,10 @@ Authentication:
 | GET | `/users/:id/avatar` | `?v=<rev>` | the image bytes |
 | PATCH | `/users/:id` | `{ name?, role?, disabled? }` | `{ user: Account }` (admin) |
 | DELETE | `/users/:id` | - | `{ ok: true }` (admin) |
+| GET | `/emoji` | - | `{ emoji: CustomEmoji[] }` |
+| POST | `/emoji` | multipart `shortcode`, `file` | `{ emoji: CustomEmoji }` (any account) |
+| GET | `/emoji/:shortcode/image` | - | the image bytes |
+| DELETE | `/emoji/:id` | - | `{ ok: true }` (the uploader, or an admin) |
 | GET | `/invites` | - | `{ invites: Invite[] }` (admin) |
 | POST | `/invites` | `{ email?, role?, expiresInDays? }` | `{ invite, url }` (admin) |
 | DELETE | `/invites/:id` | - | `{ ok: true }` (admin) |

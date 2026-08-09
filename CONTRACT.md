@@ -66,7 +66,8 @@ here may be committed or pushed to a remote.
 <parent of content dir>/
   search.db        # FTS5 index of the default workspace. Derived: delete it and it rebuilds.
   accounts.db      # people, handles, password hashes, sessions, invites, avatar bytes,
-                   # Slack member ids, workspaces and their members. NOT derived.
+                   # custom emoji bytes, Slack member ids, workspaces and their members.
+                   # NOT derived.
   workspaces/
     handbook/          # a second workspace: a git repo with the same layout as content/
     handbook.search.db # its FTS5 index, a sibling of the directory so the export never holds it
@@ -117,7 +118,7 @@ YAML, always present, always in this key order:
 ---
 id: pg_01J8XYZ...        # ULID-suffixed, stable, NEVER changes across renames/moves.
 title: Deploy runbook    # required, string
-icon: "🚀"               # optional, single emoji
+icon: "🚀"               # optional, single emoji or ":shortcode:" for a custom one
 tags: [ops, deploy]      # optional, string[]
 order: 10                # optional, number; sibling sort. Missing = sort by title.
 created: 2026-08-08T10:00:00.000Z   # ISO 8601 UTC
@@ -133,6 +134,9 @@ Wikilinks `[[page-path]]` and `[[page-path|alias]]` are supported and resolved b
 Mentions are plain `@handle` text: nothing is encoded, so a page stays readable outside tablinum
 and a rename never rewrites a page. A mention must start a word, so `mail@example.com` is an
 address. A mention inside code names nobody.
+Custom emoji are plain `:shortcode:` text for the same reason. The image is resolved when the
+page is drawn, and only a shortcode somebody has uploaded is treated as one, so `10:30:45` stays a
+time. No `<img>` is ever written into a page.
 `![[page-path]]` alone on a line embeds that page; it counts as a link like any wikilink.
 Videos are raw HTML: a one-line `<iframe>` or `<div class="gd-video"><video></video></div>`.
 
@@ -276,6 +280,30 @@ export interface Agent {
 
 Helper in the same file: `mcpUrl(origin)` -> `<origin>/api/v1/mcp`.
 
+`packages/shared/src/emoji.ts` holds custom emoji, the images anybody may upload:
+
+```ts
+export const CUSTOM_EMOJI_ID_PREFIX = 'ce_';
+export const MAX_SHORTCODE_LENGTH = 32;
+export const MAX_CUSTOM_EMOJI_BYTES = 256 * 1024;
+export const CUSTOM_EMOJI_MIME_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+export const SHORTCODE_PATTERN = '[a-z0-9_-]+';
+
+export interface CustomEmoji {
+  id: string;             // "ce_" + ULID
+  shortcode: string;      // lower case, unique across the install, written as `:shortcode:`
+  mime: string;           // the type the server sniffed from the bytes, never the declared one
+  userId: string;         // who uploaded it. Only that person and an admin may delete it.
+  created: string;        // ISO
+}
+
+// The image bytes live in `accounts.db` and NEVER in the content repo.
+```
+
+Helpers in the same file: `customEmojiUrl(shortcode)` -> `/api/v1/emoji/<shortcode>/image`,
+`shortcodeToken(shortcode)` -> `:shortcode:`, `shortcodeOf(icon)`, `sniffImageMime(bytes)`,
+`isShortcode(value)`, `newCustomEmojiId()`, `isCustomEmojiId(value)`.
+
 `packages/shared/src/workspaces.ts` — the top level:
 
 ```ts
@@ -371,6 +399,16 @@ PATCH  /api/v1/agents/:id                      admin, body { name?, identity?, d
 DELETE /api/v1/agents/:id                      admin -> { ok: true }
 POST   /api/v1/agents/:id/token                admin -> { agent, token, url }
                                                (the old token stops working at once)
+
+GET    /api/v1/emoji                           -> { emoji: CustomEmoji[] }   (oldest first)
+POST   /api/v1/emoji                           account, multipart field `shortcode` + field `file`
+                                               -> { emoji: CustomEmoji }
+                                               (409 when the shortcode is taken; 400 on a bad name,
+                                                a file over 256 KB, or bytes that are not
+                                                png/jpeg/webp/gif)
+GET    /api/v1/emoji/:shortcode/image          -> the image bytes, private cache, 404 when none
+DELETE /api/v1/emoji/:id                       account -> { ok: true }
+                                               (the uploader or an admin; 401 for anybody else)
 
 GET    /api/v1/workspaces                      -> { workspaces: Workspace[], current: <slug> }
                                                (only the ones this caller may open)

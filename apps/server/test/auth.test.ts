@@ -220,6 +220,52 @@ describe('cookie sessions', () => {
     expect(rawCookie(loggedOut)).toContain(`${SESSION_COOKIE}=;`);
   });
 
+  /**
+   * A TLS-terminating proxy speaks plain http to the app, so the socket alone always says
+   * "not secure". Without X-Forwarded-Proto the cookie loses its Secure flag and a private
+   * browser window drops it, which reads as a login screen that never goes away.
+   */
+  it('marks the cookie Secure from X-Forwarded-Proto when the proxy is trusted', async () => {
+    const harness = await harnessFor({ env: { TABLINUM_TRUST_PROXY: 'true' } });
+    await claim(harness);
+
+    const login = await harness.app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      headers: { 'x-forwarded-proto': 'https' },
+      payload: { email: 'ada@example.com', password: 'correct horse battery' },
+    });
+    expect(login.statusCode).toBe(200);
+    expect(rawCookie(login)).toContain('Secure');
+  });
+
+  it('leaves the cookie insecure on plain http, or a local install could never log in', async () => {
+    const harness = await harnessFor({ env: { TABLINUM_TRUST_PROXY: 'true' } });
+    await claim(harness);
+
+    const login = await harness.app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      payload: { email: 'ada@example.com', password: 'correct horse battery' },
+    });
+    expect(login.statusCode).toBe(200);
+    expect(rawCookie(login)).not.toContain('Secure');
+  });
+
+  it('ignores a forwarded header from an untrusted client', async () => {
+    const harness = await harnessFor();
+    await claim(harness);
+
+    const login = await harness.app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      headers: { 'x-forwarded-proto': 'https' },
+      payload: { email: 'ada@example.com', password: 'correct horse battery' },
+    });
+    expect(login.statusCode).toBe(200);
+    expect(rawCookie(login)).not.toContain('Secure');
+  });
+
   it('rejects an unsigned cookie value', async () => {
     const harness = await harnessFor();
     const response = await harness.app.inject({

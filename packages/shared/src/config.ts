@@ -27,6 +27,7 @@ export const ENV_KEYS = [
   'TABLINUM_AUTOPUSH_MS',
   'TABLINUM_SLACK_BOT_TOKEN',
   'TABLINUM_PUBLIC_URL',
+  'TABLINUM_TRUST_PROXY',
 ] as const;
 
 export type EnvKey = (typeof ENV_KEYS)[number];
@@ -47,6 +48,18 @@ function readInt(env: EnvSource, key: EnvKey, fallback: number, min: number, max
     throw validation(`${key} must be an integer between ${min} and ${max}, got ${JSON.stringify(raw)}`);
   }
   return value;
+}
+
+const TRUE_VALUES = new Set(['1', 'true', 'yes', 'on']);
+const FALSE_VALUES = new Set(['0', 'false', 'no', 'off']);
+
+function readBool(env: EnvSource, key: EnvKey, fallback: boolean): boolean {
+  const raw = read(env, key);
+  if (raw === undefined) return fallback;
+  const value = raw.toLowerCase();
+  if (TRUE_VALUES.has(value)) return true;
+  if (FALSE_VALUES.has(value)) return false;
+  throw validation(`${key} must be true or false, got ${JSON.stringify(raw)}`);
 }
 
 // Kept string-only so @tablinum/shared stays free of node:path and bundles for the browser.
@@ -121,6 +134,7 @@ export function loadConfig(env: EnvSource = process.env): Config {
     autopushMs: readInt(env, 'TABLINUM_AUTOPUSH_MS', DEFAULT_AUTOPUSH_MS, 0, 3600000),
     slackBotToken: read(env, 'TABLINUM_SLACK_BOT_TOKEN') ?? null,
     publicUrl: publicUrl === null ? null : publicUrl.replace(/\/+$/, ''),
+    trustProxy: readBool(env, 'TABLINUM_TRUST_PROXY', false),
   };
 
   return Object.freeze(config);
@@ -155,5 +169,6 @@ export function redactConfig(config: Config): Record<string, string | number | b
     autopushMs: config.autopushMs,
     slackBotToken: config.slackBotToken === null ? 'unset' : 'set',
     publicUrl: config.publicUrl,
+    trustProxy: config.trustProxy,
   };
 }

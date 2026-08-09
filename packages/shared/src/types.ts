@@ -165,4 +165,10 @@ export interface Config {
   slackBotToken: string | null;
   /** Origin tablinum is reached on, used for the page link in a notification. */
   publicUrl: string | null;
+  /**
+   * Trust `X-Forwarded-Proto` and `X-Forwarded-For`. A reverse proxy terminates TLS and
+   * speaks plain http to tablinum, so without this the session cookie is never marked
+   * `Secure` and every caller shares the proxy's IP.
+   */
+  trustProxy: boolean;
 }

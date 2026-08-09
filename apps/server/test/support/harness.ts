@@ -89,6 +89,7 @@ export async function makeHarness(options: HarnessOptions = {}): Promise<Harness
     logger: false,
     webDistDir: null,
     echoSuppressMs: 500,
+    trustProxy: config.trustProxy,
   };
   if (options.slack !== undefined) deps.slack = options.slack;
 

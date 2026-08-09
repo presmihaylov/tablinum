@@ -97,12 +97,17 @@ LABEL org.opencontainers.image.title="tablinum" \
 
 # HOME is what git --global writes into; pin it so it cannot depend on how the
 # container was started.
+# TABLINUM_TRUST_PROXY defaults on here, not in loadConfig: this image only ever runs
+# behind a TLS-terminating proxy, which speaks plain http to it. Without it the session
+# cookie is never marked Secure, and a private browser window then drops it. Override with
+# -e TABLINUM_TRUST_PROXY=false when the container is exposed directly.
 ENV HOME=/home/node \
     NODE_ENV=production \
     TABLINUM_CONTENT_DIR=/data/content \
     TABLINUM_SEARCH_DB=/data/search.db \
     TABLINUM_WEB_DIR=/app/apps/web/dist \
-    TABLINUM_PORT=4000
+    TABLINUM_PORT=4000 \
+    TABLINUM_TRUST_PROXY=true
 
 # The named volume inherits this ownership the first time it is created.
 RUN mkdir -p /data/content && chown -R node:node /data

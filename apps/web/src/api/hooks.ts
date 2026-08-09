@@ -16,11 +16,15 @@ import type {
   AuthStateResponse,
   AvatarResponse,
   BacklinksResponse,
+  CommentThreadResponse,
+  CommentThreadsResponse,
   ConnectSlackBody,
   CreatePageBody,
   CreateSpaceBody,
+  CreateThreadBody,
   CustomEmojiListResponse,
   CustomEmojiResponse,
+  DeleteCommentResponse,
   DeletePageResponse,
   GitCommitBody,
   GitCommitResponse,
@@ -41,6 +45,7 @@ import type {
   PageListResponse,
   PagePath,
   PageResponse,
+  ReplyBody,
   RevisionContentResponse,
   RegisterBody,
   SearchQuery,
@@ -51,6 +56,7 @@ import type {
   SpacesResponse,
   TreeResponse,
   UpdateAgentBody,
+  UpdateCommentBody,
   UpdateMeBody,
   UpdatePageBody,
   UpdateSpaceBody,
@@ -299,6 +305,93 @@ export function useLogin(): UseMutationResult<AuthResponse, ApiError, LoginBody>
 
 export function useLogout(): UseMutationResult<OkResponse, ApiError, void> {
   return useMutation({ mutationFn: () => api.logout() });
+}
+
+// ---------------------------------------------------------------------------
+// comments
+// ---------------------------------------------------------------------------
+
+/** Every thread on a page, resolved ones included: the panel decides what to show. */
+export function useCommentThreads(
+  id: PageId | undefined,
+): UseQueryResult<CommentThreadsResponse, ApiError> {
+  return useQuery({
+    queryKey: qk.comments(id ?? ''),
+    queryFn: ({ signal }) => {
+      if (!id) throw new ApiError(400, 'VALIDATION', 'Missing page id');
+      return api.comments(id, signal);
+    },
+    enabled: Boolean(id),
+  });
+}
+
+export interface CreateThreadVars {
+  pageId: PageId;
+  body: CreateThreadBody;
+}
+
+export function useCreateThread(): UseMutationResult<CommentThreadResponse, ApiError, CreateThreadVars> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ pageId, body }: CreateThreadVars) => api.createThread(pageId, body),
+    onSuccess: (_data, vars) => void client.invalidateQueries({ queryKey: qk.comments(vars.pageId) }),
+  });
+}
+
+export interface ReplyVars {
+  pageId: PageId;
+  threadId: string;
+  body: ReplyBody;
+}
+
+export function useReplyToThread(): UseMutationResult<CommentThreadResponse, ApiError, ReplyVars> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ threadId, body }: ReplyVars) => api.replyToThread(threadId, body),
+    onSuccess: (_data, vars) => void client.invalidateQueries({ queryKey: qk.comments(vars.pageId) }),
+  });
+}
+
+export interface ResolveThreadVars {
+  pageId: PageId;
+  threadId: string;
+  resolved: boolean;
+}
+
+export function useResolveThread(): UseMutationResult<CommentThreadResponse, ApiError, ResolveThreadVars> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ threadId, resolved }: ResolveThreadVars) =>
+      api.resolveThread(threadId, { resolved }),
+    onSuccess: (_data, vars) => void client.invalidateQueries({ queryKey: qk.comments(vars.pageId) }),
+  });
+}
+
+export interface UpdateCommentVars {
+  pageId: PageId;
+  commentId: string;
+  body: UpdateCommentBody;
+}
+
+export function useUpdateComment(): UseMutationResult<CommentThreadResponse, ApiError, UpdateCommentVars> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ commentId, body }: UpdateCommentVars) => api.updateComment(commentId, body),
+    onSuccess: (_data, vars) => void client.invalidateQueries({ queryKey: qk.comments(vars.pageId) }),
+  });
+}
+
+export interface DeleteCommentVars {
+  pageId: PageId;
+  commentId: string;
+}
+
+export function useDeleteComment(): UseMutationResult<DeleteCommentResponse, ApiError, DeleteCommentVars> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ commentId }: DeleteCommentVars) => api.deleteComment(commentId),
+    onSuccess: (_data, vars) => void client.invalidateQueries({ queryKey: qk.comments(vars.pageId) }),
+  });
 }
 
 // ---------------------------------------------------------------------------

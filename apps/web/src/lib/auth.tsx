@@ -9,16 +9,10 @@ interface AuthContextValue {
   /** True once any request has come back 401: the shell is replaced by the login screen. */
   loginRequired: boolean;
   markAuthenticated: () => void;
-  /** The signed-in account, or null for a shared password, an API token or an open server. */
+  /** The signed-in account. Null means the login screen, because every session names somebody. */
   user: Account | null;
-  /** True once this server has at least one account. */
-  hasAccounts: boolean;
-  /** True while the server is unclaimed and this caller may create the first admin. */
+  /** True while nobody has claimed the server, so this visitor creates the first admin. */
   setupRequired: boolean;
-  /** True when GITDOCS_PASSWORD is set, so the shared-password form still works. */
-  passwordLogin: boolean;
-  /** True while the server answers with no credential at all. */
-  openMode: boolean;
   /** False until the first /auth/state answer lands. */
   ready: boolean;
 }
@@ -46,10 +40,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         void client.invalidateQueries();
       },
       user,
-      hasAccounts: state.data?.accounts ?? false,
       setupRequired: state.data?.setupRequired ?? false,
-      passwordLogin: state.data?.passwordLogin ?? true,
-      openMode: state.data?.openMode ?? false,
       ready: state.data !== undefined,
     }),
     [loginRequired, client, user, state.data],

@@ -10,7 +10,6 @@ import {
   ASSETS_DIR,
   DEFAULT_WORKSPACE_NAME,
   DEFAULT_WORKSPACE_SLUG,
-  OPEN_MODE_WARNING,
 } from '@gitdocs/shared';
 import { normalizePathname, registerAuthHook } from './auth.js';
 import { rememberContext, type RouteContext } from './context.js';
@@ -80,8 +79,6 @@ export async function buildApp(deps: ServerDeps): Promise<FastifyInstance> {
     limits: { fileSize: MAX_ASSET_BYTES, files: 1, fields: 8, fieldSize: 4096 },
   });
   await app.register(fastifyWebsocket, { options: { maxPayload: 64 * 1024 } });
-
-  if (deps.config.openMode) app.log.warn(OPEN_MODE_WARNING);
 
   // The hook must exist before any route is added: Fastify freezes a route's hook chain
   // at registration time, so a route added first would never be protected.

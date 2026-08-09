@@ -152,7 +152,6 @@ export interface Config {
   contentDir: string;
   port: number;
   apiTokens: string[];
-  password: string | null;
   sessionSecret: string;
   gitRemote: string | null;
   gitBranch: string;
@@ -162,8 +161,6 @@ export interface Config {
   autopullMs: number;
   /** Quiet period after a commit before the branch is pushed. 0 disables the auto push. */
   autopushMs: number;
-  /** True when no token and no password are configured: the API is unauthenticated. */
-  openMode: boolean;
   /** Slack bot token (`xoxb-…`). Null disables the mention notifications. */
   slackBotToken: string | null;
   /** Origin gitdocs is reached on, used for the page link in a notification. */

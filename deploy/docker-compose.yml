@@ -56,8 +56,8 @@ services:
   #
   # gitdocs speaks plain HTTP. Put Caddy in front to get https://docs.vpn.example.com
   # for machines on the VPN only. Do NOT publish 80/443 to the public internet:
-  # gitdocs has a single shared password and shared bearer tokens, which is not
-  # an authentication model for the open web.
+  # gitdocs has accounts for people and shared bearer tokens for machines, but no
+  # MFA and no lockout, which is not an authentication model for the open web.
   #
   # To enable:
   #   1. Uncomment this service and the "caddy-data"/"caddy-config" volumes.

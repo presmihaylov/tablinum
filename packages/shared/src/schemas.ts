@@ -177,12 +177,9 @@ const intParam = (min: number, max: number) =>
 // request bodies
 // ---------------------------------------------------------------------------
 
-/**
- * Sign in. Without `email` this is the legacy shared-password login, which still works.
- * With `email` it is an account login and the reply carries an account session instead.
- */
+/** Sign in. Every session names an account, so the address is always required. */
 export const LoginBodySchema = z.object({
-  email: z.string().trim().min(3).max(200).optional(),
+  email: z.string().trim().min(3).max(200),
   password: z.string().min(1),
 });
 

@@ -14,14 +14,7 @@ import {
   type InvitePreviewResponse,
   type OkResponse,
 } from '@gitdocs/shared';
-import {
-  LoginThrottle,
-  accountTokenOf,
-  clearSessionCookie,
-  isPasswordCorrect,
-  setAccountCookie,
-  setSessionCookie,
-} from '../auth.js';
+import { LoginThrottle, accountTokenOf, clearSessionCookie, setAccountCookie } from '../auth.js';
 import { API_PREFIX, type RouteContext } from '../context.js';
 
 /** Only mark the cookie `secure` on https, otherwise a plain-http deployment cannot log in. */
@@ -42,21 +35,12 @@ export function registerAuthRoutes(app: FastifyInstance, ctx: RouteContext): voi
   };
 
   app.get(`${API_PREFIX}/auth/state`, async (request): Promise<AuthStateResponse> => {
-    const { config } = ctx.deps;
-    const empty = accounts.isEmpty();
-    return {
-      accounts: !empty,
-      // Only somebody who can already reach the API may claim an unclaimed server.
-      setupRequired: empty && request.principal.kind !== 'none',
-      passwordLogin: config.password !== null,
-      openMode: config.openMode && empty,
-      user: request.principal.account,
-    };
+    return { setupRequired: accounts.isEmpty(), user: request.principal.account };
   });
 
   /**
-   * Create the first admin. Deliberately not public: on a server with a password or a token
-   * the caller must already hold one, so a stranger cannot claim the instance first.
+   * Create the first admin. Public, because a fresh server has nobody to authorise it and the
+   * person who installed it is the next one to open the page. It works exactly once.
    */
   app.post(`${API_PREFIX}/auth/setup`, async (request, reply): Promise<AuthResponse> => {
     if (!accounts.isEmpty()) {
@@ -64,41 +48,28 @@ export function registerAuthRoutes(app: FastifyInstance, ctx: RouteContext): voi
     }
     const body = parseOrThrow(SetupBodySchema, request.body, 'setup body');
     const account = accounts.createUser({ ...body, role: 'admin' });
+    // The first person owns the workspace the server was started with, and names it next.
+    accounts.addMember(ctx.workspaces.default.record.id, account.id, 'admin');
     startSession(reply, request, account);
     return { ok: true, user: account };
   });
 
   app.post(`${API_PREFIX}/auth/login`, async (request, reply): Promise<AuthResponse> => {
     const body = parseOrThrow(LoginBodySchema, request.body, 'login body');
-    const { config } = ctx.deps;
 
     const client = request.ip;
     if (throttle.isBlocked(client)) {
       throw unauthorized('Too many failed login attempts. Wait a few minutes and try again.');
     }
 
-    if (body.email !== undefined) {
-      const account = accounts.login(body.email, body.password);
-      if (account === null) {
-        throttle.recordFailure(client);
-        throw unauthorized('That email and password did not match');
-      }
-      throttle.reset(client);
-      startSession(reply, request, account);
-      return { ok: true, user: account };
-    }
-
-    if (config.password === null) {
-      throw unauthorized('Password login is not configured on this server');
-    }
-    if (!isPasswordCorrect(body.password, config)) {
+    const account = accounts.login(body.email, body.password);
+    if (account === null) {
       throttle.recordFailure(client);
-      throw unauthorized('Invalid password');
+      throw unauthorized('That email and password did not match');
     }
-
     throttle.reset(client);
-    setSessionCookie(reply, isSecureRequest(request));
-    return { ok: true, user: null };
+    startSession(reply, request, account);
+    return { ok: true, user: account };
   });
 
   app.post(`${API_PREFIX}/auth/logout`, async (request, reply): Promise<OkResponse> => {

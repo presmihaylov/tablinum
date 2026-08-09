@@ -145,7 +145,10 @@ export class LiveConnection {
     socket.onopen = (): void => {
       this.#attempt = 0;
       this.#announce(true);
-      this.#send({ type: 'hello', user: myUser() });
+      // Null only in the moment between the socket opening and the account landing; the
+      // identity listener above says hello as soon as it does.
+      const user = myUser();
+      if (user !== null) this.#send({ type: 'hello', user });
       this.#send({ type: 'watch', path: this.#watching });
       if (this.#editing) this.#send({ type: 'editing', editing: true });
       // The server forgot the room when the socket died; rejoining brings back a fresh

@@ -1,6 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ClientMessage, ServerMessage } from '@gitdocs/shared';
+import type { Account, ClientMessage, ServerMessage } from '@gitdocs/shared';
+import { setAccountIdentity } from '../src/lib/identity';
 import { LiveConnection } from '../src/lib/liveClient';
+
+const ADA: Account = {
+  id: 'us_00000000000000000000000001',
+  email: 'ada@example.com',
+  name: 'Ada Lovelace',
+  handle: 'ada.lovelace',
+  role: 'admin',
+  color: '#3b82f6',
+  avatarRev: null,
+  disabled: false,
+  created: '2026-01-01T00:00:00.000Z',
+  updated: '2026-01-01T00:00:00.000Z',
+};
 
 /** Stands in for the browser socket. Nothing here talks to a network. */
 class FakeSocket {
@@ -48,6 +62,8 @@ const original = globalThis.WebSocket;
 
 beforeEach(() => {
   FakeSocket.opened = [];
+  // A tab reaches the live channel only once it is signed in, so give it an account.
+  setAccountIdentity(ADA);
   vi.useFakeTimers();
   Object.defineProperty(globalThis, 'WebSocket', {
     configurable: true,

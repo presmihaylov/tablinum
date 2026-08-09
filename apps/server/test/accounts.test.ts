@@ -81,7 +81,6 @@ describe('first-time setup', () => {
 
     const before = await harness.app.inject({ method: 'GET', url: '/api/v1/auth/state', headers });
     const state = bodyOf(before, AuthStateResponseSchema);
-    expect(state.accounts).toBe(false);
     expect(state.setupRequired).toBe(true);
     expect(state.user).toBeNull();
 
@@ -89,7 +88,6 @@ describe('first-time setup', () => {
 
     const after = await harness.app.inject({ method: 'GET', url: '/api/v1/auth/state', headers: { cookie } });
     const claimed = bodyOf(after, AuthStateResponseSchema);
-    expect(claimed.accounts).toBe(true);
     expect(claimed.setupRequired).toBe(false);
     expect(claimed.user?.email).toBe(ADMIN.email);
     expect(claimed.user?.role).toBe('admin');
@@ -109,18 +107,24 @@ describe('first-time setup', () => {
     expect(bodyOf(again, ErrorBodySchema).error.code).toBe('CONFLICT');
   });
 
-  it('refuses setup from a stranger on a protected server', async () => {
+  it('makes the first admin a member of the workspace the server was started with', async () => {
     const harness = await harnessFor();
-    const response = await harness.app.inject({
-      method: 'POST',
-      url: '/api/v1/auth/setup',
-      payload: ADMIN,
+    const cookie = await claim(harness);
+
+    const listed = await harness.app.inject({
+      method: 'GET',
+      url: '/api/v1/workspaces',
+      headers: { cookie },
     });
-    expect(response.statusCode).toBe(401);
+    expect(listed.statusCode).toBe(200);
+    const [workspace] = harness.accounts.listWorkspaces();
+    if (workspace === undefined) throw new Error('the server started with no workspace');
+    const [member] = harness.accounts.listMembers(workspace.id);
+    expect(member?.role).toBe('admin');
   });
 
-  it('closes an open server as soon as the first account exists', async () => {
-    const harness = await harnessFor({ open: true });
+  it('lets the first visitor claim a server that has no token either', async () => {
+    const harness = await harnessFor({ noToken: true });
 
     const setup = await harness.app.inject({
       method: 'POST',
@@ -180,7 +184,7 @@ describe('account login', () => {
     expect(replay.statusCode).toBe(401);
   });
 
-  it('leaves the shared password login working beside accounts', async () => {
+  it('refuses a login that names no account', async () => {
     const harness = await harnessFor();
     await claim(harness);
 
@@ -189,9 +193,7 @@ describe('account login', () => {
       url: '/api/v1/auth/login',
       payload: { password: 'correct horse battery staple' },
     });
-    expect(login.statusCode).toBe(200);
-    expect(bodyOf(login, OkResponseSchema).ok).toBe(true);
-    expect(bodyOf(login, AuthResponseSchema).user).toBeNull();
+    expect(login.statusCode).toBe(400);
   });
 });
 

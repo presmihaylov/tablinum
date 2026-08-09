@@ -27,8 +27,11 @@ export function App() {
 }
 
 function AuthGate() {
-  const { loginRequired } = useAuth();
-  if (loginRequired) return <LoginRoute />;
+  const { loginRequired, ready, user } = useAuth();
+  // Nothing is drawn until the answer lands, or the shell would flash before the login screen.
+  if (!ready) return null;
+  // Every browser session names a person, so no account means the login screen, not the shell.
+  if (loginRequired || user === null) return <LoginRoute />;
   return (
     <WorkspacesProvider>
       <WorkspaceScope />
@@ -96,7 +99,6 @@ function AppShell() {
           <Routes>
             <Route path="/" element={<HomeRoute />} />
             <Route path="/p/*" element={<PageRoute metaOpen={metaOpen} />} />
-            <Route path="/login" element={<LoginRoute />} />
             <Route path="*" element={<NotFoundRoute />} />
           </Routes>
         </div>

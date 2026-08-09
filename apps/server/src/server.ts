@@ -6,7 +6,6 @@ import { ContentStore as CoreContentStore, parse } from '@gitdocs/core';
 import { GitEngine as CoreGitEngine } from '@gitdocs/git-sync';
 import { SearchIndex as CoreSearchIndex, defaultDbPath } from '@gitdocs/search';
 import {
-  OPEN_MODE_WARNING,
   isAppError,
   loadConfig,
   redactConfig,
@@ -304,7 +303,10 @@ export async function start(config: Config = loadConfig()): Promise<RunningServe
 
   const app = await buildApp(deps);
   app.log.info(redactConfig(config), 'gitdocs configuration');
-  if (config.openMode) app.log.warn(OPEN_MODE_WARNING);
+  // A fresh install has nobody in it. Say so, because the first visitor becomes the admin.
+  if (accounts.isEmpty()) {
+    app.log.warn(`No account exists yet. Open http://localhost:${config.port} to create the first one.`);
+  }
 
   const ctx = contextOf(app);
   if (ctx === null) throw new Error('buildApp did not register a route context');

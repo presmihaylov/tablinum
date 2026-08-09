@@ -14,10 +14,10 @@ REST API, the MCP server (stdio or remote), or the files themselves.
 | --- | --- | --- |
 | Typecheck | `pnpm -r typecheck` | PASS — 8 projects, strict + `noUncheckedIndexedAccess`, 0 errors |
 | Build | `pnpm -r build` | PASS — 8 dist outputs, Vite bundle 1,186 kB (382 kB gzip) |
-| Test | `pnpm -r test` | PASS — **1565 tests**, 0 failures |
+| Test | `pnpm -r test` | PASS — **1567 tests**, 0 failures |
 
-Per-package tests: shared 193, core 166, accounts 69, git-sync 67, search 92, mcp 102, server 206,
-web 670.
+Per-package tests: shared 193, core 166, accounts 69, git-sync 67, search 92, mcp 102, server 207,
+web 671.
 
 `packages/git-sync` cleans a temp repo at the end of every case and occasionally loses a race with
 git's own file handles (`ENOTEMPTY ... rmdir .git`). It passes on a re-run. It is a test-teardown
@@ -28,15 +28,15 @@ flake, not a product fault.
 ## What works end to end (verified against a live server)
 
 The demo content was seeded into a temp directory, the built server ran on port 4177 with a
-real bearer token and a real password, and every line below is a captured command output.
+real bearer token and a real admin account, and every line below is a captured command output.
 
 ### REST API
 
 - `GET /health` → `{"ok":true,"version":"0.1.0","contentDir":"..."}`.
 - Auth is enforced. No token and a wrong token both give
-  `UNAUTHORIZED: Missing or invalid credentials`. `POST /auth/login` with the password sets a
-  session cookie, and that cookie then authorises `GET /spaces`. A wrong password gives
-  `UNAUTHORIZED: Invalid password`.
+  `UNAUTHORIZED: Missing or invalid credentials`. `POST /auth/login` with an email and a password
+  sets a session cookie, and that cookie then authorises `GET /spaces`. A wrong password gives
+  `UNAUTHORIZED: That email and password did not match`.
 - `GET /tree` returns every space with its nested tree, icons and sibling order.
 - `POST /pages` → 201 with the created page, and the file appears on disk with the frontmatter
   keys in contract order (`id, title, icon, tags, order, created, updated, props`).
@@ -87,7 +87,7 @@ search, and committed. Its id then stays the same across server restarts.
 - `GET /` returns the built `index.html` (973 B), which references the hashed JS and CSS assets.
 - Any non-`/api` GET falls back to `index.html`, so deep links such as
   `/p/docs/getting-started` return 200.
-- Driven in a real browser earlier in the project: the login screen accepts the password, the app
+- Driven in a real browser earlier in the project: the login screen accepts the account, the app
   renders the sidebar tree, space switcher, search, the block editor, the properties panel, tags,
   backlinks and history, and typing autosaves to disk and to git. This browser pass was **not**
   repeated in the final verification run; the two HTTP checks above were.
@@ -183,6 +183,29 @@ Verified three ways.
 
 Still not verified by a two-browser session: how the carets look while someone types.
 
+### The first run
+
+A fresh server has no account, so nobody can reach the API and nobody can authorise the first
+person. `POST /auth/setup` is public exactly while `accounts.isEmpty()` holds. The web sign-in
+screen asks for an email, a name and a password, then keeps the same card and asks the new admin
+to name the workspace the server started with. That second step PATCHes the default workspace
+name and slug, and a "Skip for now" button leaves the default name in place.
+
+Captured against the built server on port 4187, with no API token set:
+
+```
+boot warning        No account exists yet. Open http://localhost:4187 to create the first one.
+GET  /auth/state    {"setupRequired":true,"user":null}
+GET  /tree          401
+POST /auth/setup    200, role "admin", session cookie set
+GET  /auth/state    {"setupRequired":false,"user":{...,"role":"admin"}}
+GET  /workspaces    one workspace, slug "main"
+PATCH /workspaces   {"workspace":{...,"slug":"acme-docs","name":"Acme Docs"}}
+POST /auth/setup    409  (the second call)
+POST /auth/login    400  with {"password":...} alone, 200 with the email
+GET  /tree          200  with the login cookie
+```
+
 ### Accounts, invites and avatars
 
 `packages/accounts` is a second SQLite database, `accounts.db`, beside `search.db` and one level
@@ -200,15 +223,14 @@ bytes. **None of it is in the git repo**, so a push never carries a password or 
 - **Avatars** are PNG, JPEG, WebP or GIF blobs up to 512 kB, served from
   `/users/:id/avatar?v=<rev>` with a long cache lifetime. The rev changes on every upload.
 
-Four credentials now reach the same API: an account cookie, an API bearer token, the old
-`GITDOCS_PASSWORD` cookie, and an agent token. **Accounts are additive.** A token or the shared
-password still works and still counts as an admin, so agents and the MCP server are untouched by
-this change. An agent token is the one credential that is deliberately never an admin.
+Three credentials now reach the same API: an account cookie, an API bearer token and an agent
+token. **Every browser session names an account.** A bearer token is a machine credential, so
+there is no shared password and no open mode. An agent token is the one credential that is
+deliberately never an admin.
 
-Bootstrap needs no new environment variable. `POST /auth/setup` is deliberately **not** public:
-on a server with a password or a token the caller must already hold one, so a stranger cannot
-claim the instance. An open server (no password, no token) is reachable by anybody, and creating
-the first account closes it.
+Bootstrap needs no environment variable. `POST /auth/setup` is public while the server has no
+account, so the first visitor creates the admin, joins the workspace the server started with and
+names it. The route refuses every later call, which closes the server for good.
 
 Roles are `admin` and `member`. An admin invites people, changes roles and removes accounts; the
 store refuses to demote or delete the last admin. Everybody signed in may read the roster,
@@ -220,8 +242,9 @@ Verified by tests, not by a live browser session:
   last-admin rules.
 - 16 route tests (`apps/server/test/accounts.test.ts`) cover setup, login, register, the three
   credential kinds, admin gating and the avatar endpoints.
-- 22 web tests (`apps/web/test/accounts.test.tsx`) cover the sign-in screen, the invite screen,
-  the account menu, the profile dialog and the people dialog.
+- 23 web tests (`apps/web/test/accounts.test.tsx`) cover the gate in front of the shell, the
+  first-run flow, the sign-in screen, the invite screen, the account menu, the profile dialog and
+  the people dialog.
 - 13 CLI tests (`apps/server/test/accounts-cli.test.ts`).
 
 `node apps/server/dist/accounts-cli.js` is the way back in when nobody can sign in: `list`,
@@ -407,10 +430,9 @@ Both `scripts/dev.sh` and `scripts/seed.ts` now also accept the `--` that `pnpm 
 - **Only `POST /auth/login` and `POST /auth/register` are rate limited.** The throttle is 10
   failures per IP address in 5 minutes and lives in memory, so a restart clears it and two
   processes do not share it. No other endpoint is limited.
-- **Presence names an anonymous person by their browser profile.** A signed-in person is named by
-  their account, but a server that still uses the shared password keeps the old behaviour: the
-  name lives in `localStorage`, two people on one machine share an identity, and a name is not
-  proof of who wrote a change. Only the git commit author is authoritative.
+- **Presence names a person by their account, but a name is not proof.** The live channel takes
+  the name the tab sends and does not check it against the session, so a chip is a courtesy, not
+  an audit trail. Only the git commit author is authoritative.
 - **Nothing links a page to the account that wrote it.** Commits carry the configured git author,
   not the signed-in person, so the history does not say who made a change.
 - **Nobody sends the invite email.** The server returns a link and the UI shows it once. Passing
@@ -454,7 +476,7 @@ pnpm dev -- --port 4100  # another API port
 pnpm dev -- --reset      # throw away the generated dev token and secret
 ```
 
-The banner prints the web URL, the login password and the API token.
+The banner prints the web URL and the API token. Open the web UI to create the first account.
 
 ### Production-style run against your own content
 
@@ -464,7 +486,6 @@ pnpm -r build
 export GITDOCS_CONTENT_DIR=/absolute/path/to/content
 export GITDOCS_PORT=4000
 export GITDOCS_API_TOKENS=your-token-here
-export GITDOCS_PASSWORD=your-web-password
 export GITDOCS_SESSION_SECRET=$(openssl rand -hex 32)
 export GITDOCS_AUTOCOMMIT_MS=5000
 export GITDOCS_AUTOPULL_MS=60000        # 0 turns the periodic pull off

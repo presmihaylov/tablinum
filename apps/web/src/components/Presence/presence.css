@@ -21,10 +21,6 @@
   cursor: default;
 }
 
-.presence__chip--me {
-  cursor: pointer;
-}
-
 /* An agent gets square shoulders and a mark, so it never reads as one of the people. */
 .presence__chip--agent {
   border-radius: var(--radius-md);

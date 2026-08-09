@@ -28,11 +28,10 @@ cd deploy
 cp .env.example .env
 ```
 
-Edit `.env` and set at least a password and one API token:
+Edit `.env` and set a session secret and one API token:
 
 ```bash
 # in deploy/.env
-GITDOCS_PASSWORD=$(openssl rand -base64 24)
 GITDOCS_API_TOKENS=$(openssl rand -hex 32)
 GITDOCS_SESSION_SECRET=$(openssl rand -hex 32)
 ```
@@ -45,12 +44,12 @@ docker compose up -d
 docker compose logs -f gitdocs
 ```
 
-Open <http://localhost:4000> and log in with `GITDOCS_PASSWORD`.
+Open <http://localhost:4000>. Nobody has claimed a fresh server, so the sign-in screen asks you to
+create the first account. You become the admin, and you name your first workspace next.
 
-**Then give people real accounts.** Click the avatar in the top bar, choose "Create your account"
-and become the admin. After that, invite everybody else with a link from "People and invites"
-instead of sharing one password. `GITDOCS_PASSWORD` keeps working beside accounts; drop it from
-`.env` and restart once nobody needs it. `GITDOCS_API_TOKENS` is for agents and is unaffected.
+**Claim it before anybody else can.** The setup form is public until the first account exists, so
+open the page as soon as the container is up. After that, invite everybody else with a link from
+"People and invites". `GITDOCS_API_TOKENS` is for agents and scripts only.
 
 Check it from the shell:
 
@@ -62,10 +61,9 @@ curl -fsS -H "Authorization: Bearer $GITDOCS_API_TOKENS" \
   http://localhost:4000/api/v1/tree | head
 ```
 
-> **If you set neither `GITDOCS_PASSWORD` nor `GITDOCS_API_TOKENS`, and no account exists yet,
-> gitdocs starts in OPEN mode.** Every REST endpoint is then unauthenticated and the container logs
-> a loud warning at boot. That is fine on a laptop and wrong anywhere else. Creating the first
-> account closes the server, so an open instance can also be shut with the setup screen.
+> **A server with no account yet is unclaimed.** `POST /api/v1/auth/setup` is public until the
+> first account exists, and the container logs a warning at boot to say so. Open the page and
+> create your admin account straight after the first start.
 
 ### What lives where
 
@@ -228,10 +226,9 @@ failing.
 
 ## 4. Serve it inside a VPN
 
-gitdocs authenticates with one shared password and a list of shared bearer tokens. That is the
+gitdocs authenticates people with an account and machines with a shared bearer token. That is the
 right amount of security for a tool behind a VPN and the wrong amount for the open internet: there
-is no per-user identity, no rate limiting, no lockout, and no MFA. Anyone who reads a token reads
-and writes all of your documentation.
+is no MFA, and anyone who reads a token reads and writes all of your documentation.
 
 So: keep it on the private network, and let the VPN be the outer authentication layer.
 
@@ -622,7 +619,7 @@ Run it with no arguments for the full list. It signs out every session of the ac
 
 The last resort, if `accounts.db` itself is damaged: delete it and restart. Every account, invite
 and avatar goes with it, and **no document is affected**. The server then has no accounts, so the
-setup screen reappears for whoever holds `GITDOCS_PASSWORD` or a bearer token.
+server is unclaimed again, so the sign-in screen asks the next visitor to create the first admin.
 
 ---
 

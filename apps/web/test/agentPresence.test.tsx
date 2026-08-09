@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import { act } from 'react';
-import type { ClientMessage, LiveAgent, ServerMessage } from '@gitdocs/shared';
+import type { Account, ClientMessage, LiveAgent, ServerMessage } from '@gitdocs/shared';
 import { Presence } from '../src/components/Presence/Presence';
+import { setAccountIdentity } from '../src/lib/identity';
 import { LiveProvider } from '../src/lib/live';
 import { installFetch, type MockServer } from './mockFetch';
 import { renderApp } from './render';
@@ -44,6 +45,19 @@ class FakeSocket {
 }
 
 const ADA: LiveAgent = { id: 'ag_01ADA', name: 'Ada Writer', handle: 'ada' };
+/** The person watching the page. The strip draws nothing until this tab has an account. */
+const GRACE: Account = {
+  id: 'us_00000000000000000000000001',
+  email: 'grace@example.com',
+  name: 'Grace Hopper',
+  handle: 'grace.hopper',
+  role: 'admin',
+  color: '#22c55e',
+  avatarRev: null,
+  disabled: false,
+  created: '2026-01-01T00:00:00.000Z',
+  updated: '2026-01-01T00:00:00.000Z',
+};
 const PATH = 'eng/deploy';
 const PAGE_ID = 'pg_01AAAAAAAAAAAAAAAAAAAAAAAA';
 
@@ -52,6 +66,7 @@ let server: MockServer;
 
 beforeEach(() => {
   FakeSocket.opened = [];
+  setAccountIdentity(GRACE);
   Object.defineProperty(globalThis, 'WebSocket', {
     configurable: true,
     writable: true,

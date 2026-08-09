@@ -6,14 +6,13 @@ import { AgentsDialog } from './AgentsDialog';
 import { Avatar } from './Avatar';
 import { PeopleDialog } from './PeopleDialog';
 import { ProfileDialog } from './ProfileDialog';
-import { SetupDialog } from './SetupDialog';
 import './account.css';
 
-type OpenDialog = 'none' | 'profile' | 'people' | 'agents' | 'setup';
+type OpenDialog = 'none' | 'profile' | 'people' | 'agents';
 
 /** The avatar in the top bar: your profile, the roster, and the way out. */
 export function AccountMenu() {
-  const { user, hasAccounts, setupRequired, ready } = useAuth();
+  const { user } = useAuth();
   const logout = useLogout();
   const [menuOpen, setMenuOpen] = useState(false);
   const [dialog, setDialog] = useState<OpenDialog>('none');
@@ -48,9 +47,8 @@ export function AccountMenu() {
     setDialog(next);
   };
 
-  // Nothing to show until the server has said whether it has accounts at all.
-  if (!ready) return null;
-  if (!hasAccounts && !setupRequired) return null;
+  // The shell is only reached by a signed-in account, but the auth state lands a tick later.
+  if (user === null) return null;
 
   return (
     <div className="account-menu" ref={ref}>
@@ -62,58 +60,34 @@ export function AccountMenu() {
         aria-expanded={menuOpen}
         aria-label="Your account"
       >
-        {user === null ? (
-          <span className="btn btn--icon">
-            <UserIcon />
-          </span>
-        ) : (
-          <Avatar person={user} size={24} title={user.name} />
-        )}
+        <Avatar person={user} size={24} title={user.name} />
       </button>
 
       {!menuOpen ? null : (
         <div className="account-menu__panel" role="menu">
-          {user === null ? (
-            <div className="account-menu__who">
-              <div>
-                <div className="account-menu__name">Not signed in</div>
-                <div className="account-menu__sub">A token or the shared password got you in.</div>
-              </div>
+          <div className="account-menu__who">
+            <Avatar person={user} size={32} />
+            <div>
+              <div className="account-menu__name">{user.name}</div>
+              <div className="account-menu__sub">{user.email}</div>
             </div>
-          ) : (
-            <div className="account-menu__who">
-              <Avatar person={user} size={32} />
-              <div>
-                <div className="account-menu__name">{user.name}</div>
-                <div className="account-menu__sub">{user.email}</div>
-              </div>
-            </div>
-          )}
+          </div>
 
           <div className="account-menu__sep" />
 
-          {setupRequired ? (
-            <button type="button" role="menuitem" className="account-menu__item" onClick={() => choose('setup')}>
-              <UserIcon />
-              Create your account
-            </button>
-          ) : null}
+          <button type="button" role="menuitem" className="account-menu__item" onClick={() => choose('profile')}>
+            <UserIcon />
+            Your account
+          </button>
 
-          {user === null ? null : (
-            <button type="button" role="menuitem" className="account-menu__item" onClick={() => choose('profile')}>
-              <UserIcon />
-              Your account
-            </button>
-          )}
-
-          {user?.role === 'admin' ? (
+          {user.role === 'admin' ? (
             <button type="button" role="menuitem" className="account-menu__item" onClick={() => choose('people')}>
               <People />
               People and invites
             </button>
           ) : null}
 
-          {user?.role === 'admin' ? (
+          {user.role === 'admin' ? (
             <button type="button" role="menuitem" className="account-menu__item" onClick={() => choose('agents')}>
               <Bot />
               Agents
@@ -132,12 +106,9 @@ export function AccountMenu() {
         </div>
       )}
 
-      {user === null ? null : (
-        <ProfileDialog user={user} open={dialog === 'profile'} onClose={() => setDialog('none')} />
-      )}
+      <ProfileDialog user={user} open={dialog === 'profile'} onClose={() => setDialog('none')} />
       <PeopleDialog me={user} open={dialog === 'people'} onClose={() => setDialog('none')} />
       <AgentsDialog open={dialog === 'agents'} onClose={() => setDialog('none')} />
-      <SetupDialog open={dialog === 'setup'} onClose={() => setDialog('none')} />
     </div>
   );
 }

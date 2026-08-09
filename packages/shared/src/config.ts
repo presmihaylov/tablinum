@@ -17,7 +17,6 @@ export const ENV_KEYS = [
   'GITDOCS_CONTENT_DIR',
   'GITDOCS_PORT',
   'GITDOCS_API_TOKENS',
-  'GITDOCS_PASSWORD',
   'GITDOCS_SESSION_SECRET',
   'GITDOCS_GIT_REMOTE',
   'GITDOCS_GIT_BRANCH',
@@ -84,7 +83,6 @@ export function loadConfig(env: EnvSource = process.env): Config {
 
   const port = readInt(env, 'GITDOCS_PORT', DEFAULT_PORT, 1, 65535);
   const apiTokens = parseTokens(read(env, 'GITDOCS_API_TOKENS'));
-  const password = read(env, 'GITDOCS_PASSWORD') ?? null;
 
   // Without a configured secret every restart invalidates existing sessions. That is safer
   // than shipping a fixed fallback secret.
@@ -113,7 +111,6 @@ export function loadConfig(env: EnvSource = process.env): Config {
     contentDir: contentDir.replace(/\/+$/, '') || '/',
     port,
     apiTokens: [...apiTokens],
-    password,
     sessionSecret,
     gitRemote: read(env, 'GITDOCS_GIT_REMOTE') ?? null,
     gitBranch,
@@ -122,7 +119,6 @@ export function loadConfig(env: EnvSource = process.env): Config {
     autocommitMs: readInt(env, 'GITDOCS_AUTOCOMMIT_MS', DEFAULT_AUTOCOMMIT_MS, 0, 3600000),
     autopullMs: readInt(env, 'GITDOCS_AUTOPULL_MS', DEFAULT_AUTOPULL_MS, 0, 86400000),
     autopushMs: readInt(env, 'GITDOCS_AUTOPUSH_MS', DEFAULT_AUTOPUSH_MS, 0, 3600000),
-    openMode: apiTokens.length === 0 && password === null,
     slackBotToken: read(env, 'GITDOCS_SLACK_BOT_TOKEN') ?? null,
     publicUrl: publicUrl === null ? null : publicUrl.replace(/\/+$/, ''),
   };
@@ -149,7 +145,6 @@ export function redactConfig(config: Config): Record<string, string | number | b
     contentDir: config.contentDir,
     port: config.port,
     apiTokens: config.apiTokens.length === 0 ? 'none' : `${config.apiTokens.length} token(s)`,
-    password: config.password === null ? 'unset' : 'set',
     sessionSecret: 'set',
     gitRemote: config.gitRemote,
     gitBranch: config.gitBranch,
@@ -158,12 +153,7 @@ export function redactConfig(config: Config): Record<string, string | number | b
     autocommitMs: config.autocommitMs,
     autopullMs: config.autopullMs,
     autopushMs: config.autopushMs,
-    openMode: config.openMode,
     slackBotToken: config.slackBotToken === null ? 'unset' : 'set',
     publicUrl: config.publicUrl,
   };
 }
-
-export const OPEN_MODE_WARNING =
-  'gitdocs is running in OPEN mode: GITDOCS_API_TOKENS and GITDOCS_PASSWORD are both unset, ' +
-  'so every REST and MCP endpoint is unauthenticated. Do not expose this port to a network.';

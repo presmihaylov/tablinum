@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor, within } from '@testing-library/react';
 import { Route, Routes } from 'react-router-dom';
 import userEvent from '@testing-library/user-event';
-import type { Account, AuthStateResponse, Invite } from '@gitdocs/shared';
+import type { Account, AuthStateResponse, Invite, Workspace } from '@gitdocs/shared';
+import { App } from '../src/App';
 import { AccountMenu } from '../src/components/Account/AccountMenu';
 import { Avatar } from '../src/components/Account/Avatar';
 import { PeopleDialog } from '../src/components/Account/PeopleDialog';
@@ -36,6 +37,14 @@ const SAM: Account = {
   color: '#22c55e',
 };
 
+const WORKSPACE: Workspace = {
+  id: 'ws_00000000000000000000000001',
+  slug: 'docs',
+  name: 'Docs',
+  created: '2026-01-01T00:00:00.000Z',
+  updated: '2026-01-01T00:00:00.000Z',
+};
+
 const INVITE: Invite = {
   id: 'iv_00000000000000000000000001',
   email: 'sam@example.com',
@@ -51,10 +60,7 @@ const INVITE: Invite = {
 
 function authState(patch: Partial<AuthStateResponse> = {}): AuthStateResponse {
   return {
-    accounts: true,
     setupRequired: false,
-    passwordLogin: true,
-    openMode: false,
     user: null,
     ...patch,
   };
@@ -104,16 +110,39 @@ describe('the avatar', () => {
   });
 });
 
+describe('the gate in front of the shell', () => {
+  it('shows the sign-in screen while nobody is signed in', async () => {
+    start({ 'GET /api/v1/auth/state': authState() });
+    renderApp(<App />);
+
+    await screen.findByText('Sign in to edit your docs.');
+    expect(screen.queryByRole('button', { name: 'Your account' })).toBeNull();
+  });
+
+  it('shows the shell once an account signs in', async () => {
+    start({
+      'GET /api/v1/auth/state': authState({ user: ADA }),
+      'GET /api/v1/workspaces': { workspaces: [WORKSPACE], current: WORKSPACE.slug },
+    });
+    renderApp(<App />);
+
+    await screen.findByRole('button', { name: 'Your account' });
+    expect(screen.queryByText('Sign in to edit your docs.')).toBeNull();
+  });
+});
+
 describe('the sign-in screen', () => {
-  it('claims an unclaimed server', async () => {
+  it('claims an unclaimed server, then names the first workspace', async () => {
     const mock = start({
-      'GET /api/v1/auth/state': authState({ accounts: false, setupRequired: true }),
+      'GET /api/v1/auth/state': authState({ setupRequired: true }),
       'POST /api/v1/auth/setup': { ok: true, user: ADA },
+      'GET /api/v1/workspaces': { workspaces: [WORKSPACE], current: WORKSPACE.slug },
+      [`PATCH /api/v1/workspaces/${WORKSPACE.id}`]: { workspace: WORKSPACE },
     });
     const user = userEvent.setup();
     renderWithAuth(<LoginRoute />);
 
-    await screen.findByText('Create the first account for this server.');
+    await screen.findByText('Nobody has claimed this server yet. Create your account to start.');
     await user.type(screen.getByLabelText('Email'), ADA.email);
     await user.type(screen.getByLabelText('Your name'), ADA.name);
     await user.type(screen.getByLabelText('Password'), 'stack-of-pancakes');
@@ -127,6 +156,15 @@ describe('the sign-in screen', () => {
         name: ADA.name,
         password: 'stack-of-pancakes',
       });
+    });
+
+    // The account exists now, so the same card asks for the workspace name.
+    await user.type(await screen.findByLabelText('Workspace name'), 'Acme Docs');
+    await user.click(screen.getByRole('button', { name: 'Create workspace' }));
+
+    await waitFor(() => {
+      const call = mock.calls.find((item) => item.method === 'PATCH');
+      expect(bodyOf(call ?? { body: null })).toEqual({ name: 'Acme Docs', slug: 'acme-docs' });
     });
   });
 
@@ -151,32 +189,17 @@ describe('the sign-in screen', () => {
     });
   });
 
-  it('falls back to the shared password on request', async () => {
-    const mock = start({
-      'GET /api/v1/auth/state': authState(),
-      'POST /api/v1/auth/login': { ok: true, user: null },
-    });
+  it('keeps the sign-in button dead until an address is given', async () => {
+    start({ 'GET /api/v1/auth/state': authState() });
     const user = userEvent.setup();
     renderWithAuth(<LoginRoute />);
 
-    await user.click(await screen.findByRole('button', { name: 'Use the shared password' }));
-    expect(screen.queryByLabelText('Email')).toBeNull();
+    // Every session names an account, so a password on its own gets nobody in.
+    await user.type(await screen.findByLabelText('Password'), 'one-shared-secret');
+    expect(screen.getByRole('button', { name: 'Sign in' })).toBeDisabled();
 
-    await user.type(screen.getByLabelText('Password'), 'one-shared-secret');
-    await user.click(screen.getByRole('button', { name: 'Sign in' }));
-
-    await waitFor(() => {
-      const call = mock.calls.find((item) => item.url.pathname === '/api/v1/auth/login');
-      expect(bodyOf(call ?? { body: null })).toEqual({ password: 'one-shared-secret' });
-    });
-  });
-
-  it('offers no email field when the server has no accounts and cannot be claimed', async () => {
-    start({ 'GET /api/v1/auth/state': authState({ accounts: false, setupRequired: false }) });
-    renderWithAuth(<LoginRoute />);
-
-    await screen.findByText('Sign in to edit your docs.');
-    expect(screen.queryByLabelText('Email')).toBeNull();
+    await user.type(screen.getByLabelText('Email'), ADA.email);
+    expect(screen.getByRole('button', { name: 'Sign in' })).toBeEnabled();
   });
 });
 
@@ -242,8 +265,8 @@ describe('the invite screen', () => {
 });
 
 describe('the account menu', () => {
-  it('stays out of the way on a server with no accounts', async () => {
-    start({ 'GET /api/v1/auth/state': authState({ accounts: false, setupRequired: false }) });
+  it('stays out of the way until the account lands', async () => {
+    start({ 'GET /api/v1/auth/state': authState() });
     const { container } = renderApp(
       <AuthProvider>
         <AccountMenu />

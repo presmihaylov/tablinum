@@ -96,7 +96,8 @@ pnpm build
 pnpm dev                  # API on :4000, web on :5173
 ```
 
-Open http://localhost:5173 and log in with `GITDOCS_PASSWORD`.
+Open http://localhost:5173. Nobody has claimed a fresh server, so the sign-in screen asks you to
+create the first account. You become the admin, and you name your first workspace on the next step.
 
 On first boot gitdocs creates the content repo at `GITDOCS_CONTENT_DIR`, runs `git init` in it and
 writes a starter space. That directory is a normal git repo: clone it, edit it, commit to it.
@@ -137,8 +138,8 @@ a three-way merge against the text it last had confirmed:
   versions that are not chosen are shown as a diff. Nothing is saved until you decide.
 
 The people on a page are shown as coloured initials in the top bar. An avatar pulses while that
-person has unsaved edits. A signed-in person is named by their account. Without accounts each
-browser profile names itself; click your own avatar to change the name.
+person has unsaved edits. Everybody on a page is named by their account, because a browser reaches
+the app only once it has signed in.
 
 **Git is the source of truth.** A pull that git cannot rebase does not silently lose anything: the
 status pill in the sidebar turns into a conflict button, and the dialog behind it shows every file
@@ -147,13 +148,12 @@ written to the working tree and committed like any other change.
 
 ## Accounts, invites and avatars
 
-Accounts are optional and additive. A server with no accounts behaves exactly as before: bearer
-tokens and the shared `GITDOCS_PASSWORD` keep working, and agents never notice the difference.
+Every person who reaches the web UI has an account. Machines are the exception: they send a bearer
+token instead, either one from `GITDOCS_API_TOKENS` or a per-agent `gda_` token.
 
-1. **Claim the server.** Open the app with a token or the shared password, click the avatar in the
-   top bar, and choose "Create your account". You become the admin. On a server with no password
-   and no token at all, the sign-in screen offers the same form. Creating the first account closes
-   an open server: from then on nobody reaches the API without a credential.
+1. **Claim the server.** Open a fresh server and the sign-in screen asks for an email, a name and a
+   password. The first visitor becomes the admin, and then names the workspace the server started
+   with. The form works exactly once: from then on nobody reaches the API without a credential.
 2. **Invite people.** As an admin, open "People and invites" and create a link. Leave the email
    empty for a link anybody may use, or pin it to one address so the link cannot be redirected.
    A link expires after 14 days by default and is spent once it is used.
@@ -319,18 +319,17 @@ Base URL `http://localhost:4000/api/v1`. JSON in, JSON out.
 Authentication:
 
 - Agents send `Authorization: Bearer <token>`, with tokens from `GITDOCS_API_TOKENS`.
-- The web UI posts to `/auth/login` and gets a signed httpOnly session cookie. The body is
-  `{ email, password }` for an account, or `{ password }` for the shared `GITDOCS_PASSWORD`.
-- All three grant the same access to the content. Only an account names a person.
-- If `GITDOCS_API_TOKENS` and `GITDOCS_PASSWORD` are both unset and no account exists, gitdocs runs
-  in **open mode** with no authentication and logs a loud warning. Use that for local work only.
+- The web UI posts `{ email, password }` to `/auth/login` and gets a signed httpOnly session cookie.
+- Both grant the same access to the content. Only an account names a person.
+- `POST /auth/setup` is the one public write. It creates the first admin on a server that has no
+  account yet, and it refuses every later call.
 
 | Method | Path | Body / query | Returns |
 | --- | --- | --- | --- |
 | GET | `/health` | - | `{ ok, version, contentDir }` |
-| POST | `/auth/login` | `{ password }` or `{ email, password }` | `{ ok, user }` + session cookie |
+| POST | `/auth/login` | `{ email, password }` | `{ ok, user }` + session cookie |
 | POST | `/auth/logout` | - | `{ ok: true }` |
-| GET | `/auth/state` | - | `{ accounts, setupRequired, passwordLogin, openMode, user }` |
+| GET | `/auth/state` | - | `{ setupRequired, user }` |
 | POST | `/auth/setup` | `{ email, name, password }` | `{ ok, user }` (first admin only) |
 | GET | `/auth/invite/:token` | - | `{ email, role, expires, invitedBy }` |
 | POST | `/auth/register` | `{ token, email?, name, password }` | `{ ok, user }` + session cookie |
@@ -498,7 +497,6 @@ All configuration comes from environment variables. See `.env.example` for the a
 | `GITDOCS_CONTENT_DIR` | `<repo>/.data/content` | Absolute path to the content git repo |
 | `GITDOCS_PORT` | `4000` | REST API port |
 | `GITDOCS_API_TOKENS` | - | Comma-separated bearer tokens |
-| `GITDOCS_PASSWORD` | - | Web UI password |
 | `GITDOCS_SESSION_SECRET` | random per boot | Cookie signing secret |
 | `GITDOCS_GIT_REMOTE` | - | Optional remote for the content repo |
 | `GITDOCS_GIT_BRANCH` | `main` | Branch to commit, pull and push |

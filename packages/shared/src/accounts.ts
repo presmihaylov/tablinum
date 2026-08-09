@@ -6,9 +6,9 @@ import { IsoDateSchema } from './schemas.js';
 /**
  * Accounts.
  *
- * They are additive: the static bearer tokens and the single GITDOCS_PASSWORD keep working
- * exactly as before, so agents and the MCP server are unaffected. What accounts add is a
- * person behind an edit, an invite link instead of a shared password, and an avatar.
+ * Every person who reaches the web UI has one: a browser session always names somebody, so an
+ * edit, a mention and a presence chip all have a person behind them. Machines are the exception
+ * and use a bearer token instead: the static API tokens and the per-agent `gda_` tokens.
  */
 
 /** Prefix of a user id, in the style of the page ids. */
@@ -145,26 +145,17 @@ export const UpdateUserBodySchema = z
 // ---------------------------------------------------------------------------
 
 export const AuthStateResponseSchema = z.object({
-  /** True once at least one account exists, so the sign-in form asks for an email. */
-  accounts: z.boolean(),
-  /** True while nobody has claimed the server and this caller may create the first admin. */
+  /** True while nobody has claimed the server, so the next visitor creates the first admin. */
   setupRequired: z.boolean(),
-  /** True when GITDOCS_PASSWORD is set, so the shared-password form still works. */
-  passwordLogin: z.boolean(),
-  /** True while the server answers without any credential at all. */
-  openMode: z.boolean(),
   user: AccountSchema.nullable(),
 });
 
 export const MeResponseSchema = z.object({ user: AccountSchema.nullable() });
 
-/**
- * What sign-in, sign-up and first-time setup all return. `user` is null after a shared-password
- * login, because that credential names nobody.
- */
+/** What sign-in, sign-up and first-time setup all return. Every one of them names an account. */
 export const AuthResponseSchema = z.object({
   ok: z.literal(true),
-  user: AccountSchema.nullable(),
+  user: AccountSchema,
 });
 
 export const UsersResponseSchema = z.object({ users: z.array(AccountSchema) });

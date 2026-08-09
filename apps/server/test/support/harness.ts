@@ -19,7 +19,6 @@ import { TestGitEngine } from './git-double.js';
 import { MemorySearchIndex } from './search-double.js';
 
 export const TEST_TOKEN = 'test-token-aaaaaaaaaaaaaaaa';
-export const TEST_PASSWORD = 'correct horse battery staple';
 export const TEST_SESSION_SECRET = 'test-session-secret-0123456789abcdef';
 
 export interface Harness {
@@ -40,8 +39,8 @@ export interface Harness {
 export interface HarnessOptions {
   /** Extra or overriding environment for loadConfig(). */
   env?: EnvSource;
-  /** Drop the default token and password so the app runs in OPEN mode. */
-  open?: boolean;
+  /** Start with no API token, so only an account can get in. */
+  noToken?: boolean;
   /** A stub Slack transport. Undefined leaves Slack off unless the env configures a token. */
   slack?: SlackApi | null;
 }
@@ -56,10 +55,7 @@ export async function makeHarness(options: HarnessOptions = {}): Promise<Harness
     GITDOCS_AUTOCOMMIT_MS: '25',
     GITDOCS_AUTOPULL_MS: '0',
   };
-  if (options.open !== true) {
-    baseEnv.GITDOCS_API_TOKENS = TEST_TOKEN;
-    baseEnv.GITDOCS_PASSWORD = TEST_PASSWORD;
-  }
+  if (options.noToken !== true) baseEnv.GITDOCS_API_TOKENS = TEST_TOKEN;
 
   const config = loadConfig({ ...baseEnv, ...options.env });
 

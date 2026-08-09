@@ -312,12 +312,12 @@ export function useAuthState(): UseQueryResult<AuthStateResponse, ApiError> {
   });
 }
 
+/**
+ * Claim a fresh server. Nothing is invalidated here on purpose: the caller shows the
+ * first-workspace step next, and a refreshed auth state would swap the shell in under it.
+ */
 export function useSetup(): UseMutationResult<AuthResponse, ApiError, SetupBody> {
-  const client = useQueryClient();
-  return useMutation({
-    mutationFn: (body: SetupBody) => api.setup(body),
-    onSuccess: () => void client.invalidateQueries({ queryKey: qk.authState }),
-  });
+  return useMutation({ mutationFn: (body: SetupBody) => api.setup(body) });
 }
 
 export function useRegister(): UseMutationResult<AuthResponse, ApiError, RegisterBody> {

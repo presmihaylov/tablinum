@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
-import type { LivePresence } from '@gitdocs/shared';
-import { isAnonymous, myUser, onIdentityChange, renameMe } from '../../lib/identity';
+import type { LivePresence, LiveUser } from '@gitdocs/shared';
+import { myUser, onIdentityChange } from '../../lib/identity';
 import { useLive } from '../../lib/live';
 import { Bot } from '../ui/Icon';
-import { PromptDialog, type PromptRequest } from '../ui/PromptDialog';
 import './presence.css';
 
 /** Two letters are enough to tell one avatar from another at this size. */
@@ -14,13 +13,12 @@ function initials(name: string): string {
   return `${first}${second}`.toUpperCase();
 }
 
-function label(user: LivePresence, mine: boolean): string {
+function label(user: LivePresence): string {
   if (user.agent !== null) {
     const who = `${user.name} (@${user.agent.handle})`;
     return user.editing ? `${who} is writing this page` : `${who} is reading this page`;
   }
-  const who = mine ? `${user.name} (you)` : user.name;
-  return user.editing ? `${who} is editing` : who;
+  return user.editing ? `${user.name} is editing` : user.name;
 }
 
 function chipClass(user: LivePresence): string {
@@ -33,69 +31,32 @@ function chipClass(user: LivePresence): string {
 /** Who else is on the page this tab shows. Nothing is drawn when nobody else is here. */
 export function Presence() {
   const { presence, connected } = useLive();
-  const [prompt, setPrompt] = useState<PromptRequest | null>(null);
-  const [me, setMe] = useState(() => myUser());
-  const [anonymous, setAnonymous] = useState(() => isAnonymous());
+  const [me, setMe] = useState<LiveUser | null>(() => myUser());
 
-  useEffect(
-    () =>
-      onIdentityChange((user) => {
-        setMe(user);
-        setAnonymous(isAnonymous());
-      }),
-    [],
-  );
+  useEffect(() => onIdentityChange((user) => setMe(user)), []);
 
-  // A signed-in name belongs to the account. Rename it in the profile dialog instead.
-  const rename = (): void =>
-    setPrompt({
-      title: 'Change your display name',
-      label: 'The name other people see',
-      initialValue: me.name,
-      confirmLabel: 'Rename',
-      onConfirm: (value) => setMe(renameMe(value)),
-    });
-
-  const others = presence.filter((user) => user.id !== me.id);
-  if (!connected || others.length === 0) {
-    return <PromptDialog request={prompt} onClose={() => setPrompt(null)} />;
-  }
+  const others = presence.filter((user) => user.id !== me?.id);
+  if (!connected || me === null || others.length === 0) return null;
 
   return (
-    <>
-      <div className="presence" aria-label="People on this page">
-        {others.map((user) => (
-          <span
-            key={user.id}
-            className={chipClass(user)}
-            style={{ backgroundColor: user.color }}
-            title={label(user, false)}
-          >
-            {user.agent === null ? initials(user.name) : <Bot />}
-          </span>
-        ))}
-        {anonymous ? (
-          <button
-            type="button"
-            className="presence__chip presence__chip--me"
-            style={{ backgroundColor: me.color }}
-            onClick={rename}
-            title={`${me.name} (you). Click to rename.`}
-          >
-            {initials(me.name)}
-          </button>
-        ) : (
-          <span
-            className="presence__chip presence__chip--me"
-            style={{ backgroundColor: me.color }}
-            title={`${me.name} (you)`}
-          >
-            {initials(me.name)}
-          </span>
-        )}
-      </div>
-
-      <PromptDialog request={prompt} onClose={() => setPrompt(null)} />
-    </>
+    <div className="presence" aria-label="People on this page">
+      {others.map((user) => (
+        <span
+          key={user.id}
+          className={chipClass(user)}
+          style={{ backgroundColor: user.color }}
+          title={label(user)}
+        >
+          {user.agent === null ? initials(user.name) : <Bot />}
+        </span>
+      ))}
+      <span
+        className="presence__chip presence__chip--me"
+        style={{ backgroundColor: me.color }}
+        title={`${me.name} (you)`}
+      >
+        {initials(me.name)}
+      </span>
+    </div>
   );
 }

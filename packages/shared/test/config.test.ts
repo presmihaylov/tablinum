@@ -23,10 +23,8 @@ describe('loadConfig defaults', () => {
     expect(config.autopushMs).toBe(5000);
   });
 
-  it('runs in open mode when no token and no password are set', () => {
+  it('starts with no API token at all', () => {
     expect(config.apiTokens).toEqual([]);
-    expect(config.password).toBeNull();
-    expect(config.openMode).toBe(true);
   });
 
   it('generates a session secret and freezes the result', () => {
@@ -40,7 +38,6 @@ describe('loadConfig overrides', () => {
     GITDOCS_CONTENT_DIR: '/srv/docs/',
     GITDOCS_PORT: '8080',
     GITDOCS_API_TOKENS: ' alpha, beta ,, alpha ',
-    GITDOCS_PASSWORD: 'hunter2',
     GITDOCS_SESSION_SECRET: 'a-long-enough-secret',
     GITDOCS_GIT_REMOTE: 'git@example.com:team/docs.git',
     GITDOCS_GIT_BRANCH: 'trunk',
@@ -56,7 +53,6 @@ describe('loadConfig overrides', () => {
 
   it('splits, trims and dedupes tokens', () => {
     expect(config.apiTokens).toEqual(['alpha', 'beta']);
-    expect(config.openMode).toBe(false);
   });
 
   it('accepts zero for the timers', () => {
@@ -67,7 +63,7 @@ describe('loadConfig overrides', () => {
 
   it('treats an empty variable as unset', () => {
     expect(loadConfig({ GITDOCS_GIT_BRANCH: '   ' }).gitBranch).toBe('main');
-    expect(loadConfig({ GITDOCS_PASSWORD: '' }).password).toBeNull();
+    expect(loadConfig({ GITDOCS_API_TOKENS: '  ' }).apiTokens).toEqual([]);
   });
 });
 
@@ -108,10 +104,9 @@ describe('getConfig', () => {
 describe('redactConfig', () => {
   it('hides secrets', () => {
     const redacted = redactConfig(
-      loadConfig({ GITDOCS_API_TOKENS: 'a,b', GITDOCS_PASSWORD: 'hunter2' }),
+      loadConfig({ GITDOCS_API_TOKENS: 'a,b', GITDOCS_SESSION_SECRET: 'hunter2-and-then-some' }),
     );
     expect(redacted.apiTokens).toBe('2 token(s)');
-    expect(redacted.password).toBe('set');
     expect(redacted.sessionSecret).toBe('set');
     expect(JSON.stringify(redacted)).not.toContain('hunter2');
   });

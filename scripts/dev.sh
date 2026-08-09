@@ -75,7 +75,6 @@ set -a; . "$DEV_ENV_FILE"; set +a
 export GITDOCS_CONTENT_DIR="${GITDOCS_CONTENT_DIR:-$ROOT/.data/content}"
 export GITDOCS_PORT="${API_PORT:-${GITDOCS_PORT:-4000}}"
 export GITDOCS_API_TOKENS="${GITDOCS_API_TOKENS:-$GITDOCS_DEV_TOKEN}"
-export GITDOCS_PASSWORD="${GITDOCS_PASSWORD:-dev}"
 export GITDOCS_SESSION_SECRET="${GITDOCS_SESSION_SECRET:-$GITDOCS_DEV_SESSION_SECRET}"
 export GITDOCS_SEARCH_DB="${GITDOCS_SEARCH_DB:-$ROOT/.data/search.db}"
 export GITDOCS_GIT_BRANCH="${GITDOCS_GIT_BRANCH:-main}"
@@ -109,8 +108,8 @@ cat <<BANNER
   health      ${CYAN}http://localhost:${GITDOCS_PORT}/api/v1/health${OFF}
   content     ${DIM}${GITDOCS_CONTENT_DIR}${OFF}
 
-  login password   ${GREEN}${GITDOCS_PASSWORD}${OFF}
   API token        ${GREEN}${GITDOCS_API_TOKENS}${OFF}
+  ${DIM}open the web UI and create the first account; you become the admin${OFF}
 
   ${DIM}curl -H "Authorization: Bearer \$GITDOCS_API_TOKENS" \\
     http://localhost:${GITDOCS_PORT}/api/v1/tree${OFF}

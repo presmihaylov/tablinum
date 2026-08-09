@@ -9,7 +9,7 @@ import {
   SpacesResponseSchema,
 } from '@gitdocs/shared';
 import { SESSION_COOKIE } from '../src/auth.js';
-import { bodyOf, makeHarness, seed, TEST_PASSWORD, TEST_TOKEN, type Harness } from './support/harness.js';
+import { bodyOf, makeHarness, seed, TEST_TOKEN, type Harness } from './support/harness.js';
 
 const open: Harness[] = [];
 
@@ -95,7 +95,6 @@ describe('mutation audit', () => {
     { method: 'POST', url: '/api/v1/git/push' },
     { method: 'POST', url: '/api/v1/git/commit' },
     { method: 'POST', url: '/api/v1/git/resolve' },
-    { method: 'POST', url: '/api/v1/auth/setup' },
     { method: 'PATCH', url: '/api/v1/me' },
     { method: 'POST', url: '/api/v1/me/password' },
     { method: 'POST', url: '/api/v1/me/avatar' },
@@ -152,19 +151,31 @@ describe('mutation audit', () => {
       .map((verb) => verb.trim())
       .filter((verb) => verb.length > 0 && !['GET', 'HEAD', 'OPTIONS'].includes(verb));
 
-    // Login, logout and register must stay reachable without a credential; the rest is audited.
-    expect(verbs).toHaveLength(MUTATIONS.length + 3);
+    // Setup, login, logout and register stay reachable without a credential; the rest is audited.
+    expect(verbs).toHaveLength(MUTATIONS.length + 4);
   });
 });
 
 describe('cookie sessions', () => {
-  it('logs in with the password, then authenticates with the cookie alone', async () => {
+  /** Claim a fresh server and keep the session cookie the setup call handed back. */
+  async function claim(harness: Harness): Promise<string> {
+    const response = await harness.app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/setup',
+      payload: { email: 'ada@example.com', name: 'Ada Lovelace', password: 'correct horse battery' },
+    });
+    expect(response.statusCode).toBe(200);
+    return cookiePair(response);
+  }
+
+  it('signs in with an account, then authenticates with the cookie alone', async () => {
     const harness = await harnessFor();
+    await claim(harness);
 
     const wrong = await harness.app.inject({
       method: 'POST',
       url: '/api/v1/auth/login',
-      payload: { password: 'wrong password' },
+      payload: { email: 'ada@example.com', password: 'wrong password' },
     });
     expect(wrong.statusCode).toBe(401);
     expect(bodyOf(wrong, ErrorBodySchema).error.code).toBe('UNAUTHORIZED');
@@ -172,7 +183,7 @@ describe('cookie sessions', () => {
     const login = await harness.app.inject({
       method: 'POST',
       url: '/api/v1/auth/login',
-      payload: { password: TEST_PASSWORD },
+      payload: { email: 'ada@example.com', password: 'correct horse battery' },
     });
     expect(login.statusCode).toBe(200);
     expect(bodyOf(login, OkResponseSchema).ok).toBe(true);
@@ -214,19 +225,32 @@ describe('cookie sessions', () => {
     const response = await harness.app.inject({
       method: 'GET',
       url: '/api/v1/pages',
-      headers: { cookie: `${SESSION_COOKIE}=v1.${Date.now()}` },
+      headers: { cookie: `${SESSION_COOKIE}=u1.not-a-real-session` },
     });
     expect(response.statusCode).toBe(401);
   });
 
+  it('refuses a login without an address, because every session names somebody', async () => {
+    const harness = await harnessFor();
+    await claim(harness);
+    const response = await harness.app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      payload: { password: 'correct horse battery' },
+    });
+    expect(response.statusCode).toBe(400);
+    expect(bodyOf(response, ErrorBodySchema).error.code).toBe('VALIDATION');
+  });
+
   it('throttles repeated wrong passwords', async () => {
     const harness = await harnessFor();
+    await claim(harness);
 
     for (let attempt = 0; attempt < 10; attempt += 1) {
       const response = await harness.app.inject({
         method: 'POST',
         url: '/api/v1/auth/login',
-        payload: { password: `guess-${attempt}` },
+        payload: { email: 'ada@example.com', password: `guess-${attempt}` },
       });
       expect(response.statusCode).toBe(401);
     }
@@ -234,57 +258,57 @@ describe('cookie sessions', () => {
     const blocked = await harness.app.inject({
       method: 'POST',
       url: '/api/v1/auth/login',
-      payload: { password: TEST_PASSWORD },
+      payload: { email: 'ada@example.com', password: 'correct horse battery' },
     });
     expect(blocked.statusCode).toBe(401);
     expect(bodyOf(blocked, ErrorBodySchema).error.message).toContain('Too many');
   });
 });
 
-describe('open mode', () => {
-  it('serves reads and writes with no credential at all', async () => {
-    const harness = await harnessFor({ open: true });
-    expect(harness.config.openMode).toBe(true);
+describe('a server with no account yet', () => {
+  it('refuses every read and write until the first account exists', async () => {
+    const harness = await harnessFor({ noToken: true });
+
+    const listed = await harness.app.inject({ method: 'GET', url: '/api/v1/pages' });
+    expect(listed.statusCode).toBe(401);
 
     const created = await harness.app.inject({
       method: 'POST',
       url: '/api/v1/spaces',
       payload: { slug: 'open', name: 'Open space' },
     });
-    expect(created.statusCode).toBe(200);
-
-    const page = await harness.app.inject({
-      method: 'POST',
-      url: '/api/v1/pages',
-      payload: { path: 'open/notes', title: 'Notes' },
-    });
-    expect(page.statusCode).toBe(201);
-
-    const listed = await harness.app.inject({ method: 'GET', url: '/api/v1/pages' });
-    expect(listed.statusCode).toBe(200);
-    expect(bodyOf(listed, PageListResponseSchema).pages).toHaveLength(2);
+    expect(created.statusCode).toBe(401);
   });
 
-  it('refuses a password login because no password is configured', async () => {
-    const harness = await harnessFor({ open: true });
-    const response = await harness.app.inject({
+  it('lets the first visitor claim it, then works on the cookie alone', async () => {
+    const harness = await harnessFor({ noToken: true });
+
+    const setup = await harness.app.inject({
       method: 'POST',
-      url: '/api/v1/auth/login',
-      payload: { password: 'anything' },
+      url: '/api/v1/auth/setup',
+      payload: { email: 'ada@example.com', name: 'Ada Lovelace', password: 'correct horse battery' },
     });
-    expect(response.statusCode).toBe(401);
+    expect(setup.statusCode).toBe(200);
+
+    const cookie = cookiePair(setup);
+    const created = await harness.app.inject({
+      method: 'POST',
+      url: '/api/v1/spaces',
+      headers: { cookie },
+      payload: { slug: 'eng', name: 'Engineering' },
+    });
+    expect(created.statusCode).toBe(200);
   });
 });
 
 describe('token only', () => {
-  it('ignores cookies when no password is configured', async () => {
-    const harness = await harnessFor({ env: { GITDOCS_PASSWORD: '' } });
-    expect(harness.config.password).toBeNull();
+  it('ignores a cookie that names no session', async () => {
+    const harness = await harnessFor();
 
     const login = await harness.app.inject({
       method: 'POST',
       url: '/api/v1/auth/login',
-      payload: { password: TEST_PASSWORD },
+      payload: { email: 'nobody@example.com', password: 'correct horse battery' },
     });
     expect(login.statusCode).toBe(401);
 

@@ -16,9 +16,6 @@ export const SESSION_COOKIE = 'gitdocs_session';
 /** How long a web session stays valid. */
 export const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
-/** A session that only proves the shared GITDOCS_PASSWORD was typed. */
-const SESSION_PREFIX = 'v1.';
-
 /** A session that names an account. The rest of the payload is the session token. */
 const ACCOUNT_PREFIX = 'u1.';
 
@@ -28,8 +25,10 @@ const PUBLIC_ENDPOINTS = new Set([
   '/api/v1/auth/login',
   // Clearing your own cookie must work even once the session has expired.
   '/api/v1/auth/logout',
-  // The sign-in screen must know whether to ask for an email or the shared password.
+  // The sign-in screen must know whether to sign in or to claim an unclaimed server.
   '/api/v1/auth/state',
+  // An unclaimed server has nobody to authorise the first account, so this one claims it.
+  '/api/v1/auth/setup',
   // An invited person has no credential at all until the form below creates one.
   '/api/v1/auth/register',
 ]);
@@ -94,20 +93,6 @@ function hasValidToken(request: FastifyRequest, config: Config): boolean {
   return matched;
 }
 
-/** Build the cookie payload for a session that starts now. */
-export function sessionValue(now: number = Date.now()): string {
-  return `${SESSION_PREFIX}${now}`;
-}
-
-/** True when a decoded cookie payload is well formed and still inside its lifetime. */
-export function isSessionValueValid(value: string, now: number = Date.now()): boolean {
-  if (!value.startsWith(SESSION_PREFIX)) return false;
-  const issuedAt = Number(value.slice(SESSION_PREFIX.length));
-  if (!Number.isFinite(issuedAt) || issuedAt <= 0) return false;
-  if (issuedAt > now + 60_000) return false; // issued in the future: forged or a clock jump
-  return now - issuedAt < SESSION_TTL_MS;
-}
-
 /** The signed cookie payload this request carries, or null when there is none. */
 function cookiePayload(request: FastifyRequest): string | null {
   const raw = request.cookies[SESSION_COOKIE];
@@ -115,12 +100,6 @@ function cookiePayload(request: FastifyRequest): string | null {
   const unsigned = request.unsignCookie(raw);
   if (!unsigned.valid || unsigned.value === null) return null;
   return unsigned.value;
-}
-
-function hasValidSession(request: FastifyRequest, config: Config): boolean {
-  if (config.password === null) return false;
-  const payload = cookiePayload(request);
-  return payload !== null && isSessionValueValid(payload);
 }
 
 /** The account session token in the cookie, or null when the cookie holds something else. */
@@ -142,11 +121,6 @@ function writeCookie(reply: FastifyReply, value: string, secure: boolean, ttlMs:
   });
 }
 
-/** Attach a fresh shared-password session cookie to the reply. */
-export function setSessionCookie(reply: FastifyReply, secure: boolean): void {
-  writeCookie(reply, sessionValue(), secure, SESSION_TTL_MS);
-}
-
 /** Attach an account session cookie to the reply. The token is the session, not the account. */
 export function setAccountCookie(
   reply: FastifyReply,
@@ -161,13 +135,7 @@ export function clearSessionCookie(reply: FastifyReply): void {
   reply.clearCookie(SESSION_COOKIE, { path: '/' });
 }
 
-/** Constant-time password check against the configured password. */
-export function isPasswordCorrect(candidate: string, config: Config): boolean {
-  if (config.password === null) return false;
-  return constantTimeEquals(candidate, config.password);
-}
-
-/** Small in-memory throttle so the login password cannot be brute forced. */
+/** Small in-memory throttle so an account password cannot be brute forced. */
 export class LoginThrottle {
   readonly #failures = new Map<string, { count: number; firstAt: number }>();
 
@@ -201,16 +169,16 @@ export class LoginThrottle {
 }
 
 /** How the caller proved who it is. */
-export type PrincipalKind = 'account' | 'agent' | 'token' | 'password' | 'open' | 'none';
+export type PrincipalKind = 'account' | 'agent' | 'token' | 'none';
 
 /** Who is making a request. Computed once per request and read by the routes. */
 export interface Principal {
   kind: PrincipalKind;
-  /** The signed-in account, or null for an agent, the shared password, or an open server. */
+  /** The signed-in account, or null for an agent or an API token. */
   account: Account | null;
   /** The agent behind an agent token, or null for every other credential. */
   agent: Agent | null;
-  /** True for an admin account, an API token, the shared password, or an unclaimed server. */
+  /** True for an admin account or an API token, which belongs to the operator. */
   admin: boolean;
 }
 
@@ -243,13 +211,6 @@ export function principalOf(request: FastifyRequest, deps: ServerDeps): Principa
   // An API token belongs to the operator, so it carries the same authority as an admin.
   if (hasValidToken(request, deps.config)) {
     return { kind: 'token', account: null, agent: null, admin: true };
-  }
-  if (hasValidSession(request, deps.config)) {
-    return { kind: 'password', account: null, agent: null, admin: true };
-  }
-  // An open server stops being open the moment somebody creates the first account.
-  if (deps.config.openMode && deps.accounts.isEmpty()) {
-    return { kind: 'open', account: null, agent: null, admin: true };
   }
   return ANONYMOUS;
 }

@@ -309,34 +309,33 @@ Helpers in the same file: `workspaceSlugOf(name)`, `workspaceExportName(slug)` -
 
 `apps/server`, all under `/api/v1`, JSON in/out.
 
-Four credentials, all granting the same access to the content:
+Three credentials, all granting the same access to the content:
 
-1. `Authorization: Bearer <token>`, with tokens from env `GITDOCS_API_TOKENS`. Names nobody.
-2. The shared password from env `GITDOCS_PASSWORD`, exchanged for a session cookie. Names nobody.
-3. An account: an email and a password, exchanged for the same cookie. This one names a person.
-4. `Authorization: Bearer gda_<token>`, issued per agent. This one names an agent, never an admin.
+1. An account: an email and a password, exchanged for a session cookie. This one names a person.
+2. `Authorization: Bearer <token>`, with tokens from env `GITDOCS_API_TOKENS`. Names nobody.
+3. `Authorization: Bearer gda_<token>`, issued per agent. This one names an agent, never an admin.
 
-The cookie is `gitdocs_session`, signed and httpOnly. Its payload starts with `v1.` for a
-shared-password session and `u1.` for an account session. Sessions last 30 days.
-If `GITDOCS_API_TOKENS` and `GITDOCS_PASSWORD` are both unset AND no account exists, run in OPEN
-mode (no auth) and log a loud warning. Creating the first account closes an open server.
+The cookie is `gitdocs_session`, signed and httpOnly. Its payload starts with `u1.`. Sessions last
+30 days.
 
-Accounts are ADDITIVE. Credentials 1 and 2 keep working exactly as before, so agents and the MCP
-server never change. `role: 'admin'` is required for the roster and invite endpoints; everything
-else is open to any credential.
+EVERY BROWSER SESSION NAMES AN ACCOUNT. There is no shared password and no open mode: a bearer
+token is a machine credential and never reaches the web UI. A server with no account yet is
+unclaimed, so `POST /api/v1/auth/setup` is public and the first visitor becomes the admin. That
+route refuses every later call. `role: 'admin'` is required for the roster and invite endpoints;
+everything else is open to any credential.
 
 Every content endpoint answers about ONE workspace, chosen as WORKSPACES above describes. A client
 that names none gets its first workspace, which is what a single-workspace install always sees.
 
 ```
 GET    /api/v1/health                          -> { ok: true, version, contentDir }
-POST   /api/v1/auth/login                      body { password } -> cookie, { ok: true, user: null }
-                                               body { email, password } -> cookie, { ok: true, user: Account }
+POST   /api/v1/auth/login                      body { email, password } -> cookie, { ok: true, user: Account }
 POST   /api/v1/auth/logout                     -> { ok: true }
-GET    /api/v1/auth/state                      (public) -> { accounts, setupRequired, passwordLogin,
-                                                             openMode, user: Account | null }
-POST   /api/v1/auth/setup                      body { email, name, password } -> { ok: true, user: Account }
-                                               (409 once any account exists; makes the first admin)
+GET    /api/v1/auth/state                      (public) -> { setupRequired, user: Account | null }
+POST   /api/v1/auth/setup                      (public) body { email, name, password }
+                                               -> { ok: true, user: Account }
+                                               (409 once any account exists; makes the first admin
+                                                and adds them to the default workspace)
 GET    /api/v1/auth/invite/:token              (public) -> { email: string | null, role, expires, invitedBy }
 POST   /api/v1/auth/register                   (public) body { token, email?, name, password }
                                                -> { ok: true, user: Account }
@@ -465,7 +464,7 @@ every tab in THAT workspace, the originator included; `by` names the tab that ca
 tab ignores its own echo. Each workspace has its own hub and its own rooms.
 
 ```ts
-// A LiveUser is the signed-in Account when there is one, otherwise a name the browser picked.
+// A LiveUser is always the signed-in Account: a tab reaches the live channel only once it has one.
 interface LiveUser { id: string; name: string; color: string }
 
 // An agent works over MCP and holds no socket, so the server seats it and expires it itself.
@@ -533,7 +532,6 @@ Read from env, all packages use `@gitdocs/shared`'s `loadConfig()`:
 | `GITDOCS_CONTENT_DIR` | `/Users/pmihaylov/prg/repos/gitdocs/.data/content` |
 | `GITDOCS_PORT` | `4000` |
 | `GITDOCS_API_TOKENS` | comma-separated bearer tokens |
-| `GITDOCS_PASSWORD` | web UI password |
 | `GITDOCS_SESSION_SECRET` | cookie signing secret |
 | `GITDOCS_GIT_REMOTE` | optional git remote URL |
 | `GITDOCS_GIT_BRANCH` | `main` |

@@ -6,6 +6,8 @@ import {
   CreateSpaceBodySchema,
   DeletePageQuerySchema,
   FrontmatterSchema,
+  GitCommitBodySchema,
+  GitResolveBodySchema,
   GitStatusResponseSchema,
   PageSchema,
   SearchQuerySchema,
@@ -107,6 +109,39 @@ describe('request bodies', () => {
     expect(CreateSpaceBodySchema.parse({ slug: 'eng', name: 'Engineering' }).slug).toBe('eng');
     expect(CreateSpaceBodySchema.safeParse({ slug: 'eng/sub', name: 'x' }).success).toBe(false);
     expect(CreateSpaceBodySchema.safeParse({ slug: '_assets', name: 'x' }).success).toBe(false);
+  });
+
+  it('refuses a commit message carrying the git log separators', () => {
+    expect(GitCommitBodySchema.parse({ message: 'docs: a real message' }).message).toBe(
+      'docs: a real message',
+    );
+    // A real message spans several lines, so only the control bytes are refused.
+    expect(GitCommitBodySchema.safeParse({ message: 'subject\n\nbody' }).success).toBe(true);
+    expect(GitCommitBodySchema.safeParse({ message: `forged${String.fromCharCode(30)}row` }).success).toBe(false);
+    expect(GitCommitBodySchema.safeParse({ message: `forged${String.fromCharCode(31)}field` }).success).toBe(false);
+    expect(GitCommitBodySchema.safeParse({ message: 'ends\u0000here' }).success).toBe(false);
+    expect(GitCommitBodySchema.safeParse({ message: 'x'.repeat(2001) }).success).toBe(false);
+  });
+
+  it('refuses a conflict resolution that names anything but a repo file', () => {
+    const good = { files: [{ file: 'eng/index.md', content: 'body' }] };
+    expect(GitResolveBodySchema.parse(good).files[0]?.file).toBe('eng/index.md');
+
+    const refused = [
+      '.git/config',
+      '.GIT/hooks/post-commit',
+      'eng/.git/config',
+      'eng\\..\\.git\\config',
+      '../escape.md',
+      '/etc/passwd',
+      'C:/windows/x',
+    ];
+    for (const file of refused) {
+      expect(GitResolveBodySchema.safeParse({ files: [{ file, content: 'x' }] }).success).toBe(false);
+    }
+    expect(
+      GitResolveBodySchema.safeParse({ files: good.files, message: 'a\u001eb' }).success,
+    ).toBe(false);
   });
 });
 

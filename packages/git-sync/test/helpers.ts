@@ -143,8 +143,13 @@ export function makeEngine(options: GitEngineOptions): GitEngine {
   return engine;
 }
 
-export function disposeEngines(): void {
-  while (engines.length > 0) engines.pop()?.dispose();
+/** Stop every engine and wait for its queued git commands, so the temp dirs can be removed. */
+export async function disposeEngines(): Promise<void> {
+  const pending = engines.splice(0, engines.length);
+  for (const engine of pending) {
+    engine.dispose();
+    await engine.whenIdle();
+  }
 }
 
 export async function waitFor(

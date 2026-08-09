@@ -153,6 +153,24 @@ export function resetConfigCache(): void {
   cached = null;
 }
 
+/**
+ * A remote URL with any embedded user name and password removed. The deploy guide puts a
+ * token in that URL, so the value must be washed before it is logged or sent to a client.
+ * An scp-style `git@host:path` remote carries no password and is returned unchanged.
+ */
+export function redactRemoteUrl(remote: string | null): string | null {
+  if (remote === null || remote.length === 0) return remote;
+  try {
+    const url = new URL(remote);
+    if (url.username === '' && url.password === '') return remote;
+    url.username = '';
+    url.password = '';
+    return url.toString();
+  } catch {
+    return remote;
+  }
+}
+
 /** Config with every secret masked, safe to log. */
 export function redactConfig(config: Config): Record<string, string | number | boolean | null> {
   return {
@@ -160,7 +178,7 @@ export function redactConfig(config: Config): Record<string, string | number | b
     port: config.port,
     apiTokens: config.apiTokens.length === 0 ? 'none' : `${config.apiTokens.length} token(s)`,
     sessionSecret: 'set',
-    gitRemote: config.gitRemote,
+    gitRemote: redactRemoteUrl(config.gitRemote),
     gitBranch: config.gitBranch,
     gitAuthorName: config.gitAuthorName,
     gitAuthorEmail: config.gitAuthorEmail,

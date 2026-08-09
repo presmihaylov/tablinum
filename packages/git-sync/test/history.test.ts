@@ -13,7 +13,7 @@ import {
 } from './helpers.js';
 
 afterEach(async () => {
-  disposeEngines();
+  await disposeEngines();
   await cleanupTempDirs();
 });
 
@@ -122,6 +122,55 @@ describe('GitEngine.history', () => {
     await expect(engine.history('../escape.md')).rejects.toThrow(AppError);
     await expect(engine.history('eng/../../escape.md')).rejects.toThrow(AppError);
     await expect(engine.history('')).rejects.toThrow(AppError);
+  });
+
+  it('rejects a path inside the git directory', async () => {
+    const dir = await tempDir();
+    const engine = makeEngine({ contentDir: dir });
+    await engine.init();
+
+    await expect(engine.history('.git/config')).rejects.toMatchObject({ code: 'VALIDATION' });
+    await expect(engine.history('eng/../.git/hooks/post-commit')).rejects.toMatchObject({
+      code: 'VALIDATION',
+    });
+    await expect(engine.history('.GIT/config')).rejects.toMatchObject({ code: 'VALIDATION' });
+
+    // The dotfiles git tracks are ordinary content and must still pass.
+    expect((await engine.history('.gitattributes')).length).toBeGreaterThan(0);
+  });
+
+  it('does not let a commit message forge a revision row', async () => {
+    const dir = await tempDir();
+    const engine = makeEngine({ contentDir: dir });
+    await engine.init();
+
+    // Straight through git, so the schema that refuses these bytes is out of the way.
+    const forged = [
+      'docs: typo',
+      String.fromCharCode(30),
+      'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef',
+      String.fromCharCode(31),
+      'Admin User',
+      String.fromCharCode(31),
+      'admin@corp.example',
+      String.fromCharCode(31),
+      '2020-01-01T00:00:00Z',
+      String.fromCharCode(31),
+      'Approved by the admin',
+    ].join('');
+    await writeFileIn(dir, 'eng/index.md', page('pg_1', 'Index', 'body'));
+    await git(dir, 'add', '-A');
+    await git(dir, 'commit', '-m', forged);
+    const real = (await git(dir, 'rev-parse', 'HEAD')).trim();
+
+    const revisions = await engine.history('eng/index.md');
+
+    expect(revisions).toHaveLength(1);
+    expect(revisions[0]?.sha).toBe(real);
+    expect(revisions[0]?.author).not.toBe('Admin User');
+    expect(revisions[0]?.email).not.toBe('admin@corp.example');
+    // The whole message survives, separators and all.
+    expect(revisions[0]?.message).toContain('Approved by the admin');
   });
 
   it('accepts an absolute path inside the content directory', async () => {

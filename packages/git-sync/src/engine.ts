@@ -10,6 +10,7 @@ import {
   DEFAULT_GIT_BRANCH,
   gitError,
   notFound,
+  redactRemoteUrl,
   validation,
 } from '@tablinum/shared';
 import type { Config, GitConflict, GitStatus, Revision } from '@tablinum/shared';
@@ -90,10 +91,11 @@ const GITATTRIBUTES_COMMIT_MESSAGE = 'chore: normalize page line endings';
 const PRE_PULL_COMMIT_MESSAGE = 'docs: save local edits before pull';
 const RESOLVE_COMMIT_MESSAGE = 'docs: resolve conflicts with the remote';
 
-// Unit and record separators: a commit message may contain anything except these two bytes.
+// NUL ends a record: git accepts every other byte in a commit message, so nothing else is
+// safe to split on. The message is the last field, so a stray field separator cannot forge one.
 const FIELD_SEP = '\x1f';
-const RECORD_SEP = '\x1e';
-const LOG_FORMAT = ['%H', '%an', '%ae', '%aI', '%B'].join(FIELD_SEP) + RECORD_SEP;
+const RECORD_SEP = '\x00';
+const LOG_FORMAT = ['%H', '%an', '%ae', '%aI', '%B'].join(FIELD_SEP) + '%x00';
 
 const SHA_RE = /^[0-9a-f]{7,64}$/;
 const BRANCH_RE = /^(?!-)[A-Za-z0-9._][A-Za-z0-9._\-/]*$/;
@@ -154,10 +156,16 @@ function firstLine(value: string): string {
   return line ?? value.trim();
 }
 
+/** Strip `user:password@` out of every URL in a line of git output. */
+function redactUserInfo(text: string): string {
+  return text.replace(/\/\/[^/@\s]*@/g, '//');
+}
+
 /** Pull the most useful single line out of whatever simple-git threw. */
 function describeGitError(err: unknown): string {
-  if (err instanceof Error) return firstLine(err.message) || err.message;
-  return firstLine(String(err));
+  // A failed fetch prints the remote URL, and this text reaches the client.
+  if (err instanceof Error) return redactUserInfo(firstLine(err.message) || err.message);
+  return redactUserInfo(firstLine(String(err)));
 }
 
 function parseLog(raw: string): Revision[] {
@@ -171,7 +179,8 @@ function parseLog(raw: string): Revision[] {
       author: (fields[1] ?? '').trim(),
       email: (fields[2] ?? '').trim(),
       date: (fields[3] ?? '').trim(),
-      message: (fields[4] ?? '').trim(),
+      // The message is the last field, so a separator inside it stays part of the message.
+      message: fields.slice(4).join(FIELD_SEP).trim(),
     });
   }
   return revisions;
@@ -800,8 +809,20 @@ export class GitEngine {
     await git.raw(['merge', '--no-commit', '--no-ff', upstream]).catch(() => '');
 
     try {
-      for (const entry of files) {
-        const target = join(this.contentDir, this.toRepoPath(entry.file));
+      // Only a file git itself reported as conflicted may be rewritten from a request body.
+      const allowed = new Set(this.conflictState?.files ?? (await this.conflictedFiles()));
+      if (allowed.size === 0) throw gitError('There is no conflict to resolve.');
+      // Check every entry before the first write, so a refused batch changes nothing.
+      const targets = files.map((entry) => {
+        const rel = this.toRepoPath(entry.file);
+        if (!allowed.has(rel)) {
+          throw validation(`${entry.file} is not one of the conflicted files`);
+        }
+        return { rel, content: entry.content };
+      });
+
+      for (const entry of targets) {
+        const target = join(this.contentDir, entry.rel);
         await mkdir(dirname(target), { recursive: true });
         await writeFile(target, entry.content, 'utf8');
       }
@@ -993,16 +1014,17 @@ export class GitEngine {
     }
   }
 
+  /** The origin URL, washed of credentials. Every git command still uses `this.remote`. */
   private async remoteUrl(git: SimpleGit): Promise<string | null> {
     try {
       const remotes = await git.getRemotes(true);
       const origin = remotes.find((entry) => entry.name === 'origin');
       const url = origin?.refs.fetch ?? origin?.refs.push ?? '';
-      if (url.length > 0) return url;
+      if (url.length > 0) return redactRemoteUrl(url);
     } catch {
       // Not a repo yet.
     }
-    return this.remote;
+    return redactRemoteUrl(this.remote);
   }
 
   private async lastCommit(): Promise<Revision | null> {
@@ -1119,7 +1141,12 @@ export class GitEngine {
     if (rel.length === 0 || rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
       throw validation(`Invalid ${label}: ${JSON.stringify(input)}`);
     }
-    return rel.split(sep).join('/');
+    const parts = rel.split(sep);
+    // git's own metadata is code, not content. `.gitattributes` and `.gitignore` still pass.
+    if (parts.some((segment) => segment.toLowerCase() === '.git')) {
+      throw validation(`Invalid ${label}: ${JSON.stringify(input)}`);
+    }
+    return parts.join('/');
   }
 }
 

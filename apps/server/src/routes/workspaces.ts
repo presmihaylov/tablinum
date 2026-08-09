@@ -13,7 +13,6 @@ import {
   conflict,
   notFound,
   parseOrThrow,
-  unauthorized,
   validation,
   workspaceExportName,
   workspaceSlugOf,
@@ -24,7 +23,12 @@ import {
   type WorkspaceResponse,
   type WorkspacesResponse,
 } from '@tablinum/shared';
-import { requireAccount, requireAdmin, requireSameSiteNavigation } from '../auth.js';
+import {
+  requireAccount,
+  requireAdmin,
+  requireSameSiteNavigation,
+  requireWorkspaceAdmin,
+} from '../auth.js';
 import { API_PREFIX, type RouteContext } from '../context.js';
 import { unzipToDirectory, zipDirectory } from '../zip.js';
 
@@ -57,18 +61,6 @@ function recordOf(accounts: AccountStore, idOrSlug: string): WorkspaceRecord {
 function toWorkspace(record: WorkspaceRecord): Workspace {
   const { dir: _dir, ...rest } = record;
   return rest;
-}
-
-/** An install admin, or an admin of this one workspace. */
-function requireWorkspaceAdmin(
-  accounts: AccountStore,
-  request: FastifyRequest,
-  record: WorkspaceRecord,
-): void {
-  if (request.principal.admin) return;
-  const account = requireAccount(request);
-  if (accounts.memberRole(record.id, account.id) === 'admin') return;
-  throw unauthorized('Only an admin of this workspace can do that');
 }
 
 /** Refuse a workspace the caller may not even see, before saying anything else about it. */

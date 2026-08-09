@@ -6,7 +6,9 @@ import {
   GitResolveResponseSchema,
   PageResponseSchema,
   hasConflictMarkers,
+  type Account,
 } from '@tablinum/shared';
+import type { WorkspaceRecord } from '@tablinum/accounts';
 import { bodyOf, makeHarness, seed, type Harness } from './support/harness.js';
 
 let harness: Harness;
@@ -24,6 +26,32 @@ function headers(): Record<string, string> {
 }
 
 const FILE = 'eng/deploy.md';
+const PASSWORD = 'correct horse battery staple';
+
+/** The default workspace, the one the harness was configured with. */
+function defaultWorkspace(): WorkspaceRecord {
+  const record = harness.accounts.listWorkspaces()[0];
+  if (record === undefined) throw new Error('The harness has no workspace');
+  return record;
+}
+
+/** A signed-in member of the default workspace, plus the cookie half of its Set-Cookie. */
+async function signIn(): Promise<{ account: Account; cookie: string }> {
+  const email = 'mia@example.com';
+  const account = harness.accounts.createUser({ email, name: 'Mia Novak', password: PASSWORD });
+  harness.accounts.addMember(defaultWorkspace().id, account.id, 'member');
+
+  const login = await harness.app.inject({
+    method: 'POST',
+    url: '/api/v1/auth/login',
+    payload: { email, password: PASSWORD },
+  });
+  expect(login.statusCode).toBe(200);
+  const raw = login.headers['set-cookie'];
+  const first = Array.isArray(raw) ? raw[0] : raw;
+  if (typeof first !== 'string') throw new Error('The login set no cookie');
+  return { account, cookie: first.split(';')[0] ?? '' };
+}
 
 function pageFile(id: string, body: string): string {
   return [
@@ -148,5 +176,68 @@ describe('git conflict endpoints', () => {
       payload: { files: [] },
     });
     expect(response.statusCode).toBe(400);
+  });
+
+  it('rejects a resolution that names git metadata', async () => {
+    const { pageIds } = await seed(harness);
+    armConflict(pageIds[0] ?? '', 'one\n', 'local wins\n', 'remote wins\n');
+    const config = join(harness.contentDir, '.git', 'config');
+    const before = await readFile(config, 'utf8');
+
+    const response = await harness.app.inject({
+      method: 'POST',
+      url: '/api/v1/git/resolve',
+      headers: headers(),
+      payload: { files: [{ file: '.git/config', content: '[core]\n\tfsmonitor = "touch x"\n' }] },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(await readFile(config, 'utf8')).toBe(before);
+  });
+
+  it('rejects a commit message that carries the git log separators', async () => {
+    const { pageIds } = await seed(harness);
+    const id = pageIds[0] ?? '';
+    armConflict(id, 'one\n', 'local wins\n', 'remote wins\n');
+
+    const response = await harness.app.inject({
+      method: 'POST',
+      url: '/api/v1/git/resolve',
+      headers: headers(),
+      payload: {
+        files: [{ file: FILE, content: pageFile(id, 'agreed text') }],
+        message: `docs: fix${String.fromCharCode(30)}forged`,
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+  });
+
+  it('lets an admin of the workspace resolve, and nobody else', async () => {
+    const { pageIds } = await seed(harness);
+    const id = pageIds[0] ?? '';
+    armConflict(id, 'one\n', 'local wins\n', 'remote wins\n');
+    const { account, cookie } = await signIn();
+    const payload = { files: [{ file: FILE, content: pageFile(id, 'agreed text') }] };
+
+    const refused = await harness.app.inject({
+      method: 'POST',
+      url: '/api/v1/git/resolve',
+      headers: { cookie },
+      payload,
+    });
+    expect(refused.statusCode).toBe(401);
+    expect(harness.git.conflict).not.toBeNull();
+
+    harness.accounts.addMember(defaultWorkspace().id, account.id, 'admin');
+
+    const allowed = await harness.app.inject({
+      method: 'POST',
+      url: '/api/v1/git/resolve',
+      headers: { cookie },
+      payload,
+    });
+    expect(allowed.statusCode).toBe(200);
+    expect(harness.git.conflict).toBeNull();
   });
 });

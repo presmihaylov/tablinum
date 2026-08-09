@@ -1,5 +1,6 @@
 import { timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import type { AccountStore, WorkspaceRecord } from '@tablinum/accounts';
 import {
   ASSETS_DIR,
   isAgentToken,
@@ -274,6 +275,18 @@ export function requireAccount(request: FastifyRequest): Account {
   const { account } = request.principal;
   if (account === null) throw unauthorized('Sign in with an account to do that');
   return account;
+}
+
+/** An install admin, or an admin of this one workspace. */
+export function requireWorkspaceAdmin(
+  accounts: AccountStore,
+  request: FastifyRequest,
+  record: WorkspaceRecord,
+): void {
+  if (request.principal.admin) return;
+  const account = requireAccount(request);
+  if (accounts.memberRole(record.id, account.id) === 'admin') return;
+  throw unauthorized('Only an admin of this workspace can do that');
 }
 
 /**

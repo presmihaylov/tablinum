@@ -172,6 +172,11 @@ export const CORPUS: Record<string, string> = {
 
   'fenced code empty': '```\n```\n',
 
+  'mermaid diagram':
+    '```mermaid\ngraph TD\n  A[Start] --> B{Is it good?}\n  B -->|yes| C[Ship it]\n  B -->|no| A\n```\n',
+
+  'mermaid diagram with tildes': '~~~mermaid\nsequenceDiagram\n  A->>B: hi\n~~~\n',
+
   'indented code': '    indented code line\n    second line\n',
 
   'tab-indented code': '\tcode with tab\n',
@@ -467,6 +472,14 @@ export const CORPUS: Record<string, string> = {
   'fenced code with trailing spaces on the fence line': '```js  \nlet a = 1;\n```\n',
 
   'fenced code holding a bare triple backtick': '```\na ``` b\n```\n',
+
+  'mermaid diagram holding a bare triple backtick':
+    '```mermaid\ngraph TD\n  A["a ``` b"] --> B\n```\n',
+
+  // Trailing spaces on the fence line and on a content line, a blank first line, a tab-only
+  // line and a blank line before the close: none of it is the editor's to tidy up.
+  'mermaid diagram with awkward whitespace':
+    '```mermaid  \n\ngraph LR\n  A -->|"  yes  "| B  \n\t\n  B --> C\n\n```\n',
 
   'fenced code ending in a blank line': '```\ncode\n\n```\n',
 

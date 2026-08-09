@@ -127,9 +127,12 @@ describe('remote git operations under load', () => {
         })(),
       );
     }
-    work.push(engine.pull());
+    // A save writes to disk without the git mutex, so this pull may lose the race and abort.
+    // It then retries below, once the burst is over.
+    work.push(engine.pull().catch(() => undefined));
     await Promise.all(work);
     await engine.whenIdle();
+    await engine.pull();
 
     expect(await isClean(dir)).toBe(true);
     expect(engine.conflict()).toBeNull();
@@ -139,6 +142,40 @@ describe('remote git operations under load', () => {
     for (let i = 0; i < 10; i += 1) {
       expect(tracked).toContain(`eng/local${i}.md`);
     }
+  });
+
+  it('survives a pull that races a page saved over and over', async () => {
+    const { remote, peer } = await seededRemote();
+    const { engine, dir } = await clonedEngine(remote);
+    // The file must already be tracked, so each rewrite is an unstaged change and not an add.
+    await writeFileIn(dir, 'eng/notes.md', page('pg_n', 'Notes', 'draft 0'));
+    await engine.commitAll('Add notes');
+    await peerPush(peer, 'changed upstream', 'docs: upstream edit');
+
+    let writing = true;
+    let writes = 0;
+    const writer = (async (): Promise<void> => {
+      while (writing) {
+        writes += 1;
+        await writeFileIn(dir, 'eng/notes.md', page('pg_n', 'Notes', `draft ${writes}`));
+      }
+    })();
+
+    // Saves do not hold the git mutex, so a pull under this much contention is allowed to fail.
+    // What it may never do is leave the repo half-rebased or drop the edit that was in flight.
+    await engine.pull().catch(() => undefined);
+    writing = false;
+    await writer;
+    await engine.whenIdle();
+
+    expect(await readFileIn(dir, 'eng/notes.md')).toContain(`draft ${writes}`);
+    expect(await gitLines(dir, 'stash', 'list')).toEqual([]);
+
+    // Contention only delays the pull. Once the writes stop, the next one gets the remote change.
+    await engine.pull();
+    expect(engine.conflict()).toBeNull();
+    expect(await readFileIn(dir, 'eng/index.md')).toContain('changed upstream');
+    expect(await isClean(dir)).toBe(true);
   });
 
   it('serialises a push against concurrent local commits', async () => {

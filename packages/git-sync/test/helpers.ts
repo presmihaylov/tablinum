@@ -159,9 +159,20 @@ export async function waitFor(
   timeoutMs = 5000,
 ): Promise<void> {
   const deadline = Date.now() + timeoutMs;
+  let last: unknown = null;
   for (;;) {
-    if (await predicate()) return;
-    if (Date.now() > deadline) throw new Error(`Timed out waiting for ${message}`);
+    // A predicate that reads a file the engine has not written yet throws ENOENT. That means
+    // "not yet", not "give up", so it keeps polling and only reports the error on timeout.
+    try {
+      if (await predicate()) return;
+      last = null;
+    } catch (err) {
+      last = err;
+    }
+    if (Date.now() > deadline) {
+      const detail = last === null ? '' : `: ${String(last)}`;
+      throw new Error(`Timed out waiting for ${message}${detail}`);
+    }
     await sleep(10);
   }
 }

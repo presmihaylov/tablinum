@@ -5,6 +5,7 @@ import Suggestion from '@tiptap/suggestion';
 import { PluginKey } from '@tiptap/pm/state';
 import { SlashMenu } from '../ui/SlashMenu';
 import { createSuggestionRenderer } from '../ui/suggestionRenderer';
+import { MERMAID_LANGUAGE, MERMAID_STARTER } from '../mermaid';
 
 export interface SlashMenuOptions {
   /** Opens the file picker for the "Image" command. */
@@ -124,6 +125,23 @@ export const SLASH_COMMANDS: readonly SlashCommandItem[] = [
     keywords: ['code', 'fence', 'snippet', 'pre'],
     available: outsideTableCell,
     run: (editor, range) => editor.chain().focus().deleteRange(range).setCodeBlock().run(),
+  },
+  {
+    id: 'mermaid',
+    title: 'Diagram',
+    hint: 'A mermaid diagram, drawn as you type',
+    glyph: 'FLOW',
+    keywords: ['mermaid', 'diagram', 'chart', 'graph', 'flowchart', 'sequence', 'uml'],
+    available: outsideTableCell,
+    // A starter diagram, not an empty block: an example to edit beats a blank canvas.
+    run: (editor, range) =>
+      editor
+        .chain()
+        .focus()
+        .deleteRange(range)
+        .setCodeBlock({ language: MERMAID_LANGUAGE })
+        .insertContent({ type: 'text', text: MERMAID_STARTER })
+        .run(),
   },
   {
     id: 'blockquote',

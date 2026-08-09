@@ -13,7 +13,7 @@ import {
 } from './helpers.js';
 
 afterEach(async () => {
-  disposeEngines();
+  await disposeEngines();
   await cleanupTempDirs();
 });
 

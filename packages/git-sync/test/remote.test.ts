@@ -20,7 +20,7 @@ import {
 import { GitEngine, type GitEngineOptions } from '../src/engine.js';
 
 afterEach(async () => {
-  disposeEngines();
+  await disposeEngines();
   await cleanupTempDirs();
 });
 

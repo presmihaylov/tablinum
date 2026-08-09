@@ -143,8 +143,14 @@ export function makeEngine(options: GitEngineOptions): GitEngine {
   return engine;
 }
 
-export function disposeEngines(): void {
-  while (engines.length > 0) engines.pop()?.dispose();
+export async function disposeEngines(): Promise<void> {
+  const pending = engines.splice(0, engines.length);
+  // dispose() only stops the timers. A git process already running keeps writing into .git,
+  // so removing the temp dir straight after it fails with ENOTEMPTY.
+  for (const engine of pending) {
+    engine.dispose();
+    await engine.whenIdle().catch(() => undefined);
+  }
 }
 
 export async function waitFor(

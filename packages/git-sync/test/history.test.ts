@@ -40,7 +40,8 @@ describe('GitEngine.history', () => {
     expect(newest?.sha).toMatch(/^[0-9a-f]{40}$/);
     expect(newest?.author).toBe('tablinum');
     expect(newest?.email).toBe('tablinum@localhost');
-    expect(newest?.date).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/);
+    // git renders a zero offset as "Z", so this must pass under TZ=UTC too.
+    expect(newest?.date).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(Z|[+-]\d{2}:\d{2})$/);
   });
 
   it('follows a file across a rename', async () => {

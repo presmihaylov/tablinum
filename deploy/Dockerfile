@@ -30,6 +30,7 @@ RUN apt-get update \
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* .npmrc* ./
 COPY packages/shared/package.json   packages/shared/
 COPY packages/core/package.json     packages/core/
+COPY packages/accounts/package.json packages/accounts/
 COPY packages/git-sync/package.json packages/git-sync/
 COPY packages/search/package.json   packages/search/
 COPY packages/mcp/package.json      packages/mcp/

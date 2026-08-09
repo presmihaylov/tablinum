@@ -3,14 +3,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import type { z } from 'zod';
-import { AccountStore } from '@gitdocs/accounts';
+import { AccountStore } from '@tablinum/accounts';
 import {
   PageResponseSchema,
   loadConfig,
   parseOrThrow,
   type Config,
   type EnvSource,
-} from '@gitdocs/shared';
+} from '@tablinum/shared';
 import { buildApp } from '../../src/app.js';
 import type { ServerDeps } from '../../src/deps.js';
 import type { SlackApi } from '../../src/slack.js';
@@ -46,16 +46,16 @@ export interface HarnessOptions {
 }
 
 export async function makeHarness(options: HarnessOptions = {}): Promise<Harness> {
-  const root = await mkdtemp(join(tmpdir(), 'gitdocs-server-'));
+  const root = await mkdtemp(join(tmpdir(), 'tablinum-server-'));
   const contentDir = join(root, 'content');
 
   const baseEnv: EnvSource = {
-    GITDOCS_CONTENT_DIR: contentDir,
-    GITDOCS_SESSION_SECRET: TEST_SESSION_SECRET,
-    GITDOCS_AUTOCOMMIT_MS: '25',
-    GITDOCS_AUTOPULL_MS: '0',
+    TABLINUM_CONTENT_DIR: contentDir,
+    TABLINUM_SESSION_SECRET: TEST_SESSION_SECRET,
+    TABLINUM_AUTOCOMMIT_MS: '25',
+    TABLINUM_AUTOPULL_MS: '0',
   };
-  if (options.noToken !== true) baseEnv.GITDOCS_API_TOKENS = TEST_TOKEN;
+  if (options.noToken !== true) baseEnv.TABLINUM_API_TOKENS = TEST_TOKEN;
 
   const config = loadConfig({ ...baseEnv, ...options.env });
 

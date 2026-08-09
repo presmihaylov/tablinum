@@ -60,7 +60,7 @@ describe('formatSearchHits', () => {
   });
 
   it('suggests what to do when nothing matches', () => {
-    expect(formatSearchHits([], 'zzz')).toContain('gitdocs_list_tree');
+    expect(formatSearchHits([], 'zzz')).toContain('tablinum_list_tree');
   });
 });
 

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { ConflictFile, GitResolveBody } from '@gitdocs/shared';
+import type { ConflictFile, GitResolveBody } from '@tablinum/shared';
 import { ApiError, api } from '../../api/client';
 import { invalidateContent } from '../../api/hooks';
 import { useToast } from '../../lib/toast';

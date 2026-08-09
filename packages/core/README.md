@@ -1,13 +1,13 @@
-# @gitdocs/core
+# @tablinum/core
 
 The content store. Every page is a markdown file with YAML frontmatter under the content
 directory, and nothing else holds state. A person editing in the browser, an agent calling the
 REST API and an agent editing `.md` files straight in the git repository all see the same content.
 
 ```ts
-import { ContentStore } from '@gitdocs/core';
+import { ContentStore } from '@tablinum/core';
 
-const store = new ContentStore({ contentDir: '/srv/gitdocs/content' });
+const store = new ContentStore({ contentDir: '/srv/tablinum/content' });
 await store.init();
 ```
 
@@ -28,7 +28,7 @@ await store.init();
 | `saveAsset(pageId, filename, data)` | Stores an attachment under `_assets/<pageId>/`. |
 | `getBacklinks(id)` / `resolveLinks(markdown, from?)` | Link graph over the files on disk. |
 
-Every failure is an `AppError` from `@gitdocs/shared`, so the server can map it straight onto a
+Every failure is an `AppError` from `@tablinum/shared`, so the server can map it straight onto a
 status code.
 
 ## On-disk shape

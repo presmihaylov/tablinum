@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { PageId, PagePath } from '@gitdocs/shared';
+import type { PageId, PagePath } from '@tablinum/shared';
 import { useUpdatePage } from '../src/api/hooks';
 import { qk } from '../src/api/keys';
 import { page } from './fixtures';

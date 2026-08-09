@@ -1,4 +1,4 @@
-import type { UpdatePageBody } from '@gitdocs/shared';
+import type { UpdatePageBody } from '@tablinum/shared';
 
 /** What the save indicator shows. Passed straight to the editor. */
 export type SaveState = 'idle' | 'saving' | 'saved' | 'error';

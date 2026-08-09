@@ -4,7 +4,7 @@ import type { Editor } from '@tiptap/core';
 import { collab, getVersion, receiveTransaction, sendableSteps } from '@tiptap/pm/collab';
 import type { Transaction } from '@tiptap/pm/state';
 import { Step } from '@tiptap/pm/transform';
-import { mergeText, type DocStep, type Page } from '@gitdocs/shared';
+import { mergeText, type DocStep, type Page } from '@tablinum/shared';
 import type { DocInit, DocRoom } from '../lib/docRoom';
 import { myClientId } from '../lib/identity';
 import { caretsKey, clearCarets, dropCaret, remoteCarets, setCaret } from './carets';

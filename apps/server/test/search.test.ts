@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { ErrorBodySchema, PageResponseSchema, SearchResponseSchema } from '@gitdocs/shared';
+import { ErrorBodySchema, PageResponseSchema, SearchResponseSchema } from '@tablinum/shared';
 import { bodyOf, makeHarness, seed, type Harness } from './support/harness.js';
 
 let harness: Harness;

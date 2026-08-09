@@ -1,9 +1,9 @@
-# gitdocs behind Caddy, for a hostname that only resolves on your VPN.
+# tablinum behind Caddy, for a hostname that only resolves on your VPN.
 # Copy to deploy/Caddyfile and keep exactly ONE of the three site blocks below.
 #
 #   cp deploy/Caddyfile.example deploy/Caddyfile
 #
-# All three assume the gitdocs service listens on port 4000 inside the compose
+# All three assume the tablinum service listens on port 4000 inside the compose
 # network, and that docs.vpn.example.com resolves to this host on the VPN only.
 
 # ---------------------------------------------------------------------------
@@ -13,7 +13,7 @@
 #   docker compose cp caddy:/data/caddy/pki/authorities/local/root.crt .
 # Then trust root.crt on every machine that opens the site.
 # ---------------------------------------------------------------------------
-{$GITDOCS_HOSTNAME} {
+{$TABLINUM_HOSTNAME} {
 	tls internal
 
 	encode zstd gzip
@@ -23,7 +23,7 @@
 		max_size 64MB
 	}
 
-	reverse_proxy gitdocs:4000 {
+	reverse_proxy tablinum:4000 {
 		header_up X-Forwarded-Proto {scheme}
 	}
 }
@@ -32,10 +32,10 @@
 # OPTION B - your own internal CA. Use this when your company already has one
 # and its root is on every laptop. Mount the cert and the key read-only.
 # ---------------------------------------------------------------------------
-# {$GITDOCS_HOSTNAME} {
+# {$TABLINUM_HOSTNAME} {
 # 	tls /etc/caddy/certs/docs.crt /etc/caddy/certs/docs.key
 # 	encode zstd gzip
-# 	reverse_proxy gitdocs:4000
+# 	reverse_proxy tablinum:4000
 # }
 
 # ---------------------------------------------------------------------------
@@ -49,11 +49,11 @@
 # or the caddy-dns image of your provider. The public DNS zone holds only the
 # TXT record; the A record stays on your internal resolver.
 # ---------------------------------------------------------------------------
-# {$GITDOCS_HOSTNAME} {
+# {$TABLINUM_HOSTNAME} {
 # 	tls {$ACME_EMAIL} {
 # 		dns cloudflare {$CLOUDFLARE_API_TOKEN}
 # 		resolvers 1.1.1.1
 # 	}
 # 	encode zstd gzip
-# 	reverse_proxy gitdocs:4000
+# 	reverse_proxy tablinum:4000
 # }

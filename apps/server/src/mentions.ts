@@ -1,6 +1,6 @@
 import type { FastifyBaseLogger } from 'fastify';
-import type { AccountStore } from '@gitdocs/accounts';
-import { findMentions, type Account, type Page } from '@gitdocs/shared';
+import type { AccountStore } from '@tablinum/accounts';
+import { findMentions, type Account, type Page } from '@tablinum/shared';
 import type { SlackApi } from './slack.js';
 
 /**

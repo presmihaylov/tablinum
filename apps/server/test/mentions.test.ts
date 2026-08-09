@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { PageResponseSchema, SlackStateResponseSchema } from '@gitdocs/shared';
+import { PageResponseSchema, SlackStateResponseSchema } from '@tablinum/shared';
 import { contextOf } from '../src/context.js';
 import type { SlackApi } from '../src/slack.js';
 import { bodyOf, makeHarness, TEST_TOKEN, type Harness } from './support/harness.js';
@@ -190,7 +190,7 @@ async function twoPeople(harness: Harness): Promise<{ cookie: string; samId: str
 describe('mention notifications', () => {
   it('sends a direct message when a new page names somebody', async () => {
     const slack = slackStub();
-    const harness = await harnessFor({ slack, env: { GITDOCS_PUBLIC_URL: 'https://docs.example.com/' } });
+    const harness = await harnessFor({ slack, env: { TABLINUM_PUBLIC_URL: 'https://docs.example.com/' } });
     const { cookie } = await twoPeople(harness);
 
     await harness.app.inject({

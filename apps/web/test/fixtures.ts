@@ -1,4 +1,4 @@
-import { contentRev, type Page, type TreeNode } from '@gitdocs/shared';
+import { contentRev, type Page, type TreeNode } from '@tablinum/shared';
 import type { SpaceTree } from '../src/lib/tree';
 
 let counter = 0;

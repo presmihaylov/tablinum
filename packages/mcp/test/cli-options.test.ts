@@ -12,16 +12,16 @@ describe('parseCliOptions', () => {
 
   it('reads the environment', () => {
     const options = parseCliOptions([], {
-      GITDOCS_URL: 'https://docs.example.com',
-      GITDOCS_TOKEN: 'tok_1',
+      TABLINUM_URL: 'https://docs.example.com',
+      TABLINUM_TOKEN: 'tok_1',
     });
     expect(options).toEqual({ baseUrl: 'https://docs.example.com', token: 'tok_1', mode: 'serve' });
   });
 
   it('lets a flag win over the environment', () => {
     const options = parseCliOptions(['--url', 'http://localhost:5000', '--token', 'flag_token'], {
-      GITDOCS_URL: 'https://docs.example.com',
-      GITDOCS_TOKEN: 'env_token',
+      TABLINUM_URL: 'https://docs.example.com',
+      TABLINUM_TOKEN: 'env_token',
     });
     expect(options.baseUrl).toBe('http://localhost:5000');
     expect(options.token).toBe('flag_token');
@@ -34,7 +34,7 @@ describe('parseCliOptions', () => {
   });
 
   it('treats a blank environment value as unset', () => {
-    const options = parseCliOptions([], { GITDOCS_URL: '   ', GITDOCS_TOKEN: '' });
+    const options = parseCliOptions([], { TABLINUM_URL: '   ', TABLINUM_TOKEN: '' });
     expect(options.baseUrl).toBe(DEFAULT_BASE_URL);
     expect(options.token).toBeNull();
   });
@@ -47,7 +47,7 @@ describe('parseCliOptions', () => {
   });
 
   it('documents both environment variables in the usage text', () => {
-    expect(USAGE).toContain('GITDOCS_URL');
-    expect(USAGE).toContain('GITDOCS_TOKEN');
+    expect(USAGE).toContain('TABLINUM_URL');
+    expect(USAGE).toContain('TABLINUM_TOKEN');
   });
 });

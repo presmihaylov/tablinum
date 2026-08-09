@@ -1,16 +1,16 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { afterEach, describe, expect, it } from 'vitest';
-import { GitdocsClient } from '../src/client.js';
+import { TablinumClient } from '../src/client.js';
 import {
   STYLE_GUIDE_PROMPT,
   TREE_RESOURCE_URI,
-  createGitdocsMcpServer,
+  createTablinumMcpServer,
 } from '../src/server.js';
 import { TOOL_SPECS } from '../src/tools.js';
 import { makeNode, makePage, makeSpaceTree, mockFetch, reply, type Routes } from './helpers.js';
 
-const BASE = 'http://gitdocs.test';
+const BASE = 'http://tablinum.test';
 
 const closers: Array<() => Promise<void>> = [];
 
@@ -23,8 +23,8 @@ afterEach(async () => {
 
 async function connect(routes: Routes) {
   const mock = mockFetch(routes);
-  const server = createGitdocsMcpServer({
-    client: new GitdocsClient({ baseUrl: BASE, token: 'tok_1', fetch: mock.fetch }),
+  const server = createTablinumMcpServer({
+    client: new TablinumClient({ baseUrl: BASE, token: 'tok_1', fetch: mock.fetch }),
   });
   const client = new Client({ name: 'test-client', version: '0.0.0' });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -70,7 +70,7 @@ describe('MCP server wiring', () => {
     const { client } = await connect({ 'GET /api/v1/pages': { page } });
 
     const result = await client.callTool({
-      name: 'gitdocs_get_page',
+      name: 'tablinum_get_page',
       arguments: { path: 'eng/deploy' },
     });
 
@@ -86,27 +86,27 @@ describe('MCP server wiring', () => {
     });
 
     const result = await client.callTool({
-      name: 'gitdocs_get_page',
+      name: 'tablinum_get_page',
       arguments: { path: 'eng/nope' },
     });
 
     expect(result.isError).toBe(true);
     const text = firstText(result);
     expect(text).toContain('NOT_FOUND: No page at eng/nope');
-    expect(text).toContain('gitdocs_search');
+    expect(text).toContain('tablinum_search');
   });
 
   it('turns a missing id-or-path into a VALIDATION result instead of a crash', async () => {
     const { client, mock } = await connect({});
 
-    const result = await client.callTool({ name: 'gitdocs_get_page', arguments: {} });
+    const result = await client.callTool({ name: 'tablinum_get_page', arguments: {} });
 
     expect(result.isError).toBe(true);
     expect(firstText(result)).toContain('VALIDATION');
     expect(mock.calls).toHaveLength(0);
   });
 
-  it('serves the gitdocs://tree resource', async () => {
+  it('serves the tablinum://tree resource', async () => {
     const { client } = await connect(TREE_ROUTES);
 
     const listed = await client.listResources();
@@ -118,7 +118,7 @@ describe('MCP server wiring', () => {
     expect(String(first?.text)).toContain('[eng/deploy]');
   });
 
-  it('serves the gitdocs_style_guide prompt', async () => {
+  it('serves the tablinum_style_guide prompt', async () => {
     const { client } = await connect({});
 
     const listed = await client.listPrompts();
@@ -145,6 +145,6 @@ describe('MCP server wiring', () => {
 
   it('reports server instructions that point at the discovery tools', async () => {
     const { client } = await connect({});
-    expect(client.getInstructions() ?? '').toContain('gitdocs_search');
+    expect(client.getInstructions() ?? '').toContain('tablinum_search');
   });
 });

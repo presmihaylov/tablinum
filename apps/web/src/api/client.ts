@@ -1,4 +1,4 @@
-import { CLIENT_HEADER, WORKSPACE_HEADER } from '@gitdocs/shared';
+import { CLIENT_HEADER, WORKSPACE_HEADER } from '@tablinum/shared';
 import type {
   AgentResponse,
   AgentsResponse,
@@ -62,7 +62,7 @@ import type {
   WorkspaceMembersResponse,
   WorkspaceResponse,
   WorkspacesResponse,
-} from '@gitdocs/shared';
+} from '@tablinum/shared';
 import { currentWorkspace } from '../lib/currentWorkspace';
 import { myClientId } from '../lib/identity';
 
@@ -209,7 +209,7 @@ async function request<T>(pathname: string, options: RequestOptions = {}): Promi
     response = await fetch(buildUrl(pathname, options.query), init);
   } catch (cause) {
     if (cause instanceof DOMException && cause.name === 'AbortError') throw cause;
-    throw new ApiError(0, 'INTERNAL', 'Cannot reach the gitdocs server.');
+    throw new ApiError(0, 'INTERNAL', 'Cannot reach the tablinum server.');
   }
 
   if (response.status === 401 && !options.ignoreUnauthorized) signalUnauthorized();

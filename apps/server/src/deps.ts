@@ -1,4 +1,4 @@
-import type { AccountStore, WorkspaceRecord } from '@gitdocs/accounts';
+import type { AccountStore, WorkspaceRecord } from '@tablinum/accounts';
 import type { SlackApi } from './slack.js';
 import type { WorkspaceInstance } from './workspaces.js';
 import type {
@@ -18,7 +18,7 @@ import type {
   TreeNode,
   UpdatePageBody,
   UpdateSpaceBody,
-} from '@gitdocs/shared';
+} from '@tablinum/shared';
 
 /** A space plus its rendered page tree, as returned by GET /api/v1/tree. */
 export interface SpaceTree extends Space {
@@ -54,7 +54,7 @@ export interface SearchOptions {
 
 /**
  * The content store: markdown files on disk, their frontmatter and the page tree.
- * Implemented by @gitdocs/core; the server only ever talks to this interface so
+ * Implemented by @tablinum/core; the server only ever talks to this interface so
  * tests can drive the API over a temporary content directory.
  */
 export interface ContentStore {
@@ -107,7 +107,7 @@ export interface ContentStore {
   parsePageFile(raw: string): ParsedPageFile;
 }
 
-/** The git engine: the content directory is a git repo. Implemented by @gitdocs/git-sync. */
+/** The git engine: the content directory is a git repo. Implemented by @tablinum/git-sync. */
 export interface GitEngine {
   /** Ensure the repo exists, the branch is checked out and the remote is configured. */
   init(): Promise<void>;
@@ -141,7 +141,7 @@ export interface GitEngine {
   stop(): Promise<void>;
 }
 
-/** The full-text index. Implemented by @gitdocs/search over sqlite FTS5. */
+/** The full-text index. Implemented by @tablinum/search over sqlite FTS5. */
 export interface SearchIndex {
   init(): Promise<void>;
 

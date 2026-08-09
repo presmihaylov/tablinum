@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { AccountStore } from '@gitdocs/accounts';
-import { MIN_PASSWORD_LENGTH } from '@gitdocs/shared';
+import { AccountStore } from '@tablinum/accounts';
+import { MIN_PASSWORD_LENGTH } from '@tablinum/shared';
 import { run } from '../src/accounts-cli.js';
 
 const ADA = { email: 'ada@example.com', name: 'Ada Lovelace', password: 'stack-of-pancakes' };

@@ -1,4 +1,4 @@
-import type { Page, PageId, SearchHit } from '@gitdocs/shared';
+import type { Page, PageId, SearchHit } from '@tablinum/shared';
 import type { SearchIndex, SearchOptions } from '../../src/deps.js';
 
 interface Entry {

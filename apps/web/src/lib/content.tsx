@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { depth, isDescendantOf, parentPath, segments, slugify, spaceOf } from '@gitdocs/shared';
-import type { PagePath, TreeNode } from '@gitdocs/shared';
+import { depth, isDescendantOf, parentPath, segments, slugify, spaceOf } from '@tablinum/shared';
+import type { PagePath, TreeNode } from '@tablinum/shared';
 import { api } from '../api/client';
 import {
   useCreatePage,

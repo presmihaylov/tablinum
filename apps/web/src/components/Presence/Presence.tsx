@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { LivePresence, LiveUser } from '@gitdocs/shared';
+import type { LivePresence, LiveUser } from '@tablinum/shared';
 import { myUser, onIdentityChange } from '../../lib/identity';
 import { useLive } from '../../lib/live';
 import { Bot } from '../ui/Icon';

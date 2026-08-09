@@ -61,7 +61,7 @@ import type {
   WorkspaceResponse,
   WorkspaceRole,
   WorkspacesResponse,
-} from '@gitdocs/shared';
+} from '@tablinum/shared';
 import { ApiError, api } from './client';
 import { contentPrefixes, qk } from './keys';
 

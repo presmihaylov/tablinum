@@ -251,10 +251,10 @@ function isAvailable(item: SlashCommandItem, editor: Editor | undefined): boolea
   return item.available(editor);
 }
 
-export const slashMenuPluginKey = new PluginKey('gitdocsSlashMenu');
+export const slashMenuPluginKey = new PluginKey('tablinumSlashMenu');
 
 export const SlashMenuExtension = Extension.create<SlashMenuOptions>({
-  name: 'gitdocsSlashMenu',
+  name: 'tablinumSlashMenu',
 
   addOptions() {
     return {

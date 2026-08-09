@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { MAX_IDENTITY_LENGTH, type Agent, type AgentTokenResponse } from '@gitdocs/shared';
+import { MAX_IDENTITY_LENGTH, type Agent, type AgentTokenResponse } from '@tablinum/shared';
 import {
   useAgents,
   useCreateAgent,

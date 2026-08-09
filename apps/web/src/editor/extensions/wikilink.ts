@@ -1,5 +1,5 @@
 import { Node, mergeAttributes } from '@tiptap/core';
-import type { PagePath } from '@gitdocs/shared';
+import type { PagePath } from '@tablinum/shared';
 import { pageHref } from '../../lib/href';
 import { DATA } from '../markdown';
 

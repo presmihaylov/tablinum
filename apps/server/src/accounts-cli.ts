@@ -1,13 +1,13 @@
 import { randomBytes } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
-import { AccountStore, defaultAccountsDbPath } from '@gitdocs/accounts';
+import { AccountStore, defaultAccountsDbPath } from '@tablinum/accounts';
 import {
   DEFAULT_INVITE_DAYS,
   MIN_PASSWORD_LENGTH,
   isAppError,
   loadConfig,
   type AccountRole,
-} from '@gitdocs/shared';
+} from '@tablinum/shared';
 
 /**
  * The way back in when nobody can sign in: the browser cannot reset a password without a
@@ -16,7 +16,7 @@ import {
  *   node apps/server/dist/accounts-cli.js list
  */
 
-export const USAGE = `gitdocs accounts
+export const USAGE = `tablinum accounts
 
   list                                  every account, with its role
   promote <email>                       make somebody an admin
@@ -25,7 +25,7 @@ export const USAGE = `gitdocs accounts
   invite [email] [--role r] [--days n]  create an invite token
   delete <email>                        remove an account
 
-The file is <parent of GITDOCS_CONTENT_DIR>/accounts.db. The server may keep running.`;
+The file is <parent of TABLINUM_CONTENT_DIR>/accounts.db. The server may keep running.`;
 
 /** Thrown, not exited, so the database is still closed on the way out. */
 class CliError extends Error {}
@@ -111,7 +111,7 @@ export function run(store: AccountStore, argv: string[], say: Say): void {
       expiresInDays: readDays(rest),
     });
     say(`Token:   ${issued.token}`);
-    say(`Open:    <your gitdocs url>/invite/${issued.token}`);
+    say(`Open:    <your tablinum url>/invite/${issued.token}`);
     say(`Role:    ${issued.invite.role}`);
     say(`Expires: ${issued.invite.expires}`);
     return;

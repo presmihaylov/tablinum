@@ -9,7 +9,7 @@ export interface Logger {
 type Level = 'debug' | 'info' | 'warn' | 'error';
 
 function write(level: Level, message: string, meta?: unknown): void {
-  const line = `[gitdocs:core] ${message}`;
+  const line = `[tablinum:core] ${message}`;
   if (meta === undefined) {
     console[level](line);
     return;

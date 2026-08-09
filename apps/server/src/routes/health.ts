@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import type { HealthResponse } from '@gitdocs/shared';
+import type { HealthResponse } from '@tablinum/shared';
 import { API_PREFIX, type RouteContext } from '../context.js';
 
 /** The only endpoint that answers without credentials in every mode. */

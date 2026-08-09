@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import { act } from 'react';
-import type { Account, ClientMessage, LiveAgent, ServerMessage } from '@gitdocs/shared';
+import type { Account, ClientMessage, LiveAgent, ServerMessage } from '@tablinum/shared';
 import { Presence } from '../src/components/Presence/Presence';
 import { setAccountIdentity } from '../src/lib/identity';
 import { LiveProvider } from '../src/lib/live';

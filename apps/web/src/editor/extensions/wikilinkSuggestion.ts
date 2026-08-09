@@ -14,10 +14,10 @@ export interface WikilinkSuggestionOptions {
   search: (query: string) => Promise<WikilinkItem[]>;
 }
 
-export const wikilinkPluginKey = new PluginKey('gitdocsWikilink');
+export const wikilinkPluginKey = new PluginKey('tablinumWikilink');
 
 export const WikilinkSuggestion = Extension.create<WikilinkSuggestionOptions>({
-  name: 'gitdocsWikilinkSuggestion',
+  name: 'tablinumWikilinkSuggestion',
 
   addOptions() {
     return { search: () => Promise.resolve([]) };

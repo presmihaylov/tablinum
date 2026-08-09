@@ -12,7 +12,7 @@ declare module '@tiptap/core' {
 /**
  * `@handle`, an atomic inline reference to a person.
  *
- * The handle is the whole node: no id, no name and no link. A page read outside gitdocs is
+ * The handle is the whole node: no id, no name and no link. A page read outside tablinum is
  * still readable, and a person who is renamed keeps every mention they were ever given.
  */
 export const Mention = Node.create({

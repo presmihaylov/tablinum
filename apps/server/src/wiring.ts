@@ -11,7 +11,7 @@ import {
   type Page,
   type PageId,
   type PagePath,
-} from '@gitdocs/shared';
+} from '@tablinum/shared';
 import type { ServerDeps } from './deps.js';
 import { LiveHub } from './live.js';
 

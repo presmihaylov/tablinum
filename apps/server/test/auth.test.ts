@@ -7,7 +7,7 @@ import {
   OkResponseSchema,
   PageListResponseSchema,
   SpacesResponseSchema,
-} from '@gitdocs/shared';
+} from '@tablinum/shared';
 import { SESSION_COOKIE } from '../src/auth.js';
 import { bodyOf, makeHarness, seed, TEST_TOKEN, type Harness } from './support/harness.js';
 

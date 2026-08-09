@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { ErrorBodySchema, gitError, type PageSummary } from '@gitdocs/shared';
+import { ErrorBodySchema, gitError, type PageSummary } from '@tablinum/shared';
 import { toErrorResponse } from '../src/errors.js';
 import { bodyOf, makeHarness, seed, type Harness } from './support/harness.js';
 

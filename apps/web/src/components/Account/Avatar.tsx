@@ -1,4 +1,4 @@
-import { avatarUrl, initialsOf } from '@gitdocs/shared';
+import { avatarUrl, initialsOf } from '@tablinum/shared';
 import './account.css';
 
 export interface AvatarPerson {

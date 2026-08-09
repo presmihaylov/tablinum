@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
-import { gitError, type GitConflict, type GitStatus, type Revision } from '@gitdocs/shared';
+import { gitError, type GitConflict, type GitStatus, type Revision } from '@tablinum/shared';
 import type { FileResolution, FileVersions, GitEngine } from '../../src/deps.js';
 
 const run = promisify(execFile);
@@ -58,10 +58,10 @@ export class TestGitEngine implements GitEngine {
         GIT_CONFIG_GLOBAL: '/dev/null',
         GIT_CONFIG_SYSTEM: '/dev/null',
         GIT_CONFIG_NOSYSTEM: '1',
-        GIT_AUTHOR_NAME: 'gitdocs',
-        GIT_AUTHOR_EMAIL: 'gitdocs@localhost',
-        GIT_COMMITTER_NAME: 'gitdocs',
-        GIT_COMMITTER_EMAIL: 'gitdocs@localhost',
+        GIT_AUTHOR_NAME: 'tablinum',
+        GIT_AUTHOR_EMAIL: 'tablinum@localhost',
+        GIT_COMMITTER_NAME: 'tablinum',
+        GIT_COMMITTER_EMAIL: 'tablinum@localhost',
       },
     });
     return stdout;
@@ -82,7 +82,7 @@ export class TestGitEngine implements GitEngine {
     } catch (err) {
       throw gitError('Failed to initialize the content repository', err);
     }
-    await this.commit('chore: initialize gitdocs content repo');
+    await this.commit('chore: initialize tablinum content repo');
   }
 
   async status(): Promise<GitStatus> {

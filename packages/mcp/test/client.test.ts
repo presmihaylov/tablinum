@@ -1,13 +1,13 @@
-import { AppError } from '@gitdocs/shared';
+import { AppError } from '@tablinum/shared';
 import { describe, expect, it } from 'vitest';
-import { GitdocsClient } from '../src/client.js';
+import { TablinumClient } from '../src/client.js';
 import { makePage, makeStatus, mockFetch, networkError, reply, replyText } from './helpers.js';
 
-const BASE = 'http://gitdocs.test';
+const BASE = 'http://tablinum.test';
 
 function clientWith(routes: Parameters<typeof mockFetch>[0], token: string | null = 'tok_1') {
   const mock = mockFetch(routes);
-  return { mock, client: new GitdocsClient({ baseUrl: BASE, token, fetch: mock.fetch }) };
+  return { mock, client: new TablinumClient({ baseUrl: BASE, token, fetch: mock.fetch }) };
 }
 
 async function captureError(run: () => Promise<unknown>): Promise<AppError> {
@@ -20,7 +20,7 @@ async function captureError(run: () => Promise<unknown>): Promise<AppError> {
   throw new Error('expected the call to throw');
 }
 
-describe('GitdocsClient requests', () => {
+describe('TablinumClient requests', () => {
   it('sends the bearer token and JSON headers', async () => {
     const page = makePage();
     const { mock, client } = clientWith({ 'GET /api/v1/pages': { page } });
@@ -42,7 +42,7 @@ describe('GitdocsClient requests', () => {
 
   it('trims a trailing slash from the base URL', async () => {
     const mock = mockFetch({ 'GET /api/v1/health': { ok: true, version: '0.1.0', contentDir: '/c' } });
-    const client = new GitdocsClient({ baseUrl: `${BASE}/`, token: null, fetch: mock.fetch });
+    const client = new TablinumClient({ baseUrl: `${BASE}/`, token: null, fetch: mock.fetch });
 
     await client.health();
 
@@ -87,8 +87,8 @@ describe('GitdocsClient requests', () => {
   });
 });
 
-describe('GitdocsClient error mapping', () => {
-  it('keeps the code and message of a gitdocs error envelope', async () => {
+describe('TablinumClient error mapping', () => {
+  it('keeps the code and message of a tablinum error envelope', async () => {
     const { client } = clientWith({
       'GET /api/v1/pages': reply(404, { error: { code: 'NOT_FOUND', message: 'No page at eng/nope' } }),
     });
@@ -144,8 +144,8 @@ describe('GitdocsClient error mapping', () => {
     const error = await captureError(() => client.health());
 
     expect(error.code).toBe('INTERNAL');
-    expect(error.message).toContain('Cannot reach the gitdocs server');
-    expect(error.message).toContain('GITDOCS_URL');
+    expect(error.message).toContain('Cannot reach the tablinum server');
+    expect(error.message).toContain('TABLINUM_URL');
   });
 
   it('reports invalid JSON from the server', async () => {

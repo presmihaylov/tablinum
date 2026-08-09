@@ -4,7 +4,7 @@ import { z } from 'zod';
  * Slack delivery for mentions.
  *
  * The server holds one bot token for the whole workspace, and each person stores their own
- * Slack member id. gitdocs sends a direct message; it never reads Slack, so no user token,
+ * Slack member id. tablinum sends a direct message; it never reads Slack, so no user token,
  * no OAuth dance and no per-user secret is stored.
  */
 
@@ -20,7 +20,7 @@ export const SlackUserIdSchema = z
   .transform((value) => value.toUpperCase())
   .refine(isSlackUserId, 'Expected a Slack member id like "U01AB2CD3EF"');
 
-/** With no id the server looks the person up by their gitdocs email address. */
+/** With no id the server looks the person up by their tablinum email address. */
 export const ConnectSlackBodySchema = z.object({ slackUserId: SlackUserIdSchema.optional() });
 
 export const SlackStateResponseSchema = z.object({

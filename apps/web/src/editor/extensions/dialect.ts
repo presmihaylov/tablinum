@@ -13,7 +13,7 @@ import { configureMarkdownIt, DATA, decodeRaw, encodeRaw } from '../markdown';
  * `tight` attribute below replace the looser one from `tiptap-markdown`.
  */
 export const MarkdownDialect = Extension.create({
-  name: 'gitdocsMarkdownDialect',
+  name: 'tablinumMarkdownDialect',
   priority: 10,
 
   addStorage() {

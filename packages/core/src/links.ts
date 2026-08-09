@@ -7,7 +7,7 @@ import {
   type Backlink,
   type PageId,
   type PagePath,
-} from '@gitdocs/shared';
+} from '@tablinum/shared';
 
 export type LinkKind = 'wikilink' | 'markdown';
 

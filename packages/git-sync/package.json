@@ -1,9 +1,9 @@
 {
-  "name": "@gitdocs/git-sync",
+  "name": "@tablinum/git-sync",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Git engine for gitdocs: turns the content directory into a real git repo.",
+  "description": "Git engine for tablinum: turns the content directory into a real git repo.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -23,7 +23,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@gitdocs/shared": "workspace:*",
+    "@tablinum/shared": "workspace:*",
     "simple-git": "^3.27.0"
   },
   "devDependencies": {

@@ -163,6 +163,6 @@ export interface Config {
   autopushMs: number;
   /** Slack bot token (`xoxb-…`). Null disables the mention notifications. */
   slackBotToken: string | null;
-  /** Origin gitdocs is reached on, used for the page link in a notification. */
+  /** Origin tablinum is reached on, used for the page link in a notification. */
   publicUrl: string | null;
 }

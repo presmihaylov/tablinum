@@ -1,9 +1,9 @@
 {
-  "name": "@gitdocs/web",
+  "name": "@tablinum/web",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "gitdocs web client: block editor UI over a git repo of markdown files.",
+  "description": "tablinum web client: block editor UI over a git repo of markdown files.",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit -p tsconfig.json && vite build",
@@ -14,7 +14,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@gitdocs/shared": "workspace:*",
+    "@tablinum/shared": "workspace:*",
     "@tanstack/react-query": "^5.62.7",
     "@tiptap/core": "^2.11.5",
     "@tiptap/extension-bubble-menu": "^2.11.5",

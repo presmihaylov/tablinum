@@ -1,6 +1,6 @@
-import { AppError, newPageId } from '@gitdocs/shared';
+import { AppError, newPageId } from '@tablinum/shared';
 import { describe, expect, it } from 'vitest';
-import { GitdocsClient } from '../src/client.js';
+import { TablinumClient } from '../src/client.js';
 import { TOOL_SPECS, getToolSpec } from '../src/tools.js';
 import {
   makeHit,
@@ -14,11 +14,11 @@ import {
   type Routes,
 } from './helpers.js';
 
-const BASE = 'http://gitdocs.test';
+const BASE = 'http://tablinum.test';
 
 function harness(routes: Routes) {
   const mock = mockFetch(routes);
-  const client = new GitdocsClient({ baseUrl: BASE, token: 'tok_1', fetch: mock.fetch });
+  const client = new TablinumClient({ baseUrl: BASE, token: 'tok_1', fetch: mock.fetch });
   return {
     mock,
     run: (name: string, args: unknown) => getToolSpec(name).run(client, args),
@@ -38,16 +38,16 @@ async function expectError(run: () => Promise<unknown>): Promise<AppError> {
 describe('tool catalogue', () => {
   it('exposes exactly the documented tools', () => {
     expect(TOOL_SPECS.map((spec) => spec.name)).toEqual([
-      'gitdocs_search',
-      'gitdocs_get_page',
-      'gitdocs_list_tree',
-      'gitdocs_create_page',
-      'gitdocs_update_page',
-      'gitdocs_append_page',
-      'gitdocs_move_page',
-      'gitdocs_delete_page',
-      'gitdocs_page_history',
-      'gitdocs_git_sync',
+      'tablinum_search',
+      'tablinum_get_page',
+      'tablinum_list_tree',
+      'tablinum_create_page',
+      'tablinum_update_page',
+      'tablinum_append_page',
+      'tablinum_move_page',
+      'tablinum_delete_page',
+      'tablinum_page_history',
+      'tablinum_git_sync',
     ]);
   });
 
@@ -60,24 +60,24 @@ describe('tool catalogue', () => {
   });
 
   it('rejects an unknown tool name with the list of real names', () => {
-    expect(() => getToolSpec('gitdocs_nope')).toThrowError(/gitdocs_search/);
+    expect(() => getToolSpec('tablinum_nope')).toThrowError(/tablinum_search/);
   });
 
   it('validates arguments before it calls the API', async () => {
     const { run, mock } = harness({});
-    const error = await expectError(() => run('gitdocs_search', { query: '' }));
+    const error = await expectError(() => run('tablinum_search', { query: '' }));
     expect(error.code).toBe('VALIDATION');
     expect(mock.calls).toHaveLength(0);
   });
 });
 
-describe('gitdocs_search', () => {
+describe('tablinum_search', () => {
   it('passes every filter through and formats the hits', async () => {
     const { run, mock } = harness({
       'GET /api/v1/search': { hits: [makeHit({ path: 'eng/deploy' })] },
     });
 
-    const text = await run('gitdocs_search', { query: 'deploy', space: 'eng', limit: 5 });
+    const text = await run('tablinum_search', { query: 'deploy', space: 'eng', limit: 5 });
 
     expect(mock.last().query).toEqual({ q: 'deploy', space: 'eng', limit: '5' });
     expect(text).toContain('[eng/deploy]');
@@ -85,16 +85,16 @@ describe('gitdocs_search', () => {
 
   it('returns guidance when there is no hit', async () => {
     const { run } = harness({ 'GET /api/v1/search': { hits: [] } });
-    await expect(run('gitdocs_search', { query: 'zzz' })).resolves.toContain('No page matches');
+    await expect(run('tablinum_search', { query: 'zzz' })).resolves.toContain('No page matches');
   });
 });
 
-describe('gitdocs_get_page', () => {
+describe('tablinum_get_page', () => {
   it('reads by path', async () => {
     const page = makePage({ markdown: '## Steps\n\nDo it.\n' });
     const { run, mock } = harness({ 'GET /api/v1/pages': { page } });
 
-    const text = await run('gitdocs_get_page', { path: 'eng/deploy' });
+    const text = await run('tablinum_get_page', { path: 'eng/deploy' });
 
     expect(mock.last().query).toEqual({ path: 'eng/deploy' });
     expect(text).toContain('## Steps\n\nDo it.\n');
@@ -104,7 +104,7 @@ describe('gitdocs_get_page', () => {
     const page = makePage();
     const { run, mock } = harness({ [`GET /api/v1/pages/${page.id}`]: { page } });
 
-    const text = await run('gitdocs_get_page', { id: page.id });
+    const text = await run('tablinum_get_page', { id: page.id });
 
     expect(mock.last().pathname).toBe(`/api/v1/pages/${page.id}`);
     expect(text).toContain(`id: ${page.id}`);
@@ -112,14 +112,14 @@ describe('gitdocs_get_page', () => {
 
   it('refuses a call with neither id nor path', async () => {
     const { run, mock } = harness({});
-    const error = await expectError(() => run('gitdocs_get_page', {}));
+    const error = await expectError(() => run('tablinum_get_page', {}));
     expect(error.code).toBe('VALIDATION');
-    expect(error.message).toContain('gitdocs_list_tree');
+    expect(error.message).toContain('tablinum_list_tree');
     expect(mock.calls).toHaveLength(0);
   });
 });
 
-describe('gitdocs_list_tree', () => {
+describe('tablinum_list_tree', () => {
   const spaces = [
     makeSpaceTree({ tree: [makeNode({ path: 'eng/deploy', title: 'Deploy' })] }),
     makeSpaceTree({ slug: 'ops', name: 'Operations', tree: [] }),
@@ -127,32 +127,32 @@ describe('gitdocs_list_tree', () => {
 
   it('renders every space', async () => {
     const { run } = harness({ 'GET /api/v1/tree': { spaces } });
-    const text = await run('gitdocs_list_tree', {});
+    const text = await run('tablinum_list_tree', {});
     expect(text).toContain('(space "eng")');
     expect(text).toContain('(space "ops")');
   });
 
   it('filters to one space', async () => {
     const { run } = harness({ 'GET /api/v1/tree': { spaces } });
-    const text = await run('gitdocs_list_tree', { space: 'ops' });
+    const text = await run('tablinum_list_tree', { space: 'ops' });
     expect(text).toContain('(space "ops")');
     expect(text).not.toContain('(space "eng")');
   });
 
   it('lists the real slugs when the space is unknown', async () => {
     const { run } = harness({ 'GET /api/v1/tree': { spaces } });
-    const error = await expectError(() => run('gitdocs_list_tree', { space: 'nope' }));
+    const error = await expectError(() => run('tablinum_list_tree', { space: 'nope' }));
     expect(error.code).toBe('NOT_FOUND');
     expect(error.message).toContain('eng, ops');
   });
 });
 
-describe('gitdocs_create_page', () => {
+describe('tablinum_create_page', () => {
   it('sends every supplied field and nothing else', async () => {
     const page = makePage({ path: 'eng/runbooks/deploy' });
     const { run, mock } = harness({ 'POST /api/v1/pages': { page } });
 
-    const text = await run('gitdocs_create_page', {
+    const text = await run('tablinum_create_page', {
       path: 'eng/runbooks/deploy',
       title: 'Deploy runbook',
       markdown: 'Body.',
@@ -174,7 +174,7 @@ describe('gitdocs_create_page', () => {
   it('rejects a path that carries the .md extension', async () => {
     const { run, mock } = harness({});
     const error = await expectError(() =>
-      run('gitdocs_create_page', { path: 'eng/deploy.md', title: 'x', markdown: '' }),
+      run('tablinum_create_page', { path: 'eng/deploy.md', title: 'x', markdown: '' }),
     );
     expect(error.code).toBe('VALIDATION');
     expect(mock.calls).toHaveLength(0);
@@ -188,20 +188,20 @@ describe('gitdocs_create_page', () => {
     });
 
     const error = await expectError(() =>
-      run('gitdocs_create_page', { path: 'eng/deploy', title: 'x', markdown: '' }),
+      run('tablinum_create_page', { path: 'eng/deploy', title: 'x', markdown: '' }),
     );
     expect(error.code).toBe('CONFLICT');
   });
 });
 
-describe('gitdocs_update_page partial body', () => {
+describe('tablinum_update_page partial body', () => {
   it('does NOT send markdown when markdown is omitted', async () => {
     const page = makePage();
     const { run, mock } = harness({
       [`PATCH /api/v1/pages/${page.id}`]: { page: makePage({ id: page.id, title: 'New title' }) },
     });
 
-    await run('gitdocs_update_page', { id: page.id, title: 'New title' });
+    await run('tablinum_update_page', { id: page.id, title: 'New title' });
 
     const body = mock.last().body as Record<string, unknown>;
     expect(body).toEqual({ title: 'New title' });
@@ -212,7 +212,7 @@ describe('gitdocs_update_page partial body', () => {
     const page = makePage();
     const { run, mock } = harness({ [`PATCH /api/v1/pages/${page.id}`]: { page } });
 
-    await run('gitdocs_update_page', { id: page.id, icon: '🚀', order: 4 });
+    await run('tablinum_update_page', { id: page.id, icon: '🚀', order: 4 });
 
     expect(mock.last().body).toEqual({ icon: '🚀', order: 4 });
   });
@@ -221,7 +221,7 @@ describe('gitdocs_update_page partial body', () => {
     const page = makePage();
     const { run, mock } = harness({ [`PATCH /api/v1/pages/${page.id}`]: { page } });
 
-    await run('gitdocs_update_page', { id: page.id, markdown: '' });
+    await run('tablinum_update_page', { id: page.id, markdown: '' });
 
     expect(mock.last().body).toEqual({ markdown: '' });
   });
@@ -230,14 +230,14 @@ describe('gitdocs_update_page partial body', () => {
     const page = makePage();
     const { run, mock } = harness({ [`PATCH /api/v1/pages/${page.id}`]: { page } });
 
-    await run('gitdocs_update_page', { id: page.id, icon: null, order: null });
+    await run('tablinum_update_page', { id: page.id, icon: null, order: null });
 
     expect(mock.last().body).toEqual({ icon: null, order: null });
   });
 
   it('refuses an update with no changed field and makes no request', async () => {
     const { run, mock } = harness({});
-    const error = await expectError(() => run('gitdocs_update_page', { id: newPageId() }));
+    const error = await expectError(() => run('tablinum_update_page', { id: newPageId() }));
     expect(error.code).toBe('VALIDATION');
     expect(error.message).toContain('Nothing to update');
     expect(mock.calls).toHaveLength(0);
@@ -250,7 +250,7 @@ describe('gitdocs_update_page partial body', () => {
       [`PATCH /api/v1/pages/${page.id}`]: { page },
     });
 
-    await run('gitdocs_update_page', { path: page.path, title: 'New title' });
+    await run('tablinum_update_page', { path: page.path, title: 'New title' });
 
     expect(mock.calls.map((call) => `${call.method} ${call.pathname}`)).toEqual([
       'GET /api/v1/pages',
@@ -261,12 +261,12 @@ describe('gitdocs_update_page partial body', () => {
   it('reports which fields changed', async () => {
     const page = makePage();
     const { run } = harness({ [`PATCH /api/v1/pages/${page.id}`]: { page } });
-    const text = await run('gitdocs_update_page', { id: page.id, title: 'T', order: null });
+    const text = await run('tablinum_update_page', { id: page.id, title: 'T', order: null });
     expect(text).toContain('Updated title, order.');
   });
 });
 
-describe('gitdocs_append_page', () => {
+describe('tablinum_append_page', () => {
   it('appends after a blank line and sends only markdown', async () => {
     const page = makePage({ markdown: 'Intro paragraph.\n' });
     const { run, mock } = harness({
@@ -274,7 +274,7 @@ describe('gitdocs_append_page', () => {
       [`PATCH /api/v1/pages/${page.id}`]: { page },
     });
 
-    await run('gitdocs_append_page', { path: page.path, markdown: '## New section\n\nDetails.' });
+    await run('tablinum_append_page', { path: page.path, markdown: '## New section\n\nDetails.' });
 
     const body = mock.last().body as Record<string, unknown>;
     expect(Object.keys(body)).toEqual(['markdown']);
@@ -288,7 +288,7 @@ describe('gitdocs_append_page', () => {
       [`PATCH /api/v1/pages/${page.id}`]: { page },
     });
 
-    await run('gitdocs_append_page', { id: page.id, markdown: 'First line.' });
+    await run('tablinum_append_page', { id: page.id, markdown: 'First line.' });
 
     expect((mock.last().body as Record<string, unknown>)['markdown']).toBe('First line.\n');
   });
@@ -300,7 +300,7 @@ describe('gitdocs_append_page', () => {
       [`PATCH /api/v1/pages/${page.id}`]: { page },
     });
 
-    await run('gitdocs_append_page', { id: page.id, markdown: '\n- one\n  - nested\n' });
+    await run('tablinum_append_page', { id: page.id, markdown: '\n- one\n  - nested\n' });
 
     expect((mock.last().body as Record<string, unknown>)['markdown']).toBe(
       'Intro.\n\n- one\n  - nested\n',
@@ -310,20 +310,20 @@ describe('gitdocs_append_page', () => {
   it('rejects whitespace-only markdown before any request', async () => {
     const { run, mock } = harness({});
     const error = await expectError(() =>
-      run('gitdocs_append_page', { id: newPageId(), markdown: '   \n ' }),
+      run('tablinum_append_page', { id: newPageId(), markdown: '   \n ' }),
     );
     expect(error.code).toBe('VALIDATION');
     expect(mock.calls).toHaveLength(0);
   });
 });
 
-describe('gitdocs_move_page', () => {
+describe('tablinum_move_page', () => {
   it('patches the path only', async () => {
     const page = makePage();
     const moved = makePage({ id: page.id, path: 'ops/deploy' });
     const { run, mock } = harness({ [`PATCH /api/v1/pages/${page.id}`]: { page: moved } });
 
-    const text = await run('gitdocs_move_page', { id: page.id, newPath: 'ops/deploy' });
+    const text = await run('tablinum_move_page', { id: page.id, newPath: 'ops/deploy' });
 
     expect(mock.last().body).toEqual({ path: 'ops/deploy' });
     expect(text).toContain('Moved page to ops/deploy.');
@@ -332,21 +332,21 @@ describe('gitdocs_move_page', () => {
   it('rejects an invalid target path before any request', async () => {
     const { run, mock } = harness({});
     const error = await expectError(() =>
-      run('gitdocs_move_page', { id: newPageId(), newPath: 'ops/deploy/' }),
+      run('tablinum_move_page', { id: newPageId(), newPath: 'ops/deploy/' }),
     );
     expect(error.code).toBe('VALIDATION');
     expect(mock.calls).toHaveLength(0);
   });
 });
 
-describe('gitdocs_delete_page', () => {
+describe('tablinum_delete_page', () => {
   it('deletes a single page without the recursive flag', async () => {
     const page = makePage();
     const { run, mock } = harness({
       [`DELETE /api/v1/pages/${page.id}`]: { deleted: ['eng/deploy'] },
     });
 
-    const text = await run('gitdocs_delete_page', { id: page.id });
+    const text = await run('tablinum_delete_page', { id: page.id });
 
     expect(mock.last().query).toEqual({});
     expect(text).toContain('Deleted 1 page:');
@@ -360,7 +360,7 @@ describe('gitdocs_delete_page', () => {
       [`DELETE /api/v1/pages/${page.id}`]: { deleted: ['eng/runbooks', 'eng/runbooks/deploy'] },
     });
 
-    const text = await run('gitdocs_delete_page', { path: 'eng/runbooks', recursive: true });
+    const text = await run('tablinum_delete_page', { path: 'eng/runbooks', recursive: true });
 
     expect(mock.last().query).toEqual({ recursive: 'true' });
     expect(text).toContain('Deleted 2 pages:');
@@ -368,7 +368,7 @@ describe('gitdocs_delete_page', () => {
   });
 });
 
-describe('gitdocs_page_history', () => {
+describe('tablinum_page_history', () => {
   it('resolves the page then reads its commits', async () => {
     const page = makePage();
     const { run, mock } = harness({
@@ -376,7 +376,7 @@ describe('gitdocs_page_history', () => {
       [`GET /api/v1/pages/${page.id}/history`]: { revisions: [makeRevision()] },
     });
 
-    const text = await run('gitdocs_page_history', { path: page.path, limit: 5 });
+    const text = await run('tablinum_page_history', { path: page.path, limit: 5 });
 
     expect(mock.last().query).toEqual({ limit: '5' });
     expect(text).toContain('1 revision of eng/deploy');
@@ -386,13 +386,13 @@ describe('gitdocs_page_history', () => {
   it('rejects a limit above the API maximum', async () => {
     const { run } = harness({});
     const error = await expectError(() =>
-      run('gitdocs_page_history', { id: newPageId(), limit: 5000 }),
+      run('tablinum_page_history', { id: newPageId(), limit: 5000 }),
     );
     expect(error.code).toBe('VALIDATION');
   });
 });
 
-describe('gitdocs_git_sync', () => {
+describe('tablinum_git_sync', () => {
   const routes = (): Routes => ({
     'POST /api/v1/git/commit': { sha: 'abc1234def5678' },
     'POST /api/v1/git/pull': { status: makeStatus({ behind: 0 }), pulled: 2 },
@@ -402,7 +402,7 @@ describe('gitdocs_git_sync', () => {
   it('commits and pulls, and skips the push by default', async () => {
     const { run, mock } = harness(routes());
 
-    const text = await run('gitdocs_git_sync', {});
+    const text = await run('tablinum_git_sync', {});
 
     expect(mock.calls.map((call) => call.pathname)).toEqual([
       '/api/v1/git/commit',
@@ -417,7 +417,7 @@ describe('gitdocs_git_sync', () => {
   it('pushes when asked', async () => {
     const { run, mock } = harness(routes());
 
-    const text = await run('gitdocs_git_sync', { push: true });
+    const text = await run('tablinum_git_sync', { push: true });
 
     expect(mock.calls.map((call) => call.pathname)).toEqual([
       '/api/v1/git/commit',
@@ -435,7 +435,7 @@ describe('gitdocs_git_sync', () => {
       'POST /api/v1/git/push': { status: makeStatus(), pushed: false },
     });
 
-    const text = await run('gitdocs_git_sync', { push: true });
+    const text = await run('tablinum_git_sync', { push: true });
 
     expect(text).toContain('No pending edit to commit.');
     expect(text).toContain('Pulled 0 commits from the remote.');
@@ -450,7 +450,7 @@ describe('gitdocs_git_sync', () => {
       }),
     });
 
-    const error = await expectError(() => run('gitdocs_git_sync', { push: true }));
+    const error = await expectError(() => run('tablinum_git_sync', { push: true }));
     expect(error.code).toBe('GIT_ERROR');
   });
 });

@@ -1,5 +1,5 @@
-import { baseName, depth, isDescendantOf, parentPath, uniqueSlug } from '@gitdocs/shared';
-import type { PageId, PagePath, TreeNode, UpdatePageBody } from '@gitdocs/shared';
+import { baseName, depth, isDescendantOf, parentPath, uniqueSlug } from '@tablinum/shared';
+import type { PageId, PagePath, TreeNode, UpdatePageBody } from '@tablinum/shared';
 import { childrenOf, findNode, sortNodes, type SpaceTree } from './tree';
 
 /** Where a dragged row lands relative to the row it is dropped on. */

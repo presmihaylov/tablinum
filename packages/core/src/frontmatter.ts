@@ -6,7 +6,7 @@ import {
   newPageId,
   type Frontmatter,
   type PageId,
-} from '@gitdocs/shared';
+} from '@tablinum/shared';
 import { emitNumber, emitString, emitTimestamp } from './yaml-emit.js';
 
 const BOM = String.fromCharCode(0xfeff);

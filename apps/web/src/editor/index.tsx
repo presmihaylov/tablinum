@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { EditorContent, useEditor } from '@tiptap/react';
 import type { Editor } from '@tiptap/core';
-import type { Page } from '@gitdocs/shared';
+import type { Page } from '@tablinum/shared';
 import { api } from '../api/client';
 import { useCreatePage, useTree, useUploadAsset, useUsers } from '../api/hooks';
 import { qk } from '../api/keys';

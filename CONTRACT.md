@@ -1,9 +1,9 @@
-# gitdocs — FROZEN CONTRACT
+# tablinum — FROZEN CONTRACT
 
 Every package builds against this document. It is frozen: do not change it without a coordinated
 update across all packages. If code and this file disagree, this file wins.
 
-gitdocs is a **standalone** self-hosted docs app. It has **no connection to Notion**: no import, no
+tablinum is a **standalone** self-hosted docs app. It has **no connection to Notion**: no import, no
 API, no sync. It only borrows the *look and feel* of that style of block editor.
 
 ---
@@ -11,23 +11,23 @@ API, no sync. It only borrows the *look and feel* of that style of block editor.
 ## MONOREPO LAYOUT (pnpm workspaces)
 
 ```
-/Users/pmihaylov/prg/repos/gitdocs/
+/Users/pmihaylov/prg/repos/tablinum/
   package.json, pnpm-workspace.yaml, tsconfig.base.json, .gitignore, README.md, .env.example
-  packages/shared/    @gitdocs/shared   - types + zod schemas + config, zero deps beyond zod
-  packages/core/      @gitdocs/core     - content store (fs, frontmatter, page tree, id index)
-  packages/git-sync/  @gitdocs/git-sync - git engine
-  packages/search/    @gitdocs/search   - sqlite FTS5 index
-  packages/accounts/  @gitdocs/accounts - sqlite accounts: people, passwords, sessions, invites
-  packages/mcp/       @gitdocs/mcp      - MCP server: a stdio CLI and the remote endpoint's tools
-  apps/server/        @gitdocs/server   - Fastify REST API
-  apps/web/           @gitdocs/web      - React + Vite + TipTap
+  packages/shared/    @tablinum/shared   - types + zod schemas + config, zero deps beyond zod
+  packages/core/      @tablinum/core     - content store (fs, frontmatter, page tree, id index)
+  packages/git-sync/  @tablinum/git-sync - git engine
+  packages/search/    @tablinum/search   - sqlite FTS5 index
+  packages/accounts/  @tablinum/accounts - sqlite accounts: people, passwords, sessions, invites
+  packages/mcp/       @tablinum/mcp      - MCP server: a stdio CLI and the remote endpoint's tools
+  apps/server/        @tablinum/server   - Fastify REST API
+  apps/web/           @tablinum/web      - React + Vite + TipTap
   deploy/                               - Dockerfile, docker-compose.yml, ops guide
 ```
 
 ## ON-DISK CONTENT FORMAT (source of truth for everything)
 
-A content repo is a git repo. Default path: `${GITDOCS_CONTENT_DIR}`, fallback
-`/Users/pmihaylov/prg/repos/gitdocs/.data/content`
+A content repo is a git repo. Default path: `${TABLINUM_CONTENT_DIR}`, fallback
+`/Users/pmihaylov/prg/repos/tablinum/.data/content`
 
 That directory is the DEFAULT WORKSPACE. Every other workspace is a git repo of its own with
 exactly the same layout, one directory per workspace under `<parent of content dir>/workspaces/`.
@@ -59,7 +59,7 @@ RULES:
 
 ## STATE OUTSIDE THE CONTENT REPO
 
-The SQLite files sit one level ABOVE `${GITDOCS_CONTENT_DIR}`, never inside it, because nothing
+The SQLite files sit one level ABOVE `${TABLINUM_CONTENT_DIR}`, never inside it, because nothing
 here may be committed or pushed to a remote.
 
 ```
@@ -82,8 +82,8 @@ attachments, search index, agents and live rooms are separate from every other w
 crosses a workspace except `accounts.db`: one person belongs to many workspaces, and a page id is
 unique only inside the one that holds it.
 
-- The workspace of `${GITDOCS_CONTENT_DIR}` is created on first start, named `Main`, slug `main`.
-  It cannot be deleted, and it is the only one that uses `GITDOCS_GIT_REMOTE`.
+- The workspace of `${TABLINUM_CONTENT_DIR}` is created on first start, named `Main`, slug `main`.
+  It cannot be deleted, and it is the only one that uses `TABLINUM_GIT_REMOTE`.
 - Every other workspace lives at `<parent of content dir>/workspaces/<slug>/` and is opened
   lazily, on the first request that names it. Its search index is `<that directory>.search.db`.
 - A new workspace starts with one space, `general`, and its home page.
@@ -95,9 +95,9 @@ unique only inside the one that holds it.
 WHICH WORKSPACE A REQUEST IS ABOUT, in order:
 
 1. An agent token. It names one workspace and no header can point it at another.
-2. `x-gitdocs-workspace: <slug or id>`.
+2. `x-tablinum-workspace: <slug or id>`.
 3. `?workspace=<slug or id>`, for links and for the WebSocket upgrade.
-4. The `gitdocs_workspace` cookie. An `<img>` inside a page sends nothing else. Not a credential.
+4. The `tablinum_workspace` cookie. An `<img>` inside a page sends nothing else. Not a credential.
 5. Nothing: the caller's first workspace.
 
 A named workspace the caller may not open answers `UNAUTHORIZED` for a signed-in person and
@@ -130,7 +130,7 @@ props:                   # optional, Record<string, string|number|boolean|string
 
 Body below is plain CommonMark + GFM (tables, task lists, strikethrough, autolinks).
 Wikilinks `[[page-path]]` and `[[page-path|alias]]` are supported and resolved by core.
-Mentions are plain `@handle` text: nothing is encoded, so a page stays readable outside gitdocs
+Mentions are plain `@handle` text: nothing is encoded, so a page stays readable outside tablinum
 and a rename never rewrites a page. A mention must start a word, so `mail@example.com` is an
 address. A mention inside code names nobody.
 `![[page-path]]` alone on a line embeds that page; it counts as a link like any wikilink.
@@ -280,9 +280,9 @@ Helper in the same file: `mcpUrl(origin)` -> `<origin>/api/v1/mcp`.
 
 ```ts
 export const WORKSPACE_ID_PREFIX = 'ws_';
-export const WORKSPACE_HEADER = 'x-gitdocs-workspace';
+export const WORKSPACE_HEADER = 'x-tablinum-workspace';
 export const WORKSPACE_QUERY = 'workspace';
-export const WORKSPACE_COOKIE = 'gitdocs_workspace';
+export const WORKSPACE_COOKIE = 'tablinum_workspace';
 export const DEFAULT_WORKSPACE_SLUG = 'main';
 export const DEFAULT_WORKSPACE_NAME = 'Main';
 export const MAX_WORKSPACE_SLUG_LENGTH = 40;
@@ -312,10 +312,10 @@ Helpers in the same file: `workspaceSlugOf(name)`, `workspaceExportName(slug)` -
 Three credentials, all granting the same access to the content:
 
 1. An account: an email and a password, exchanged for a session cookie. This one names a person.
-2. `Authorization: Bearer <token>`, with tokens from env `GITDOCS_API_TOKENS`. Names nobody.
+2. `Authorization: Bearer <token>`, with tokens from env `TABLINUM_API_TOKENS`. Names nobody.
 3. `Authorization: Bearer gda_<token>`, issued per agent. This one names an agent, never an admin.
 
-The cookie is `gitdocs_session`, signed and httpOnly. Its payload starts with `u1.`. Sessions last
+The cookie is `tablinum_session`, signed and httpOnly. Its payload starts with `u1.`. Sessions last
 30 days.
 
 EVERY BROWSER SESSION NAMES AN ACCOUNT. There is no shared password and no open mode: a bearer
@@ -458,7 +458,7 @@ A client must send `content-type: application/json` and accept both `application
 ## LIVE CHANNEL
 
 One WebSocket per browser tab, at `/api/v1/live`. The tab id travels as `?client=` on the
-upgrade and as the `x-gitdocs-client` header on every REST call, because a browser cannot set
+upgrade and as the `x-tablinum-client` header on every REST call, because a browser cannot set
 a header on an upgrade. `?workspace=` travels with it for the same reason. A broadcast reaches
 every tab in THAT workspace, the originator included; `by` names the tab that caused it, so that
 tab ignores its own echo. Each workspace has its own hub and its own rooms.
@@ -525,20 +525,20 @@ Codes: `NOT_FOUND`, `CONFLICT`, `VALIDATION`, `UNAUTHORIZED`, `GIT_ERROR`, `INTE
 
 ## CONFIG
 
-Read from env, all packages use `@gitdocs/shared`'s `loadConfig()`:
+Read from env, all packages use `@tablinum/shared`'s `loadConfig()`:
 
 | Variable | Default |
 | --- | --- |
-| `GITDOCS_CONTENT_DIR` | `/Users/pmihaylov/prg/repos/gitdocs/.data/content` |
-| `GITDOCS_PORT` | `4000` |
-| `GITDOCS_API_TOKENS` | comma-separated bearer tokens |
-| `GITDOCS_SESSION_SECRET` | cookie signing secret |
-| `GITDOCS_GIT_REMOTE` | optional git remote URL |
-| `GITDOCS_GIT_BRANCH` | `main` |
-| `GITDOCS_GIT_AUTHOR_NAME` | `gitdocs` |
-| `GITDOCS_GIT_AUTHOR_EMAIL` | `gitdocs@localhost` |
-| `GITDOCS_AUTOCOMMIT_MS` | debounce before auto-commit, default `5000` |
-| `GITDOCS_AUTOPULL_MS` | periodic pull interval, default `60000`, `0` = off |
-| `GITDOCS_AUTOPUSH_MS` | quiet period after a commit before the push, default `5000`, `0` = off |
-| `GITDOCS_SLACK_BOT_TOKEN` | Slack bot token. Unset turns mention notifications off |
-| `GITDOCS_PUBLIC_URL` | origin used in a notification link, e.g. `https://docs.example.com` |
+| `TABLINUM_CONTENT_DIR` | `/Users/pmihaylov/prg/repos/tablinum/.data/content` |
+| `TABLINUM_PORT` | `4000` |
+| `TABLINUM_API_TOKENS` | comma-separated bearer tokens |
+| `TABLINUM_SESSION_SECRET` | cookie signing secret |
+| `TABLINUM_GIT_REMOTE` | optional git remote URL |
+| `TABLINUM_GIT_BRANCH` | `main` |
+| `TABLINUM_GIT_AUTHOR_NAME` | `tablinum` |
+| `TABLINUM_GIT_AUTHOR_EMAIL` | `tablinum@localhost` |
+| `TABLINUM_AUTOCOMMIT_MS` | debounce before auto-commit, default `5000` |
+| `TABLINUM_AUTOPULL_MS` | periodic pull interval, default `60000`, `0` = off |
+| `TABLINUM_AUTOPUSH_MS` | quiet period after a commit before the push, default `5000`, `0` = off |
+| `TABLINUM_SLACK_BOT_TOKEN` | Slack bot token. Unset turns mention notifications off |
+| `TABLINUM_PUBLIC_URL` | origin used in a notification link, e.g. `https://docs.example.com` |

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { PageId } from '@gitdocs/shared';
+import type { PageId } from '@tablinum/shared';
 import { useHistory, useRevision } from '../../api/hooks';
 import { absoluteTime, relativeTime, shortSha } from '../../lib/format';
 import { Modal } from '../ui/Overlay';

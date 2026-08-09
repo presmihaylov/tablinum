@@ -9,7 +9,7 @@ import {
   PageResponseSchema,
   RevisionContentResponseSchema,
   gitError,
-} from '@gitdocs/shared';
+} from '@tablinum/shared';
 import { bodyOf, makeHarness, seed, type Harness } from './support/harness.js';
 
 let harness: Harness;
@@ -118,7 +118,7 @@ describe('page history', () => {
     expect(history.statusCode).toBe(200);
     const { revisions } = bodyOf(history, HistoryResponseSchema);
     expect(revisions.length).toBeGreaterThanOrEqual(2);
-    expect(revisions[0]?.email).toBe('gitdocs@localhost');
+    expect(revisions[0]?.email).toBe('tablinum@localhost');
 
     const oldest = revisions[revisions.length - 1];
     const content = await harness.app.inject({

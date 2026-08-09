@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { Stats } from 'node:fs';
-import { validation } from '@gitdocs/shared';
+import { validation } from '@tablinum/shared';
 
 const NULL_BYTE = String.fromCharCode(0);
 

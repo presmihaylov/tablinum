@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import type { AccountStore } from '@gitdocs/accounts';
+import type { AccountStore } from '@tablinum/accounts';
 import {
   AgentIdSchema,
   CreateAgentBodySchema,
@@ -13,7 +13,7 @@ import {
   type AgentTokenResponse,
   type AgentsResponse,
   type OkResponse,
-} from '@gitdocs/shared';
+} from '@tablinum/shared';
 import { requireAdmin } from '../auth.js';
 import { API_PREFIX, partsOf, type RouteContext } from '../context.js';
 

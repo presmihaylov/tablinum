@@ -9,7 +9,7 @@ import {
   type InviteResponse,
   type InvitesResponse,
   type OkResponse,
-} from '@gitdocs/shared';
+} from '@tablinum/shared';
 import { requireAdmin } from '../auth.js';
 import { API_PREFIX, type RouteContext } from '../context.js';
 

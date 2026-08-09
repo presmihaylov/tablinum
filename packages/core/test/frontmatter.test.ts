@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isPageId, newPageId, type Frontmatter } from '@gitdocs/shared';
+import { isPageId, newPageId, type Frontmatter } from '@tablinum/shared';
 import {
   firstHeading,
   frontmatterEqual,

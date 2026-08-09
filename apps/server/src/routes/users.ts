@@ -20,7 +20,7 @@ import {
   type SlackStateResponse,
   type UserResponse,
   type UsersResponse,
-} from '@gitdocs/shared';
+} from '@tablinum/shared';
 import { requireAccount, requireAdmin, setAccountCookie } from '../auth.js';
 import { API_PREFIX, type RouteContext } from '../context.js';
 

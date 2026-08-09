@@ -17,10 +17,10 @@ export interface MentionSuggestionOptions {
   search: (query: string) => Promise<MentionItem[]>;
 }
 
-export const mentionPluginKey = new PluginKey('gitdocsMention');
+export const mentionPluginKey = new PluginKey('tablinumMention');
 
 export const MentionSuggestion = Extension.create<MentionSuggestionOptions>({
-  name: 'gitdocsMentionSuggestion',
+  name: 'tablinumMentionSuggestion',
 
   addOptions() {
     return { search: () => Promise.resolve([]) };

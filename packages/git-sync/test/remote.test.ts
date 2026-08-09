@@ -168,7 +168,7 @@ describe('GitEngine.pull', () => {
     const { remote, peer } = await seededRemote();
     const { engine, dir } = await clonedEngine(remote);
 
-    await writeFileIn(dir, 'eng/index.md', page('pg_1', 'Engineering', 'the gitdocs version'));
+    await writeFileIn(dir, 'eng/index.md', page('pg_1', 'Engineering', 'the tablinum version'));
     await engine.commitAll('docs: local edit');
     const localHead = (await git(dir, 'rev-parse', 'HEAD')).trim();
 
@@ -182,7 +182,7 @@ describe('GitEngine.pull', () => {
     expect(await exists(join(dir, '.git', 'rebase-apply'))).toBe(false);
     expect((await git(dir, 'rev-parse', 'HEAD')).trim()).toBe(localHead);
     expect((await engine.status()).dirtyFiles).toEqual([]);
-    expect(await readFileIn(dir, 'eng/index.md')).toContain('the gitdocs version');
+    expect(await readFileIn(dir, 'eng/index.md')).toContain('the tablinum version');
     expect(await readFileIn(dir, 'eng/index.md')).not.toContain('<<<<<<<');
   });
 
@@ -190,7 +190,7 @@ describe('GitEngine.pull', () => {
     const { remote, peer } = await seededRemote();
     const { engine, dir } = await clonedEngine(remote);
 
-    await writeFileIn(dir, 'eng/index.md', page('pg_1', 'Engineering', 'the gitdocs version'));
+    await writeFileIn(dir, 'eng/index.md', page('pg_1', 'Engineering', 'the tablinum version'));
     await engine.commitAll('docs: local edit');
     await peerPush(peer, 'the other author version', 'docs: peer edit');
     await expect(engine.pull()).rejects.toMatchObject({ code: 'GIT_ERROR' });

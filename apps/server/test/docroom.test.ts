@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { WebSocket } from '@fastify/websocket';
 import type { FastifyBaseLogger } from 'fastify';
-import { MAX_ROOM_STEPS, type DocBaseline, type LiveUser, type Page, type ServerMessage } from '@gitdocs/shared';
+import { MAX_ROOM_STEPS, type DocBaseline, type LiveUser, type Page, type ServerMessage } from '@tablinum/shared';
 import { DocRooms, versionOf, writerOf } from '../src/docroom.js';
 import { LiveHub } from '../src/live.js';
 

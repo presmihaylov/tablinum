@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
-import type { Page } from '@gitdocs/shared';
+import type { Page } from '@tablinum/shared';
 import { PageEditor } from '../../src/editor';
 import { fakeId, node, page, space } from '../fixtures';
 import { installFetch, type MockServer, type Routes } from '../mockFetch';

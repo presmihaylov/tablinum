@@ -1,6 +1,6 @@
 import type { FastifyError, FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { ZodError } from 'zod';
-import { AppError, isAppError, type ErrorBody, type ErrorCode } from '@gitdocs/shared';
+import { AppError, isAppError, type ErrorBody, type ErrorCode } from '@tablinum/shared';
 
 const CODE_BY_STATUS: Record<number, ErrorCode> = {
   400: 'VALIDATION',

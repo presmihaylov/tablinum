@@ -6,11 +6,11 @@ import { matchEmoji } from '../ui/emoji';
 import type { EmojiEntry } from '../ui/emoji';
 import { createSuggestionRenderer } from '../ui/suggestionRenderer';
 
-export const emojiPluginKey = new PluginKey('gitdocsEmoji');
+export const emojiPluginKey = new PluginKey('tablinumEmoji');
 
 /** `:query` at the caret offers emoji. The character it inserts is plain UTF-8. */
 export const EmojiSuggestion = Extension.create({
-  name: 'gitdocsEmojiSuggestion',
+  name: 'tablinumEmojiSuggestion',
 
   addProseMirrorPlugins() {
     return [

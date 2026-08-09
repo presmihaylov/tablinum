@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { isAppError, MAX_AVATAR_BYTES } from '@gitdocs/shared';
+import { isAppError, MAX_AVATAR_BYTES } from '@tablinum/shared';
 import { AccountStore } from '../src/store.js';
 
 const open: AccountStore[] = [];

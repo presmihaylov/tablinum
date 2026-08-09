@@ -3,30 +3,30 @@ import type { Config } from './types.js';
 
 export type EnvSource = Record<string, string | undefined>;
 
-export const DEFAULT_CONTENT_DIR = '/Users/pmihaylov/prg/repos/gitdocs/.data/content';
+export const DEFAULT_CONTENT_DIR = '/Users/pmihaylov/prg/repos/tablinum/.data/content';
 export const DEFAULT_PORT = 4000;
 export const DEFAULT_GIT_BRANCH = 'main';
-export const DEFAULT_GIT_AUTHOR_NAME = 'gitdocs';
-export const DEFAULT_GIT_AUTHOR_EMAIL = 'gitdocs@localhost';
+export const DEFAULT_GIT_AUTHOR_NAME = 'tablinum';
+export const DEFAULT_GIT_AUTHOR_EMAIL = 'tablinum@localhost';
 export const DEFAULT_AUTOCOMMIT_MS = 5000;
 export const DEFAULT_AUTOPULL_MS = 60000;
 export const DEFAULT_AUTOPUSH_MS = 5000;
 
-/** Every environment variable gitdocs reads. */
+/** Every environment variable tablinum reads. */
 export const ENV_KEYS = [
-  'GITDOCS_CONTENT_DIR',
-  'GITDOCS_PORT',
-  'GITDOCS_API_TOKENS',
-  'GITDOCS_SESSION_SECRET',
-  'GITDOCS_GIT_REMOTE',
-  'GITDOCS_GIT_BRANCH',
-  'GITDOCS_GIT_AUTHOR_NAME',
-  'GITDOCS_GIT_AUTHOR_EMAIL',
-  'GITDOCS_AUTOCOMMIT_MS',
-  'GITDOCS_AUTOPULL_MS',
-  'GITDOCS_AUTOPUSH_MS',
-  'GITDOCS_SLACK_BOT_TOKEN',
-  'GITDOCS_PUBLIC_URL',
+  'TABLINUM_CONTENT_DIR',
+  'TABLINUM_PORT',
+  'TABLINUM_API_TOKENS',
+  'TABLINUM_SESSION_SECRET',
+  'TABLINUM_GIT_REMOTE',
+  'TABLINUM_GIT_BRANCH',
+  'TABLINUM_GIT_AUTHOR_NAME',
+  'TABLINUM_GIT_AUTHOR_EMAIL',
+  'TABLINUM_AUTOCOMMIT_MS',
+  'TABLINUM_AUTOPULL_MS',
+  'TABLINUM_AUTOPUSH_MS',
+  'TABLINUM_SLACK_BOT_TOKEN',
+  'TABLINUM_PUBLIC_URL',
 ] as const;
 
 export type EnvKey = (typeof ENV_KEYS)[number];
@@ -49,7 +49,7 @@ function readInt(env: EnvSource, key: EnvKey, fallback: number, min: number, max
   return value;
 }
 
-// Kept string-only so @gitdocs/shared stays free of node:path and bundles for the browser.
+// Kept string-only so @tablinum/shared stays free of node:path and bundles for the browser.
 const WINDOWS_ABSOLUTE_RE = /^[a-zA-Z]:[\\/]/;
 
 function isAbsolutePath(value: string): boolean {
@@ -72,39 +72,39 @@ function parseTokens(raw: string | undefined): string[] {
 }
 
 /**
- * Read every gitdocs environment variable, apply defaults and validate.
+ * Read every tablinum environment variable, apply defaults and validate.
  * Throws a VALIDATION AppError with a readable message on any bad value.
  */
 export function loadConfig(env: EnvSource = process.env): Config {
-  const contentDir = read(env, 'GITDOCS_CONTENT_DIR') ?? DEFAULT_CONTENT_DIR;
+  const contentDir = read(env, 'TABLINUM_CONTENT_DIR') ?? DEFAULT_CONTENT_DIR;
   if (!isAbsolutePath(contentDir)) {
-    throw validation(`GITDOCS_CONTENT_DIR must be an absolute path, got ${JSON.stringify(contentDir)}`);
+    throw validation(`TABLINUM_CONTENT_DIR must be an absolute path, got ${JSON.stringify(contentDir)}`);
   }
 
-  const port = readInt(env, 'GITDOCS_PORT', DEFAULT_PORT, 1, 65535);
-  const apiTokens = parseTokens(read(env, 'GITDOCS_API_TOKENS'));
+  const port = readInt(env, 'TABLINUM_PORT', DEFAULT_PORT, 1, 65535);
+  const apiTokens = parseTokens(read(env, 'TABLINUM_API_TOKENS'));
 
   // Without a configured secret every restart invalidates existing sessions. That is safer
   // than shipping a fixed fallback secret.
-  const sessionSecret = read(env, 'GITDOCS_SESSION_SECRET') ?? randomHex(32);
+  const sessionSecret = read(env, 'TABLINUM_SESSION_SECRET') ?? randomHex(32);
   if (sessionSecret.length < 16) {
-    throw validation('GITDOCS_SESSION_SECRET must be at least 16 characters');
+    throw validation('TABLINUM_SESSION_SECRET must be at least 16 characters');
   }
 
-  const gitBranch = read(env, 'GITDOCS_GIT_BRANCH') ?? DEFAULT_GIT_BRANCH;
+  const gitBranch = read(env, 'TABLINUM_GIT_BRANCH') ?? DEFAULT_GIT_BRANCH;
   if (/\s/.test(gitBranch)) {
-    throw validation(`GITDOCS_GIT_BRANCH must not contain whitespace, got ${JSON.stringify(gitBranch)}`);
+    throw validation(`TABLINUM_GIT_BRANCH must not contain whitespace, got ${JSON.stringify(gitBranch)}`);
   }
 
-  const gitAuthorEmail = read(env, 'GITDOCS_GIT_AUTHOR_EMAIL') ?? DEFAULT_GIT_AUTHOR_EMAIL;
+  const gitAuthorEmail = read(env, 'TABLINUM_GIT_AUTHOR_EMAIL') ?? DEFAULT_GIT_AUTHOR_EMAIL;
   if (!gitAuthorEmail.includes('@')) {
-    throw validation(`GITDOCS_GIT_AUTHOR_EMAIL must be an email address, got ${JSON.stringify(gitAuthorEmail)}`);
+    throw validation(`TABLINUM_GIT_AUTHOR_EMAIL must be an email address, got ${JSON.stringify(gitAuthorEmail)}`);
   }
 
   // A Slack message links back to the page, and Slack cannot resolve "localhost".
-  const publicUrl = read(env, 'GITDOCS_PUBLIC_URL') ?? null;
+  const publicUrl = read(env, 'TABLINUM_PUBLIC_URL') ?? null;
   if (publicUrl !== null && !/^https?:\/\//.test(publicUrl)) {
-    throw validation(`GITDOCS_PUBLIC_URL must start with http:// or https://, got ${JSON.stringify(publicUrl)}`);
+    throw validation(`TABLINUM_PUBLIC_URL must start with http:// or https://, got ${JSON.stringify(publicUrl)}`);
   }
 
   const config: Config = {
@@ -112,14 +112,14 @@ export function loadConfig(env: EnvSource = process.env): Config {
     port,
     apiTokens: [...apiTokens],
     sessionSecret,
-    gitRemote: read(env, 'GITDOCS_GIT_REMOTE') ?? null,
+    gitRemote: read(env, 'TABLINUM_GIT_REMOTE') ?? null,
     gitBranch,
-    gitAuthorName: read(env, 'GITDOCS_GIT_AUTHOR_NAME') ?? DEFAULT_GIT_AUTHOR_NAME,
+    gitAuthorName: read(env, 'TABLINUM_GIT_AUTHOR_NAME') ?? DEFAULT_GIT_AUTHOR_NAME,
     gitAuthorEmail,
-    autocommitMs: readInt(env, 'GITDOCS_AUTOCOMMIT_MS', DEFAULT_AUTOCOMMIT_MS, 0, 3600000),
-    autopullMs: readInt(env, 'GITDOCS_AUTOPULL_MS', DEFAULT_AUTOPULL_MS, 0, 86400000),
-    autopushMs: readInt(env, 'GITDOCS_AUTOPUSH_MS', DEFAULT_AUTOPUSH_MS, 0, 3600000),
-    slackBotToken: read(env, 'GITDOCS_SLACK_BOT_TOKEN') ?? null,
+    autocommitMs: readInt(env, 'TABLINUM_AUTOCOMMIT_MS', DEFAULT_AUTOCOMMIT_MS, 0, 3600000),
+    autopullMs: readInt(env, 'TABLINUM_AUTOPULL_MS', DEFAULT_AUTOPULL_MS, 0, 86400000),
+    autopushMs: readInt(env, 'TABLINUM_AUTOPUSH_MS', DEFAULT_AUTOPUSH_MS, 0, 3600000),
+    slackBotToken: read(env, 'TABLINUM_SLACK_BOT_TOKEN') ?? null,
     publicUrl: publicUrl === null ? null : publicUrl.replace(/\/+$/, ''),
   };
 

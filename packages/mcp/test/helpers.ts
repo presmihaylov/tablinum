@@ -8,7 +8,7 @@ import {
   type SearchHit,
   type Space,
   type TreeNode,
-} from '@gitdocs/shared';
+} from '@tablinum/shared';
 import type { FetchLike, SpaceTree } from '../src/client.js';
 
 // ---------------------------------------------------------------------------

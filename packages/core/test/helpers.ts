@@ -1,14 +1,14 @@
 import { mkdtemp, readFile, rm, writeFile, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { isAppError, type ErrorCode } from '@gitdocs/shared';
+import { isAppError, type ErrorCode } from '@tablinum/shared';
 import { silentLogger } from '../src/logger.js';
 import { ContentStore } from '../src/store.js';
 
 const BASE_TIME = Date.parse('2026-01-02T03:04:05.000Z');
 
 export async function makeTempDir(): Promise<string> {
-  return mkdtemp(path.join(tmpdir(), 'gitdocs-core-'));
+  return mkdtemp(path.join(tmpdir(), 'tablinum-core-'));
 }
 
 export async function removeTempDir(dir: string): Promise<void> {

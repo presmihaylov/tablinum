@@ -1,6 +1,6 @@
 # The editor seam
 
-`apps/web/src/editor/` is the only directory of `@gitdocs/web` owned by the editor.
+`apps/web/src/editor/` is the only directory of `@tablinum/web` owned by the editor.
 Everything else - routing, data fetching, saving, the sidebar, the details panel, the
 command palette - is the shell. The two meet at exactly one component.
 
@@ -23,7 +23,7 @@ section 1.
 export, with this exact signature:
 
 ```ts
-import type { Page } from '@gitdocs/shared';
+import type { Page } from '@tablinum/shared';
 import type { SaveState } from '../lib/autosave';
 import type { DocRoom } from '../lib/docRoom';
 import type { IncomingContent } from '../lib/usePageDoc';
@@ -58,7 +58,7 @@ The shell calls it from `src/routes/PageRoute.tsx` like this, and nothing else:
 
 ### `page: Page`
 
-The full page from `GET /api/v1/pages?path=...`, typed by `@gitdocs/shared`:
+The full page from `GET /api/v1/pages?path=...`, typed by `@tablinum/shared`:
 
 | field | meaning for the editor |
 | --- | --- |
@@ -228,8 +228,8 @@ Everything else inside the content area is yours, including `/` for the slash me
 
 ## 6. Definition of done
 
-- `pnpm --filter @gitdocs/web typecheck` passes, with no `as any` and no `@ts-ignore`.
-- `pnpm --filter @gitdocs/web test` passes; the shell's tests in `apps/web/test/` must not
+- `pnpm --filter @tablinum/web typecheck` passes, with no `as any` and no `@ts-ignore`.
+- `pnpm --filter @tablinum/web test` passes; the shell's tests in `apps/web/test/` must not
   need edits.
 - Typing in the editor produces exactly one PATCH per burst, and the save indicator moves
   `saving -> saved -> idle`.

@@ -1,5 +1,5 @@
-import { parentPath, segments } from '@gitdocs/shared';
-import type { PagePath, TreeNode, TreeResponse } from '@gitdocs/shared';
+import { parentPath, segments } from '@tablinum/shared';
+import type { PagePath, TreeNode, TreeResponse } from '@tablinum/shared';
 
 /** One space plus its page tree, exactly as GET /api/v1/tree returns it. */
 export type SpaceTree = TreeResponse['spaces'][number];

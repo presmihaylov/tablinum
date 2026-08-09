@@ -7,7 +7,7 @@ import TaskList from '@tiptap/extension-task-list';
  * list in its default parse hooks. The dialect handles both itself and keeps the
  * `[X]` casing, so both hooks are shadowed.
  */
-export const GitdocsTaskList = TaskList.extend({
+export const TablinumTaskList = TaskList.extend({
   // One markdown list can mix `- [ ] a` with `- b`. Without plain items here the parser splits
   // it into two lists, and saving writes a blank line that turns the tight list loose.
   content: '(taskItem|listItem)+',
@@ -60,7 +60,7 @@ export const GitdocsTaskList = TaskList.extend({
   },
 }).configure({ HTMLAttributes: { class: 'gd-editor-tasks' } });
 
-export const GitdocsTaskItem = TaskItem.extend({
+export const TablinumTaskItem = TaskItem.extend({
   // Same reason as `ListItem` in `extensions/index.ts`: the stock `paragraph block*` makes the
   // DOM parser drop any leading non-paragraph block out of the item.
   content: 'block+',

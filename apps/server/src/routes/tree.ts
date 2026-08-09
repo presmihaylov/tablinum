@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import type { TreeResponse } from '@gitdocs/shared';
+import type { TreeResponse } from '@tablinum/shared';
 import { API_PREFIX, partsOf, type RouteContext } from '../context.js';
 
 export function registerTreeRoutes(app: FastifyInstance, ctx: RouteContext): void {

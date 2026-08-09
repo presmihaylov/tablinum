@@ -1,10 +1,10 @@
-import { AppError, newPageId } from '@gitdocs/shared';
+import { AppError, newPageId } from '@tablinum/shared';
 import { describe, expect, it } from 'vitest';
-import { GitdocsClient } from '../src/client.js';
+import { TablinumClient } from '../src/client.js';
 import { normalizeRef, refLabel, resolvePage, resolvePageId } from '../src/refs.js';
 import { makePage, mockFetch } from './helpers.js';
 
-const BASE = 'http://gitdocs.test';
+const BASE = 'http://tablinum.test';
 
 describe('normalizeRef', () => {
   it('accepts a page id', () => {
@@ -72,7 +72,7 @@ describe('resolving a ref against the API', () => {
   it('fetches by id without a lookup', async () => {
     const page = makePage();
     const mock = mockFetch({ [`GET /api/v1/pages/${page.id}`]: { page } });
-    const client = new GitdocsClient({ baseUrl: BASE, token: null, fetch: mock.fetch });
+    const client = new TablinumClient({ baseUrl: BASE, token: null, fetch: mock.fetch });
 
     await expect(resolvePage(client, { id: page.id })).resolves.toMatchObject({ id: page.id });
     expect(mock.calls).toHaveLength(1);
@@ -81,7 +81,7 @@ describe('resolving a ref against the API', () => {
   it('fetches by path with the path query', async () => {
     const page = makePage({ path: 'eng/runbooks/deploy' });
     const mock = mockFetch({ 'GET /api/v1/pages': { page } });
-    const client = new GitdocsClient({ baseUrl: BASE, token: null, fetch: mock.fetch });
+    const client = new TablinumClient({ baseUrl: BASE, token: null, fetch: mock.fetch });
 
     await resolvePage(client, { path: 'eng/runbooks/deploy' });
 
@@ -91,7 +91,7 @@ describe('resolving a ref against the API', () => {
   it('resolvePageId returns the id straight away and makes no request', async () => {
     const id = newPageId();
     const mock = mockFetch({});
-    const client = new GitdocsClient({ baseUrl: BASE, token: null, fetch: mock.fetch });
+    const client = new TablinumClient({ baseUrl: BASE, token: null, fetch: mock.fetch });
 
     await expect(resolvePageId(client, { id })).resolves.toBe(id);
     expect(mock.calls).toHaveLength(0);
@@ -100,7 +100,7 @@ describe('resolving a ref against the API', () => {
   it('resolvePageId looks a path up exactly once', async () => {
     const page = makePage();
     const mock = mockFetch({ 'GET /api/v1/pages': { page } });
-    const client = new GitdocsClient({ baseUrl: BASE, token: null, fetch: mock.fetch });
+    const client = new TablinumClient({ baseUrl: BASE, token: null, fetch: mock.fetch });
 
     await expect(resolvePageId(client, { path: page.path })).resolves.toBe(page.id);
     expect(mock.calls).toHaveLength(1);

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Editor } from '@tiptap/core';
 import { collab, getVersion, receiveTransaction, sendableSteps } from '@tiptap/pm/collab';
 import { Step } from '@tiptap/pm/transform';
-import type { DocStep } from '@gitdocs/shared';
+import type { DocStep } from '@tablinum/shared';
 import { DocRooms, versionOf } from '../../../server/src/docroom';
 import { writeMarkdown } from '../../src/editor/markdown';
 import { createTestEditor } from './harness';

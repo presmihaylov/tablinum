@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { isPageId } from '@gitdocs/shared';
+import { isPageId } from '@tablinum/shared';
 import { ContentStore } from '../src/store.js';
 import { parse } from '../src/frontmatter.js';
 import { silentLogger } from '../src/logger.js';
@@ -42,7 +42,7 @@ describe('init', () => {
     expect(page.title).toBe('Welcome');
     expect(page.space).toBe('docs');
     expect(isPageId(page.id)).toBe(true);
-    expect(page.markdown).toContain('# Welcome to gitdocs');
+    expect(page.markdown).toContain('# Welcome to tablinum');
   });
 
   it('is idempotent', async () => {

@@ -10,7 +10,7 @@ import './styles/tokens.css';
 import './styles/base.css';
 
 const container = document.getElementById('root');
-if (!container) throw new Error('gitdocs: #root is missing from index.html');
+if (!container) throw new Error('tablinum: #root is missing from index.html');
 
 createRoot(container).render(
   <StrictMode>

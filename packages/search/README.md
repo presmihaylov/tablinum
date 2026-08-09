@@ -1,6 +1,6 @@
-# @gitdocs/search
+# @tablinum/search
 
-Full-text search over gitdocs pages, backed by SQLite FTS5 (`better-sqlite3`).
+Full-text search over tablinum pages, backed by SQLite FTS5 (`better-sqlite3`).
 
 The index is a **derived cache**. It holds no source of truth, it is never committed, and it can be
 deleted at any time and rebuilt from the markdown files with `reindexAll()`.
@@ -16,8 +16,8 @@ content repo too.
 ## Usage
 
 ```ts
-import { getConfig } from '@gitdocs/shared';
-import { SearchIndex, defaultDbPath } from '@gitdocs/search';
+import { getConfig } from '@tablinum/shared';
+import { SearchIndex, defaultDbPath } from '@tablinum/search';
 
 const config = getConfig();
 const index = new SearchIndex({ dbPath: defaultDbPath(config.contentDir) });

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 
-const PREFIX = 'gitdocs.';
+const PREFIX = 'tablinum.';
 
 export function readStored<T>(key: string, fallback: T): T {
   try {

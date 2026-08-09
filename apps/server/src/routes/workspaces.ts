@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type {} from '@fastify/multipart';
 import { z } from 'zod';
-import type { AccountStore, WorkspaceRecord } from '@gitdocs/accounts';
+import type { AccountStore, WorkspaceRecord } from '@tablinum/accounts';
 import {
   AddWorkspaceMemberBodySchema,
   CreateWorkspaceBodySchema,
@@ -22,7 +22,7 @@ import {
   type WorkspaceMembersResponse,
   type WorkspaceResponse,
   type WorkspacesResponse,
-} from '@gitdocs/shared';
+} from '@tablinum/shared';
 import { requireAccount, requireAdmin } from '../auth.js';
 import { API_PREFIX, type RouteContext } from '../context.js';
 import { unzipToDirectory, zipDirectory } from '../zip.js';

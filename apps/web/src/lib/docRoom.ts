@@ -5,7 +5,7 @@ import type {
   LiveUser,
   PagePath,
   ServerMessage,
-} from '@gitdocs/shared';
+} from '@tablinum/shared';
 import { myClientId } from './identity';
 import type { LiveConnection } from './liveClient';
 

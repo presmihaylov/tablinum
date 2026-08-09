@@ -1,4 +1,4 @@
-/** Line diff for display only. The merge itself lives in @gitdocs/shared. */
+/** Line diff for display only. The merge itself lives in @tablinum/shared. */
 
 export type DiffKind = 'same' | 'add' | 'del';
 

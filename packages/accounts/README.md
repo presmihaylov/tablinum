@@ -1,4 +1,4 @@
-# @gitdocs/accounts
+# @tablinum/accounts
 
 The account database: users, passwords, sessions, invite links and avatars, in SQLite.
 
@@ -36,7 +36,7 @@ The store refuses to demote, disable or delete the last enabled admin.
 ## Usage
 
 ```ts
-import { AccountStore, defaultAccountsDbPath } from '@gitdocs/accounts';
+import { AccountStore, defaultAccountsDbPath } from '@tablinum/accounts';
 
 const accounts = new AccountStore({ dbPath: defaultAccountsDbPath(contentDir) });
 accounts.init();

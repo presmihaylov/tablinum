@@ -7,10 +7,10 @@ import {
   validation,
   type CreatePageBody,
   type UpdatePageBody,
-} from '@gitdocs/shared';
+} from '@tablinum/shared';
 import type { ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
-import type { GitdocsClient } from './client.js';
+import type { TablinumClient } from './client.js';
 import {
   formatGitStatus,
   formatHistory,
@@ -29,7 +29,7 @@ export interface ToolSpec {
   inputShape: z.ZodRawShape;
   annotations: ToolAnnotations;
   /** Validate `rawArgs`, run the tool, and return the text the model should see. */
-  run(client: GitdocsClient, rawArgs: unknown): Promise<string>;
+  run(client: TablinumClient, rawArgs: unknown): Promise<string>;
 }
 
 interface ToolDefinition<Shape extends z.ZodRawShape> {
@@ -38,7 +38,7 @@ interface ToolDefinition<Shape extends z.ZodRawShape> {
   description: string;
   inputShape: Shape;
   annotations: ToolAnnotations;
-  run(client: GitdocsClient, args: z.infer<z.ZodObject<Shape>>): Promise<string>;
+  run(client: TablinumClient, args: z.infer<z.ZodObject<Shape>>): Promise<string>;
 }
 
 function defineTool<Shape extends z.ZodRawShape>(definition: ToolDefinition<Shape>): ToolSpec {
@@ -83,14 +83,14 @@ const iconArg = IconSchema.optional().describe('A single emoji shown next to the
 // ---------------------------------------------------------------------------
 
 const searchTool = defineTool({
-  name: 'gitdocs_search',
+  name: 'tablinum_search',
   title: 'Search pages',
   description: [
-    'Full text search over every gitdocs page. This is the fastest way to find the path or id of a page.',
-    'Run it BEFORE gitdocs_create_page so you do not create a duplicate of a page that already exists.',
+    'Full text search over every tablinum page. This is the fastest way to find the path or id of a page.',
+    'Run it BEFORE tablinum_create_page so you do not create a duplicate of a page that already exists.',
     'Returns ranked hits: title, path, id, score and a one line snippet. It does not return page bodies,',
-    'so follow a promising hit with gitdocs_get_page. Narrow the result with "space", the first path',
-    'segment, such as "eng". If nothing matches, use fewer words or call gitdocs_list_tree.',
+    'so follow a promising hit with tablinum_get_page. Narrow the result with "space", the first path',
+    'segment, such as "eng". If nothing matches, use fewer words or call tablinum_list_tree.',
   ].join(' '),
   annotations: { readOnlyHint: true, openWorldHint: false, title: 'Search pages' },
   inputShape: {
@@ -115,7 +115,7 @@ const searchTool = defineTool({
 });
 
 const getPageTool = defineTool({
-  name: 'gitdocs_get_page',
+  name: 'tablinum_get_page',
   title: 'Read a page',
   description: [
     'Read one page in full. Give either "path" or "id"; giving neither is an error.',
@@ -129,13 +129,13 @@ const getPageTool = defineTool({
 });
 
 const listTreeTool = defineTool({
-  name: 'gitdocs_list_tree',
+  name: 'tablinum_list_tree',
   title: 'List the page tree',
   description: [
     'List the whole page hierarchy as an indented outline, one line per page, with the page path in',
     'brackets. Use it to learn which spaces exist, where a topic belongs, and what the real paths are',
     'before you create, move or link a page. Pass "space" to show a single space. The outline carries no',
-    'page bodies: read a page with gitdocs_get_page.',
+    'page bodies: read a page with tablinum_get_page.',
   ].join(' '),
   annotations: { readOnlyHint: true, openWorldHint: false, title: 'List the page tree' },
   inputShape: {
@@ -160,7 +160,7 @@ const listTreeTool = defineTool({
 });
 
 const createPageTool = defineTool({
-  name: 'gitdocs_create_page',
+  name: 'tablinum_create_page',
   title: 'Create a page',
   description: [
     'Create a new page. "path" decides where it lives: the first segment is the space, the remaining',
@@ -198,7 +198,7 @@ const createPageTool = defineTool({
 });
 
 const updatePageTool = defineTool({
-  name: 'gitdocs_update_page',
+  name: 'tablinum_update_page',
   title: 'Update a page',
   description: [
     'Update an existing page. Identify it with "id" or "path".',
@@ -206,7 +206,7 @@ const updatePageTool = defineTool({
     'If you omit "markdown" the body is left exactly as it is and only the metadata changes, so this is the',
     'safe way to set a title, an icon or an order without touching the text.',
     'Send "markdown" only when you hold the COMPLETE new body; it replaces the whole body. To add text to',
-    'the end of a page use gitdocs_append_page instead, and to move a page use gitdocs_move_page.',
+    'the end of a page use tablinum_append_page instead, and to move a page use tablinum_move_page.',
     'Pass icon: null or order: null to clear that field.',
   ].join(' '),
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, title: 'Update a page' },
@@ -247,13 +247,13 @@ const updatePageTool = defineTool({
 });
 
 const appendPageTool = defineTool({
-  name: 'gitdocs_append_page',
+  name: 'tablinum_append_page',
   title: 'Append to a page',
   description: [
     'Add markdown to the END of a page without resending the text you are not changing.',
     'The current body is read, a blank line is inserted, and your markdown is written after it.',
     'Use this for a new section, a log entry, a decision record or a note, and prefer it over',
-    'gitdocs_update_page whenever you are only adding content: it cannot blank the page by accident.',
+    'tablinum_update_page whenever you are only adding content: it cannot blank the page by accident.',
     'Identify the page with "id" or "path".',
   ].join(' '),
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, title: 'Append to a page' },
@@ -283,7 +283,7 @@ const appendPageTool = defineTool({
 });
 
 const movePageTool = defineTool({
-  name: 'gitdocs_move_page',
+  name: 'tablinum_move_page',
   title: 'Move or rename a page',
   description: [
     'Move a page to a new path, which also renames it. Identify the page with "id" or "path".',
@@ -307,13 +307,13 @@ const movePageTool = defineTool({
 });
 
 const deletePageTool = defineTool({
-  name: 'gitdocs_delete_page',
+  name: 'tablinum_delete_page',
   title: 'Delete a page',
   description: [
     'Delete a page. Identify it with "id" or "path".',
     'A page that has children is refused unless you pass recursive: true, which deletes the whole subtree.',
     'Returns the list of deleted paths. The deletion is written to the content git repository, so an',
-    'operator can still restore it from history, but this tool cannot undo it. Prefer gitdocs_move_page',
+    'operator can still restore it from history, but this tool cannot undo it. Prefer tablinum_move_page',
     'to an archive path when you are not certain.',
   ].join(' '),
   annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, title: 'Delete a page' },
@@ -334,7 +334,7 @@ const deletePageTool = defineTool({
 });
 
 const pageHistoryTool = defineTool({
-  name: 'gitdocs_page_history',
+  name: 'tablinum_page_history',
   title: 'Page history',
   description: [
     'List the git commits that touched one page, newest first. Identify the page with "id" or "path".',
@@ -361,7 +361,7 @@ const pageHistoryTool = defineTool({
 });
 
 const gitSyncTool = defineTool({
-  name: 'gitdocs_git_sync',
+  name: 'tablinum_git_sync',
   title: 'Sync with the git remote',
   description: [
     'Synchronise the content repository with its git remote.',

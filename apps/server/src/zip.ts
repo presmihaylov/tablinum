@@ -1,7 +1,7 @@
 import { readdir, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
 import { deflateRawSync, inflateRawSync } from 'node:zlib';
-import { validation } from '@gitdocs/shared';
+import { validation } from '@tablinum/shared';
 
 /**
  * A small ZIP reader and writer.

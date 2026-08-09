@@ -21,7 +21,7 @@ const GIT_ENV = {
 const created: string[] = [];
 
 /** A fresh temp directory, resolved through symlinks so paths compare equal on macOS. */
-export async function tempDir(prefix = 'gitdocs-'): Promise<string> {
+export async function tempDir(prefix = 'tablinum-'): Promise<string> {
   const dir = await mkdtemp(join(await realpath(tmpdir()), prefix));
   created.push(dir);
   return dir;
@@ -66,13 +66,13 @@ export async function commitSubjects(cwd: string): Promise<string[]> {
 
 /** A bare repo that stands in for the origin remote. */
 export async function bareRemote(): Promise<string> {
-  const dir = await tempDir('gitdocs-remote-');
+  const dir = await tempDir('tablinum-remote-');
   await git(dir, 'init', '--bare', '--initial-branch=main');
   return dir;
 }
 
 /** A working clone of a remote, used to simulate a second author. */
-export async function cloneOf(remote: string, prefix = 'gitdocs-peer-'): Promise<string> {
+export async function cloneOf(remote: string, prefix = 'tablinum-peer-'): Promise<string> {
   const dir = await tempDir(prefix);
   await git(dir, 'clone', remote, '.');
   await git(dir, 'config', 'user.name', 'Test Author');
@@ -101,7 +101,7 @@ export async function exists(target: string): Promise<boolean> {
   }
 }
 
-/** A page file with valid gitdocs frontmatter. */
+/** A page file with valid tablinum frontmatter. */
 export function page(id: string, title: string, body: string): string {
   return [
     '---',

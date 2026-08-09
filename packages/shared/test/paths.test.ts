@@ -69,7 +69,7 @@ describe('isValidPagePath', () => {
     'eng/_secret',
     // The scanner skips every dot-name, so these would be written but never indexed.
     '.git',
-    '.gitdocs/config',
+    '.tablinum/config',
     'eng/.hidden',
     '.hidden/child',
   ];

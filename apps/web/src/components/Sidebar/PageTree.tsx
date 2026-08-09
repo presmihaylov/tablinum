@@ -1,13 +1,13 @@
 import { useCallback, useState, type DragEvent, type MouseEvent } from 'react';
-import { depth as pathDepth } from '@gitdocs/shared';
-import type { PagePath, TreeNode } from '@gitdocs/shared';
+import { depth as pathDepth } from '@tablinum/shared';
+import type { PagePath, TreeNode } from '@tablinum/shared';
 import { sortNodes } from '../../lib/tree';
 import type { DropPosition } from '../../lib/treeMove';
 import { useContent } from '../../lib/content';
 import { ContextMenu, type MenuItem } from '../ui/Overlay';
 import { ChevronRight, Copy, DocIcon, Dots, Link, MoveTo, Pencil, Plus, Trash } from '../ui/Icon';
 
-const DRAG_MIME = 'application/x-gitdocs-page';
+const DRAG_MIME = 'application/x-tablinum-page';
 
 interface PageTreeProps {
   nodes: TreeNode[];

@@ -1,5 +1,5 @@
 import { useRef, useState, type ChangeEvent } from 'react';
-import { AVATAR_MIME_TYPES, MIN_PASSWORD_LENGTH, type Account } from '@gitdocs/shared';
+import { AVATAR_MIME_TYPES, MIN_PASSWORD_LENGTH, type Account } from '@tablinum/shared';
 import {
   useChangePassword,
   useConnectSlack,
@@ -241,7 +241,7 @@ function SlackSection(props: SlackSectionProps) {
   if (!props.configured) {
     return (
       <p className="account-form__note">
-        This server has no Slack bot token. An admin sets GITDOCS_SLACK_BOT_TOKEN to turn on
+        This server has no Slack bot token. An admin sets TABLINUM_SLACK_BOT_TOKEN to turn on
         notifications.
       </p>
     );

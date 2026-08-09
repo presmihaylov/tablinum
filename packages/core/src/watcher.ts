@@ -1,7 +1,7 @@
 import path from 'node:path';
 import type { Stats } from 'node:fs';
 import { watch, type FSWatcher } from 'chokidar';
-import { ASSETS_DIR, PAGE_EXT, SPACE_FILE } from '@gitdocs/shared';
+import { ASSETS_DIR, PAGE_EXT, SPACE_FILE } from '@tablinum/shared';
 import { consoleLogger, type Logger } from './logger.js';
 
 export type ContentChangeType = 'add' | 'change' | 'unlink';

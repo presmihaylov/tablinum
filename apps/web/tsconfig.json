@@ -15,7 +15,7 @@
     "types": ["vite/client", "node"],
     "baseUrl": ".",
     "paths": {
-      "@gitdocs/shared": ["../../packages/shared/src/index.ts"]
+      "@tablinum/shared": ["../../packages/shared/src/index.ts"]
     }
   },
   "include": ["src", "test", "vite.config.ts"]

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { WorkspaceRole } from '@gitdocs/shared';
+import type { WorkspaceRole } from '@tablinum/shared';
 import { api } from '../../api/client';
 import {
   useAddWorkspaceMember,
@@ -63,7 +63,7 @@ export function WorkspaceDialog({ open, onClose }: WorkspaceDialogProps) {
     setConfirm({
       title: `Delete ${current.name}?`,
       message:
-        'gitdocs forgets the workspace and everybody in it. The git repository stays on disk, so export it first if you want the pages.',
+        'tablinum forgets the workspace and everybody in it. The git repository stays on disk, so export it first if you want the pages.',
       confirmLabel: 'Delete',
       danger: true,
       onConfirm: () =>
@@ -196,7 +196,7 @@ export function WorkspaceDialog({ open, onClose }: WorkspaceDialogProps) {
           </div>
           <p className="account-form__note">
             The zip holds the git repository, so every page and its history travel with it. Import it
-            on any gitdocs to get the workspace back.
+            on any tablinum to get the workspace back.
           </p>
         </div>
       </Modal>

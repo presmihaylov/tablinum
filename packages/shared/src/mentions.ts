@@ -4,7 +4,7 @@ import { z } from 'zod';
  * Mentions.
  *
  * A mention is plain `@handle` text in the markdown. Nothing is encoded, so a page that is
- * read outside gitdocs, by a person or by an agent, still shows who was named. The handle is
+ * read outside tablinum, by a person or by an agent, still shows who was named. The handle is
  * therefore permanent: renaming a person must never rewrite their pages.
  */
 

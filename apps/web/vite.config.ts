@@ -5,13 +5,13 @@ import { defineConfig } from 'vitest/config';
 // The shared package is aliased to its source so `pnpm dev` works before it is built.
 const sharedSrc = fileURLToPath(new URL('../../packages/shared/src/index.ts', import.meta.url));
 
-const API_TARGET = process.env['GITDOCS_API_URL'] ?? 'http://localhost:4000';
+const API_TARGET = process.env['TABLINUM_API_URL'] ?? 'http://localhost:4000';
 
 export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      '@gitdocs/shared': sharedSrc,
+      '@tablinum/shared': sharedSrc,
     },
   },
   server: {

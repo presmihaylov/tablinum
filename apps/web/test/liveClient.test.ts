@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Account, ClientMessage, ServerMessage } from '@gitdocs/shared';
+import type { Account, ClientMessage, ServerMessage } from '@tablinum/shared';
 import { setAccountIdentity } from '../src/lib/identity';
 import { LiveConnection } from '../src/lib/liveClient';
 

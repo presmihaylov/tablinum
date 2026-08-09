@@ -1,4 +1,4 @@
-import { conflict, gitError, notFound, unauthorized, validation } from '@gitdocs/shared';
+import { conflict, gitError, notFound, unauthorized, validation } from '@tablinum/shared';
 import { describe, expect, it } from 'vitest';
 import { STYLE_GUIDE, styleGuideFor } from '../src/style-guide.js';
 import { toolErrorMessage } from '../src/tool-errors.js';
@@ -7,11 +7,11 @@ describe('toolErrorMessage', () => {
   it('names the code, the message and the next step', () => {
     const text = toolErrorMessage(notFound('No page at eng/nope'));
     expect(text).toContain('NOT_FOUND: No page at eng/nope');
-    expect(text).toContain('gitdocs_list_tree');
+    expect(text).toContain('tablinum_list_tree');
   });
 
   it('tells the model to update instead of recreating on a conflict', () => {
-    expect(toolErrorMessage(conflict('exists'))).toContain('gitdocs_update_page');
+    expect(toolErrorMessage(conflict('exists'))).toContain('tablinum_update_page');
   });
 
   it('explains the path format on a validation error', () => {
@@ -19,11 +19,11 @@ describe('toolErrorMessage', () => {
   });
 
   it('names the token environment variable when unauthorized', () => {
-    expect(toolErrorMessage(unauthorized('nope'))).toContain('GITDOCS_TOKEN');
+    expect(toolErrorMessage(unauthorized('nope'))).toContain('TABLINUM_TOKEN');
   });
 
-  it('points at gitdocs_git_sync on a git failure', () => {
-    expect(toolErrorMessage(gitError('remote rejected'))).toContain('gitdocs_git_sync');
+  it('points at tablinum_git_sync on a git failure', () => {
+    expect(toolErrorMessage(gitError('remote rejected'))).toContain('tablinum_git_sync');
   });
 
   it('normalises a plain Error into INTERNAL', () => {
@@ -38,7 +38,7 @@ describe('toolErrorMessage', () => {
 describe('style guide', () => {
   it('states the rules that stop an agent from corrupting a page', () => {
     expect(STYLE_GUIDE).toContain('Never write a `---` frontmatter block');
-    expect(STYLE_GUIDE).toContain('gitdocs_append_page');
+    expect(STYLE_GUIDE).toContain('tablinum_append_page');
     expect(STYLE_GUIDE).toContain('WITHOUT `markdown`');
     expect(STYLE_GUIDE).toContain('[[page-path]]');
   });

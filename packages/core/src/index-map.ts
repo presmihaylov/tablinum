@@ -4,7 +4,7 @@ import {
   type Frontmatter,
   type PageId,
   type PagePath,
-} from '@gitdocs/shared';
+} from '@tablinum/shared';
 import { parse } from './frontmatter.js';
 import { readTextOrNull, statOrNull } from './fs-utils.js';
 import { consoleLogger, type Logger } from './logger.js';

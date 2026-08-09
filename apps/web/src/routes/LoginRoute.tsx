@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { MIN_PASSWORD_LENGTH, workspaceSlugOf } from '@gitdocs/shared';
+import { MIN_PASSWORD_LENGTH, workspaceSlugOf } from '@tablinum/shared';
 import { useLogin, useSetup, useUpdateWorkspace, useWorkspaces } from '../api/hooks';
 import { useAuth } from '../lib/auth';
 import { describeError } from '../lib/toast';
@@ -65,7 +65,7 @@ function SignInForm({ claiming, onClaimed }: { claiming: boolean; onClaimed: () 
   return (
     <div className="login">
       <form className="login__card" onSubmit={onSubmit}>
-        <div className="login__brand">gitdocs</div>
+        <div className="login__brand">tablinum</div>
         <p className="login__lede">
           {claiming
             ? 'Nobody has claimed this server yet. Create your account to start.'
@@ -159,7 +159,7 @@ function FirstWorkspaceForm() {
   return (
     <div className="login">
       <form className="login__card" onSubmit={onSubmit}>
-        <div className="login__brand">gitdocs</div>
+        <div className="login__brand">tablinum</div>
         <p className="login__lede">Name your first workspace. You can add more at any time.</p>
 
         <label className="field">

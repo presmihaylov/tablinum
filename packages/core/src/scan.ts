@@ -7,7 +7,7 @@ import {
   isValidPagePath,
   relFileToPagePath,
   type PagePath,
-} from '@gitdocs/shared';
+} from '@tablinum/shared';
 
 /** One markdown file that represents a page. */
 export interface ScannedPageFile {

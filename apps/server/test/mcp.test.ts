@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { AgentTokenResponseSchema, PageListResponseSchema } from '@gitdocs/shared';
+import { AgentTokenResponseSchema, PageListResponseSchema } from '@tablinum/shared';
 import { bodyOf, makeHarness, seed, type Harness } from './support/harness.js';
 
 let harness: Harness;
@@ -80,7 +80,7 @@ function textOf(response: { body: string }): string {
 const INITIALIZE = {
   protocolVersion: '2025-06-18',
   capabilities: {},
-  clientInfo: { name: 'gitdocs-test-client', version: '0.0.0' },
+  clientInfo: { name: 'tablinum-test-client', version: '0.0.0' },
 };
 
 describe('remote MCP endpoint', () => {
@@ -90,33 +90,33 @@ describe('remote MCP endpoint', () => {
     expect(response.statusCode).toBe(200);
 
     const { result } = bodyOf(response, InitializeSchema);
-    expect(result.serverInfo.name).toBe('gitdocs');
-    expect(result.instructions).toContain('You are connected to gitdocs as "Doc Bot" (@doc.bot).');
+    expect(result.serverInfo.name).toBe('tablinum');
+    expect(result.instructions).toContain('You are connected to tablinum as "Doc Bot" (@doc.bot).');
     expect(result.instructions).toContain('You keep the runbooks tidy.');
     // The shared tool guidance still follows the brief.
-    expect(result.instructions).toContain('gitdocs_search');
+    expect(result.instructions).toContain('tablinum_search');
   });
 
   it('leaves the instructions alone for a credential that names no agent', async () => {
     const response = await rpc('initialize', INITIALIZE, harness.authHeaders());
     const { result } = bodyOf(response, InitializeSchema);
-    expect(result.instructions).not.toContain('You are connected to gitdocs as');
-    expect(result.instructions).toContain('gitdocs_search');
+    expect(result.instructions).not.toContain('You are connected to tablinum as');
+    expect(result.instructions).toContain('tablinum_search');
   });
 
-  it('lists the gitdocs tools', async () => {
+  it('lists the tablinum tools', async () => {
     const response = await rpc('tools/list', {}, await agentHeaders());
     const names = bodyOf(response, ToolsListSchema).result.tools.map((tool) => tool.name);
-    expect(names).toContain('gitdocs_search');
-    expect(names).toContain('gitdocs_create_page');
-    expect(names).toContain('gitdocs_list_tree');
+    expect(names).toContain('tablinum_search');
+    expect(names).toContain('tablinum_create_page');
+    expect(names).toContain('tablinum_list_tree');
   });
 
   it('runs a read tool through the loopback client', async () => {
     await seed(harness);
     const response = await rpc(
       'tools/call',
-      { name: 'gitdocs_list_tree', arguments: { space: 'eng' } },
+      { name: 'tablinum_list_tree', arguments: { space: 'eng' } },
       await agentHeaders(),
     );
     expect(textOf(response)).toContain('eng/deploy');
@@ -127,7 +127,7 @@ describe('remote MCP endpoint', () => {
     const call = await rpc(
       'tools/call',
       {
-        name: 'gitdocs_create_page',
+        name: 'tablinum_create_page',
         arguments: { path: 'eng/rollback', title: 'Rollback', markdown: 'Undo the release.' },
       },
       await agentHeaders(),
@@ -146,7 +146,7 @@ describe('remote MCP endpoint', () => {
   it('reports a tool failure to the caller instead of crashing', async () => {
     const response = await rpc(
       'tools/call',
-      { name: 'gitdocs_list_tree', arguments: { space: 'nope' } },
+      { name: 'tablinum_list_tree', arguments: { space: 'nope' } },
       await agentHeaders(),
     );
     const parsed = bodyOf(response, ToolCallSchema);

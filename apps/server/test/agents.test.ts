@@ -8,7 +8,7 @@ import {
   ErrorBodySchema,
   PageResponseSchema,
   type ServerMessage,
-} from '@gitdocs/shared';
+} from '@tablinum/shared';
 import { contextOf } from '../src/context.js';
 import { bodyOf, makeHarness, seed, type Harness } from './support/harness.js';
 

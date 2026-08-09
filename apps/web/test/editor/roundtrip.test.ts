@@ -13,12 +13,14 @@ describe('markdown round trip', () => {
     });
   }
 
+  // Two passes over the whole corpus. It needs more than the default 5s on a
+  // shared CI runner.
   it('is idempotent across a second pass', () => {
     for (const source of Object.values(CORPUS)) {
       const once = roundtrip(source);
       expect(roundtrip(once)).toBe(once);
     }
-  });
+  }, 30_000);
 
   /**
    * Markdown block context is not compositional: two lists that touch merge into

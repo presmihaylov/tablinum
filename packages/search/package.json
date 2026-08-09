@@ -1,9 +1,9 @@
 {
-  "name": "@gitdocs/search",
+  "name": "@tablinum/search",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "SQLite FTS5 full-text search index for gitdocs pages.",
+  "description": "SQLite FTS5 full-text search index for tablinum pages.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -23,7 +23,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@gitdocs/shared": "workspace:*",
+    "@tablinum/shared": "workspace:*",
     "better-sqlite3": "^11.10.0"
   },
   "devDependencies": {

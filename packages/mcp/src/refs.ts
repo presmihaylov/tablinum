@@ -1,5 +1,5 @@
-import { isPageId, isValidPagePath, validation, type Page, type PageId, type PagePath } from '@gitdocs/shared';
-import type { GitdocsClient } from './client.js';
+import { isPageId, isValidPagePath, validation, type Page, type PageId, type PagePath } from '@tablinum/shared';
+import type { TablinumClient } from './client.js';
 
 /** Every page tool accepts either the stable id or the current path. */
 export interface PageRef {
@@ -11,7 +11,7 @@ export type ResolvedRef = { kind: 'id'; id: PageId } | { kind: 'path'; path: Pag
 
 const MISSING =
   'Provide either "id" (a stable page id like "pg_01J8XYZ...") or "path" (a page path like "eng/runbooks/deploy"). ' +
-  'Neither was given. Call gitdocs_list_tree or gitdocs_search first to find the page.';
+  'Neither was given. Call tablinum_list_tree or tablinum_search first to find the page.';
 
 /** Validate an id-or-path pair and say exactly which one to use. */
 export function normalizeRef(ref: PageRef): ResolvedRef {
@@ -40,7 +40,7 @@ export function normalizeRef(ref: PageRef): ResolvedRef {
 }
 
 /** Fetch the full page named by an id-or-path reference. */
-export async function resolvePage(client: GitdocsClient, ref: PageRef): Promise<Page> {
+export async function resolvePage(client: TablinumClient, ref: PageRef): Promise<Page> {
   const resolved = normalizeRef(ref);
   if (resolved.kind === 'id') return client.getPageById(resolved.id);
   return client.getPageByPath(resolved.path);
@@ -50,7 +50,7 @@ export async function resolvePage(client: GitdocsClient, ref: PageRef): Promise<
  * Resolve a reference down to a page id, which is what the write endpoints take.
  * An id costs no extra request; a path costs one lookup.
  */
-export async function resolvePageId(client: GitdocsClient, ref: PageRef): Promise<PageId> {
+export async function resolvePageId(client: TablinumClient, ref: PageRef): Promise<PageId> {
   const resolved = normalizeRef(ref);
   if (resolved.kind === 'id') return resolved.id;
   const page = await client.getPageByPath(resolved.path);

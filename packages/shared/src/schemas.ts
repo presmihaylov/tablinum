@@ -252,10 +252,11 @@ export const HistoryQuerySchema = z.object({ limit: intParam(1, 500).optional() 
 // responses
 // ---------------------------------------------------------------------------
 
+// An anonymous caller gets `ok` alone, so the build and the content directory are optional.
 export const HealthResponseSchema = z.object({
   ok: z.literal(true),
-  version: z.string(),
-  contentDir: z.string(),
+  version: z.string().optional(),
+  contentDir: z.string().optional(),
 });
 
 export const OkResponseSchema = z.object({ ok: z.literal(true) });

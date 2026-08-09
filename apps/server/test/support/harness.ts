@@ -43,6 +43,8 @@ export interface HarnessOptions {
   noToken?: boolean;
   /** A stub Slack transport. Undefined leaves Slack off unless the env configures a token. */
   slack?: SlackApi | null;
+  /** A directory holding an index.html, so the SPA fallback is registered. */
+  webDistDir?: string;
 }
 
 export async function makeHarness(options: HarnessOptions = {}): Promise<Harness> {
@@ -87,7 +89,7 @@ export async function makeHarness(options: HarnessOptions = {}): Promise<Harness
       return { store: other, git: otherGit, search: otherSearch };
     },
     logger: false,
-    webDistDir: null,
+    webDistDir: options.webDistDir ?? null,
     echoSuppressMs: 500,
     trustProxy: config.trustProxy,
   };

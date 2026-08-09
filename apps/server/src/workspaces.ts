@@ -8,7 +8,7 @@ import {
   notFound,
   unauthorized,
 } from '@tablinum/shared';
-import { isPublicPath } from './auth.js';
+import { isPublicRequest } from './auth.js';
 import type { ServerDeps } from './deps.js';
 import { LiveHub } from './live.js';
 import { Wiring } from './wiring.js';
@@ -222,6 +222,6 @@ export function registerWorkspaceHook(app: FastifyInstance, registry: WorkspaceR
   app.addHook('preHandler', async (request: FastifyRequest) => {
     // A public endpoint answers before anybody has proved anything, so it must not be a way
     // to ask which workspaces exist. It always gets the default one.
-    request.workspace = isPublicPath(request.url) ? registry.default.record : registry.resolve(request);
+    request.workspace = isPublicRequest(request) ? registry.default.record : registry.resolve(request);
   });
 }

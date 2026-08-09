@@ -11,7 +11,7 @@ import {
   DEFAULT_WORKSPACE_NAME,
   DEFAULT_WORKSPACE_SLUG,
 } from '@tablinum/shared';
-import { normalizePathname, registerAuthHook } from './auth.js';
+import { registerAuthHook, routedPathname } from './auth.js';
 import { rememberContext, type RouteContext } from './context.js';
 import type { ServerDeps } from './deps.js';
 import { registerErrorHandler } from './errors.js';
@@ -181,7 +181,8 @@ export async function buildApp(deps: ServerDeps): Promise<FastifyInstance> {
   }
 
   app.setNotFoundHandler((request, reply) => {
-    const pathname = normalizePathname(request.url);
+    // Decoded, or `/%61pi/v1/nope` would be handed the SPA shell instead of a JSON 404.
+    const pathname = routedPathname(request.url);
     const isApi = pathname === '/api' || pathname.startsWith('/api/');
     const isAsset = pathname === `/${ASSETS_DIR}` || pathname.startsWith(`/${ASSETS_DIR}/`);
     // The built bundles live under /assets/. Serving index.html for a missing one hands the

@@ -204,7 +204,14 @@ describe('mutation audit', () => {
     { method: 'PUT', url: '/api/v1/pages/pg_00000000000000000000000000/database' },
     { method: 'DELETE', url: '/api/v1/pages/pg_00000000000000000000000000/database' },
     { method: 'POST', url: '/api/v1/pages/pg_00000000000000000000000000/database/rows' },
-    { method: 'PATCH', url: '/api/v1/pages/pg_00000000000000000000000000/row' },
+    {
+      method: 'PATCH',
+      url: '/api/v1/pages/pg_00000000000000000000000000/database/rows/rw_00000000000000000000000000',
+    },
+    {
+      method: 'DELETE',
+      url: '/api/v1/pages/pg_00000000000000000000000000/database/rows/rw_00000000000000000000000000',
+    },
     { method: 'POST', url: '/api/v1/spaces' },
     { method: 'PATCH', url: '/api/v1/spaces/eng' },
     { method: 'POST', url: '/api/v1/assets' },

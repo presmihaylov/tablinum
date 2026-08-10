@@ -133,8 +133,12 @@ class CoreStoreAdapter implements ContentStore {
     return this.core.createRow(id, input);
   }
 
-  updateRow(id: PageId, patch: UpdateRowBody): Promise<DbRow> {
-    return this.core.updateRow(id, patch);
+  updateRow(id: PageId, rowId: string, patch: UpdateRowBody): Promise<DbRow> {
+    return this.core.updateRow(id, rowId, patch);
+  }
+
+  deleteRow(id: PageId, rowId: string): Promise<void> {
+    return this.core.deleteRow(id, rowId);
   }
 
   async reloadFile(relFile: string): Promise<Page | null> {

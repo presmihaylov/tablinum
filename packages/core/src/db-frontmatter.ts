@@ -1,17 +1,21 @@
 import {
   DEFAULT_VIEW_NAME,
   FILTER_OPS,
+  MAX_ROWS,
   NUMBER_FORMATS,
   OPTION_COLORS,
   PROPERTY_TYPES,
+  UNTITLED_ROW,
   VIEW_TYPES,
   isOptionId,
   isPropertyId,
+  isRowId,
   isViewId,
   newViewId,
   type Database,
   type DbFilter,
   type DbProperty,
+  type DbRow,
   type DbSort,
   type DbView,
   type FilterOp,
@@ -26,7 +30,7 @@ import {
 import { emitNumber, emitString } from './yaml-emit.js';
 
 /**
- * The `db` and `props` frontmatter blocks.
+ * The `db` and `rows` frontmatter blocks.
  *
  * Reading never throws and never gives up on a whole block: a hand-edited file keeps every part
  * of it that still makes sense, and only the parts that do not are dropped. Writing is done by
@@ -224,7 +228,7 @@ export function readDatabase(raw: unknown, now?: number): ReadResult<Database> {
   return { value: { properties, views }, exact };
 }
 
-/** The `props` block. Values are kept loosely; the database's schema narrows them later. */
+/** The `props` block of one row. Values are kept loosely; the schema narrows them later. */
 export function readRowProps(raw: unknown): ReadResult<RowProps> {
   if (raw === undefined || raw === null) return { value: null, exact: true };
   if (!isRecord(raw)) return { value: null, exact: false };
@@ -247,6 +251,60 @@ export function readRowProps(raw: unknown): ReadResult<RowProps> {
   }
   if (Object.keys(props).length === 0) return { value: null, exact };
   return { value: props, exact };
+}
+
+/** A timestamp the file claims. A hand-edited one may say anything, so it is only kept as text. */
+function readStamp(raw: unknown, fallback: string): string {
+  if (typeof raw === 'string' && raw.length > 0) return raw;
+  if (raw instanceof Date && !Number.isNaN(raw.getTime())) return raw.toISOString();
+  return fallback;
+}
+
+function readRow(raw: unknown, seen: Set<string>, at: string): { value: DbRow | null; exact: boolean } {
+  if (!isRecord(raw)) return { value: null, exact: false };
+  const id = raw['id'];
+  if (!isRowId(id) || seen.has(id)) return { value: null, exact: false };
+  seen.add(id);
+
+  let exact = true;
+  const title = typeof raw['title'] === 'string' ? raw['title'].slice(0, 200) : UNTITLED_ROW;
+  if (title !== raw['title']) exact = false;
+
+  const created = readStamp(raw['created'], at);
+  const updated = readStamp(raw['updated'], created);
+  if (created !== raw['created'] || updated !== raw['updated']) exact = false;
+
+  const props = readRowProps(raw['props']);
+  if (!props.exact) exact = false;
+
+  const row: DbRow = { id, title, created, updated, props: props.value ?? {} };
+  if (typeof raw['icon'] === 'string' && raw['icon'].length > 0) row.icon = raw['icon'].slice(0, 64);
+  if (raw['icon'] !== undefined && row.icon === undefined) exact = false;
+  return { value: row, exact };
+}
+
+/**
+ * The `rows` block. A row is a record inside the database page, so a file that lists more than
+ * the cap keeps only the first `MAX_ROWS` of them.
+ */
+export function readRows(raw: unknown, at: string): ReadResult<DbRow[]> {
+  if (raw === undefined || raw === null) return { value: null, exact: true };
+  if (!Array.isArray(raw)) return { value: null, exact: false };
+
+  let exact = true;
+  const rows: DbRow[] = [];
+  const ids = new Set<string>();
+  for (const entry of raw) {
+    if (rows.length >= MAX_ROWS) {
+      exact = false;
+      break;
+    }
+    const row = readRow(entry, ids, at);
+    if (!row.exact) exact = false;
+    if (row.value !== null) rows.push(row.value);
+  }
+  if (rows.length === 0) return { value: null, exact };
+  return { value: rows, exact };
 }
 
 // ---------------------------------------------------------------------------
@@ -323,13 +381,27 @@ export function stringifyDatabase(database: Database): string {
   return lines.join('\n');
 }
 
-/** The `props:` block, without a trailing newline. Empty cells are left out entirely. */
-export function stringifyRowProps(props: RowProps): string {
-  const lines: string[] = ['props:'];
-  for (const key of Object.keys(props).sort()) {
-    emitValue(props[key] ?? null, INDENT, lines, key);
+/** The `props:` block of one row, at the given indent. Empty cells are left out entirely. */
+function emitRowProps(props: RowProps, indent: string, lines: string[]): void {
+  const keys = Object.keys(props).sort();
+  if (keys.length === 0) return;
+  lines.push(`${indent}props:`);
+  for (const key of keys) emitValue(props[key] ?? null, `${indent}${INDENT}`, lines, key);
+}
+
+/** The `rows:` block, without a trailing newline. Empty when the database holds no row. */
+export function stringifyRows(rows: readonly DbRow[]): string {
+  if (rows.length === 0) return '';
+  const lines: string[] = ['rows:'];
+  for (const row of rows) {
+    lines.push(`${INDENT}- id: ${row.id}`);
+    const at = `${INDENT}  `;
+    lines.push(`${at}title: ${emitString(row.title)}`);
+    if (row.icon !== undefined) lines.push(`${at}icon: ${emitString(row.icon)}`);
+    lines.push(`${at}created: ${emitString(row.created)}`);
+    lines.push(`${at}updated: ${emitString(row.updated)}`);
+    emitRowProps(row.props, at, lines);
   }
-  if (lines.length === 1) return '';
   return lines.join('\n');
 }
 
@@ -376,4 +448,19 @@ export function rowPropsEqual(a: RowProps | undefined, b: RowProps | undefined):
   const keys = Object.keys(a);
   if (keys.length !== Object.keys(b).length) return false;
   return keys.every((key) => sameValue(a[key] ?? null, b[key] ?? null));
+}
+
+export function rowsEqual(a: readonly DbRow[] | undefined, b: readonly DbRow[] | undefined): boolean {
+  if (a === undefined || b === undefined) return a === b;
+  return sameList(
+    a,
+    b,
+    (x, y) =>
+      x.id === y.id &&
+      x.title === y.title &&
+      (x.icon ?? null) === (y.icon ?? null) &&
+      x.created === y.created &&
+      x.updated === y.updated &&
+      rowPropsEqual(x.props, y.props),
+  );
 }

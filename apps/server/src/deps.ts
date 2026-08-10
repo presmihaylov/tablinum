@@ -116,14 +116,17 @@ export interface ContentStore {
   /** Give the page a `db` block, or replace the one it has. */
   setDatabase(id: PageId, database: Database): Promise<Page>;
 
-  /** Take the `db` block away. The rows stay: they are ordinary child pages. */
+  /** Take the `db` block away, and the rows with it. */
   removeDatabase(id: PageId): Promise<Page>;
 
-  /** Add a row, which is a child page of the database. */
+  /** Add a row, which is a record inside the database page. */
   createRow(id: PageId, input: CreateRowBody): Promise<DbRow>;
 
   /** Change one row's cells or its title. An absent cell keeps its value; null clears it. */
-  updateRow(id: PageId, patch: UpdateRowBody): Promise<DbRow>;
+  updateRow(id: PageId, rowId: string, patch: UpdateRowBody): Promise<DbRow>;
+
+  /** Take one row out of the database. */
+  deleteRow(id: PageId, rowId: string): Promise<void>;
 }
 
 /** The git engine: the content directory is a git repo. Implemented by @tablinum/git-sync. */

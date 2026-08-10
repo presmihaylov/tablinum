@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   DatabaseResponseSchema,
   ErrorBodySchema,
+  OkResponseSchema,
   PageResponseSchema,
   RowResponseSchema,
   newOptionId,
@@ -200,11 +201,11 @@ describe('GET /pages/:id/database', () => {
 });
 
 describe('DELETE /pages/:id/database', () => {
-  it('takes the block off and leaves the rows in place', async () => {
+  it('takes the block off, and the rows go with it', async () => {
     await seed(harness);
     const id = await makePage();
     await setDatabase(id, sampleDatabase());
-    const row = bodyOf(await createRow(id, { title: 'Keep me' }), RowResponseSchema).row;
+    await createRow(id, { title: 'Keep me' });
 
     const response = await harness.app.inject({
       method: 'DELETE',
@@ -214,12 +215,9 @@ describe('DELETE /pages/:id/database', () => {
     expect(response.statusCode).toBe(200);
     expect(bodyOf(response, PageResponseSchema).page.database).toBeUndefined();
 
-    const kept = await harness.app.inject({
-      method: 'GET',
-      url: `/api/v1/pages/${row.id}`,
-      headers: headers(),
-    });
-    expect(bodyOf(kept, PageResponseSchema).page.title).toBe('Keep me');
+    const raw = await readFile(join(harness.contentDir, 'eng/tasks.md'), 'utf8');
+    expect(raw).not.toContain('rows:');
+    expect(raw).not.toContain('Keep me');
   });
 
   it('reports a page that is not there', async () => {
@@ -234,7 +232,7 @@ describe('DELETE /pages/:id/database', () => {
 });
 
 describe('POST /pages/:id/database/rows', () => {
-  it('creates a row as a child page and answers 201', async () => {
+  it('creates a row inside the database page and answers 201', async () => {
     await seed(harness);
     const id = await makePage();
     await setDatabase(id, sampleDatabase());
@@ -242,9 +240,14 @@ describe('POST /pages/:id/database/rows', () => {
     const response = await createRow(id, { title: 'Ship it', props: { [SELECT]: OPTION } });
     expect(response.statusCode).toBe(201);
     const row = bodyOf(response, RowResponseSchema).row;
-    expect(row.path).toBe('eng/tasks/ship-it');
+    expect(row.id.startsWith('rw_')).toBe(true);
     expect(row.props[SELECT]).toBe(OPTION);
-    expect(existsSync(join(harness.contentDir, 'eng/tasks/ship-it.md'))).toBe(true);
+
+    const raw = await readFile(join(harness.contentDir, 'eng/tasks.md'), 'utf8');
+    expect(raw).toContain('rows:');
+    expect(raw).toContain('title: Ship it');
+    // A row is a record, so it never becomes a page of its own.
+    expect(existsSync(join(harness.contentDir, 'eng/tasks'))).toBe(false);
   });
 
   it('names an untitled row', async () => {
@@ -280,6 +283,18 @@ describe('POST /pages/:id/database/rows', () => {
     expect(response.statusCode).toBe(400);
   });
 
+  it('keeps the rows in the order they were added', async () => {
+    await seed(harness);
+    const id = await makePage();
+    await setDatabase(id, sampleDatabase());
+    await createRow(id, { title: 'One' });
+    await createRow(id, { title: 'Two' });
+    await createRow(id, { title: 'Three' });
+
+    const body = bodyOf(await readDatabase(id), DatabaseResponseSchema);
+    expect(body.rows.map((row) => row.title)).toEqual(['One', 'Two', 'Three']);
+  });
+
   it('commits the new row', async () => {
     await seed(harness);
     const id = await makePage();
@@ -287,12 +302,12 @@ describe('POST /pages/:id/database/rows', () => {
     await createRow(id, { title: 'Ship it' });
     await harness.git.flush();
 
-    const log = await harness.git.history('eng/tasks/ship-it.md', 10);
-    expect(log.some((entry) => entry.message.includes('eng/tasks/ship-it'))).toBe(true);
+    const log = await harness.git.history('eng/tasks.md', 10);
+    expect(log.some((entry) => entry.message.includes('Add a row'))).toBe(true);
   });
 });
 
-describe('PATCH /pages/:id/row', () => {
+describe('PATCH /pages/:id/database/rows/:rowId', () => {
   async function makeRow(): Promise<{ database: string; row: string }> {
     await seed(harness);
     const database = await makePage();
@@ -304,66 +319,153 @@ describe('PATCH /pages/:id/row', () => {
     return { database, row: row.id };
   }
 
-  async function patch(id: string, payload: Record<string, unknown>) {
+  async function patch(id: string, rowId: string, payload: Record<string, unknown>) {
     return harness.app.inject({
       method: 'PATCH',
-      url: `/api/v1/pages/${id}/row`,
+      url: `/api/v1/pages/${id}/database/rows/${rowId}`,
       headers: headers(),
       payload,
     });
   }
 
   it('changes one cell and leaves the others alone', async () => {
-    const { row } = await makeRow();
+    const { database, row } = await makeRow();
 
-    const response = await patch(row, { props: { [SELECT]: OPTION } });
+    const response = await patch(database, row, { props: { [SELECT]: OPTION } });
     expect(response.statusCode).toBe(200);
     const saved = bodyOf(response, RowResponseSchema).row;
     expect(saved.props).toEqual({ [TEXT]: 'note', [SELECT]: OPTION });
   });
 
   it('clears a cell that is set to null', async () => {
-    const { row } = await makeRow();
+    const { database, row } = await makeRow();
 
-    const saved = bodyOf(await patch(row, { props: { [TEXT]: null } }), RowResponseSchema).row;
+    const saved = bodyOf(
+      await patch(database, row, { props: { [TEXT]: null } }),
+      RowResponseSchema,
+    ).row;
     expect(saved.props).toEqual({});
   });
 
-  it('renames a row without moving its file', async () => {
-    const { row } = await makeRow();
+  it('renames a row, and the page file keeps its own path', async () => {
+    const { database, row } = await makeRow();
 
-    const saved = bodyOf(await patch(row, { title: 'New name' }), RowResponseSchema).row;
+    const saved = bodyOf(
+      await patch(database, row, { title: 'New name' }),
+      RowResponseSchema,
+    ).row;
     expect(saved.title).toBe('New name');
-    expect(saved.path).toBe('eng/tasks/row');
+
+    const raw = await readFile(join(harness.contentDir, 'eng/tasks.md'), 'utf8');
+    expect(raw).toContain('title: New name');
   });
 
   it('drops a select value no option matches', async () => {
-    const { row } = await makeRow();
+    const { database, row } = await makeRow();
 
     const saved = bodyOf(
-      await patch(row, { props: { [SELECT]: 'op_00000000000000000000000000' } }),
+      await patch(database, row, { props: { [SELECT]: 'op_00000000000000000000000000' } }),
       RowResponseSchema,
     ).row;
     expect(saved.props[SELECT]).toBeUndefined();
   });
 
   it('refuses a property the database does not have', async () => {
-    const { row } = await makeRow();
+    const { database, row } = await makeRow();
 
-    const response = await patch(row, { props: { pr_00000000000000000000000000: 'ghost' } });
+    const response = await patch(database, row, {
+      props: { pr_00000000000000000000000000: 'ghost' },
+    });
     expect(response.statusCode).toBe(400);
   });
 
-  it('refuses a page whose parent is not a database', async () => {
-    const { pageIds } = await seed(harness);
-    const response = await patch(pageIds[0] as string, { title: 'x' });
+  it('refuses a page that carries no database', async () => {
+    await seed(harness);
+    const id = await makePage();
+    const response = await patch(id, 'rw_00000000000000000000000000', { title: 'x' });
     expect(response.statusCode).toBe(400);
+  });
+
+  it('reports a row that is not there', async () => {
+    const { database } = await makeRow();
+    const response = await patch(database, 'rw_00000000000000000000000000', { title: 'x' });
+    expect(response.statusCode).toBe(404);
   });
 
   it('reports a page that is not there', async () => {
     await seed(harness);
-    const response = await patch('pg_00000000000000000000000000', { title: 'x' });
+    const response = await patch('pg_00000000000000000000000000', 'rw_0000000000000000000000000A', {
+      title: 'x',
+    });
     expect(response.statusCode).toBe(404);
+  });
+});
+
+describe('DELETE /pages/:id/database/rows/:rowId', () => {
+  async function remove(id: string, rowId: string) {
+    return harness.app.inject({
+      method: 'DELETE',
+      url: `/api/v1/pages/${id}/database/rows/${rowId}`,
+      headers: headers(),
+    });
+  }
+
+  it('takes the row out of the database', async () => {
+    await seed(harness);
+    const id = await makePage();
+    await setDatabase(id, sampleDatabase());
+    const keep = bodyOf(await createRow(id, { title: 'Keep' }), RowResponseSchema).row;
+    const drop = bodyOf(await createRow(id, { title: 'Drop' }), RowResponseSchema).row;
+
+    const response = await remove(id, drop.id);
+    expect(response.statusCode).toBe(200);
+    expect(bodyOf(response, OkResponseSchema).ok).toBe(true);
+
+    const body = bodyOf(await readDatabase(id), DatabaseResponseSchema);
+    expect(body.rows.map((row) => row.id)).toEqual([keep.id]);
+  });
+
+  it('takes the whole block away with the last row', async () => {
+    await seed(harness);
+    const id = await makePage();
+    await setDatabase(id, sampleDatabase());
+    const only = bodyOf(await createRow(id, { title: 'Only' }), RowResponseSchema).row;
+
+    await remove(id, only.id);
+
+    const raw = await readFile(join(harness.contentDir, 'eng/tasks.md'), 'utf8');
+    expect(raw).not.toContain('rows:');
+    expect(raw).toContain('db:');
+  });
+
+  it('reports a row that is not there', async () => {
+    await seed(harness);
+    const id = await makePage();
+    await setDatabase(id, sampleDatabase());
+
+    const response = await remove(id, 'rw_00000000000000000000000000');
+    expect(response.statusCode).toBe(404);
+  });
+
+  it('reports a page that is not there', async () => {
+    await seed(harness);
+    const response = await remove(
+      'pg_00000000000000000000000000',
+      'rw_00000000000000000000000000',
+    );
+    expect(response.statusCode).toBe(404);
+  });
+
+  it('commits the change', async () => {
+    await seed(harness);
+    const id = await makePage();
+    await setDatabase(id, sampleDatabase());
+    const row = bodyOf(await createRow(id, { title: 'Drop' }), RowResponseSchema).row;
+    await remove(id, row.id);
+    await harness.git.flush();
+
+    const log = await harness.git.history('eng/tasks.md', 10);
+    expect(log.some((entry) => entry.message.includes('Delete a row'))).toBe(true);
   });
 });
 
@@ -384,18 +486,15 @@ describe('a database page under ordinary page edits', () => {
     expect(body.database.properties).toHaveLength(2);
   });
 
-  it('keeps the cells of a row when the body of that row is rewritten', async () => {
+  it('keeps its rows when the body is rewritten', async () => {
     await seed(harness);
     const id = await makePage();
     await setDatabase(id, sampleDatabase());
-    const row = bodyOf(
-      await createRow(id, { title: 'Row', props: { [TEXT]: 'note' } }),
-      RowResponseSchema,
-    ).row;
+    await createRow(id, { title: 'Row', props: { [TEXT]: 'note' } });
 
     await harness.app.inject({
       method: 'PATCH',
-      url: `/api/v1/pages/${row.id}`,
+      url: `/api/v1/pages/${id}`,
       headers: headers(),
       payload: { markdown: 'Detail.' },
     });
@@ -404,20 +503,49 @@ describe('a database page under ordinary page edits', () => {
     expect(body.rows[0]?.props[TEXT]).toBe('note');
   });
 
-  it('drops a row from the grid when the row page is deleted', async () => {
+  it('keeps its rows when the page is renamed', async () => {
     await seed(harness);
     const id = await makePage();
     await setDatabase(id, sampleDatabase());
-    const row = bodyOf(await createRow(id, { title: 'Row' }), RowResponseSchema).row;
+    await createRow(id, { title: 'Row', props: { [TEXT]: 'note' } });
 
     await harness.app.inject({
-      method: 'DELETE',
-      url: `/api/v1/pages/${row.id}`,
+      method: 'PATCH',
+      url: `/api/v1/pages/${id}`,
       headers: headers(),
+      payload: { title: 'Work items' },
     });
 
     const body = bodyOf(await readDatabase(id), DatabaseResponseSchema);
-    expect(body.rows).toEqual([]);
+    expect(body.rows.map((row) => row.title)).toEqual(['Row']);
+  });
+
+  it('drops the cells of a property the schema no longer has', async () => {
+    await seed(harness);
+    const id = await makePage();
+    await setDatabase(id, sampleDatabase());
+    await createRow(id, { title: 'Row', props: { [TEXT]: 'note', [SELECT]: OPTION } });
+
+    const trimmed = sampleDatabase();
+    trimmed.properties = trimmed.properties.filter((property) => property.id !== TEXT);
+    await setDatabase(id, trimmed);
+
+    const body = bodyOf(await readDatabase(id), DatabaseResponseSchema);
+    expect(body.rows[0]?.props).toEqual({ [SELECT]: OPTION });
+  });
+
+  it('keeps no row page in the sidebar tree', async () => {
+    await seed(harness);
+    const id = await makePage();
+    await setDatabase(id, sampleDatabase());
+    await createRow(id, { title: 'Row' });
+
+    const response = await harness.app.inject({
+      method: 'GET',
+      url: '/api/v1/tree',
+      headers: headers(),
+    });
+    expect(response.body).not.toContain('Row');
   });
 });
 

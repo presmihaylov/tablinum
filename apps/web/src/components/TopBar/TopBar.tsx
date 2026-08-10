@@ -1,16 +1,14 @@
 import { Fragment, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { depth as pathDepth } from '@tablinum/shared';
-import { usePage, useRemoveDatabase, useSetDatabase } from '../../api/hooks';
 import { pageHref } from '../../lib/href';
 import { useTheme } from '../../lib/theme';
 import { breadcrumbFor, findNode } from '../../lib/tree';
 import { useContent } from '../../lib/content';
-import { useToast } from '../../lib/toast';
 import type { PanelId, PanelState } from '../../lib/panels';
 import { Presence } from '../Presence/Presence';
 import { ContextMenu, type MenuItem } from '../ui/Overlay';
-import { Check, Dots, Moon, MoveTo, PanelLeft, Search, Sun, Table, Trash } from '../ui/Icon';
+import { Check, Dots, Moon, MoveTo, PanelLeft, Search, Sun, Trash } from '../ui/Icon';
 import './topbar.css';
 
 /** The nominal width of a context menu, so the menu hangs off the right edge of its button. */
@@ -87,16 +85,10 @@ interface PageMenuProps {
 /** Everything a whole page can do, out of sight until it is asked for. */
 function PageMenu({ panels, onTogglePanel }: PageMenuProps) {
   const { spaces, currentPath, moveToSpace, deletePage } = useContent();
-  const toast = useToast();
-  const setDatabase = useSetDatabase();
-  const removeDatabase = useRemoveDatabase();
   const [open, setOpen] = useState(false);
   const [menuAt, setMenuAt] = useState({ x: 0, y: 0 });
   const buttonRef = useRef<HTMLButtonElement | null>(null);
 
-  // The page route asked for this already, so the cache answers and nothing goes over the wire.
-  const query = usePage(currentPath === '' ? undefined : currentPath);
-  const page = query.data?.page;
   const node = useMemo(() => (currentPath ? findNode(spaces, currentPath) : null), [spaces, currentPath]);
 
   const items: MenuItem[] = [
@@ -115,29 +107,6 @@ function PageMenu({ panels, onTogglePanel }: PageMenuProps) {
   ];
 
   const actions: MenuItem[] = [];
-
-  if (page !== undefined) {
-    const busy = setDatabase.isPending || removeDatabase.isPending;
-    const hasDatabase = page.database !== undefined;
-    actions.push({
-      id: 'database',
-      label: hasDatabase ? 'Remove the database' : 'Turn into a database',
-      icon: <Table />,
-      onSelect: () => {
-        if (busy) return;
-        if (hasDatabase) {
-          removeDatabase.mutate(page.id, {
-            onError: (error) => toast.pushError(error, 'The database could not be removed'),
-          });
-          return;
-        }
-        setDatabase.mutate(
-          { pageId: page.id },
-          { onError: (error) => toast.pushError(error, 'The database could not be created') },
-        );
-      },
-    });
-  }
 
   if (node !== null) {
     // A space home page owns its space, so it can never move into another one.

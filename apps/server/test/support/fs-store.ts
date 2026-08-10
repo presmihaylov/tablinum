@@ -4,7 +4,9 @@ import { dirname, join } from 'node:path';
 import {
   ASSETS_DIR,
   INDEX_BASENAME,
+  MAX_ROWS,
   PAGE_EXT,
+  UNTITLED_ROW,
   conflict,
   contentRev,
   depth,
@@ -12,6 +14,7 @@ import {
   isDescendantOf,
   mergeText,
   newPageId,
+  newRow,
   notFound,
   pagePathToRelFile,
   parentPath,
@@ -388,6 +391,9 @@ export class FsContentStore implements ContentStore {
 
   // ---------------------------------------------------------------------------
   // databases
+  //
+  // The schema and the rows both live in the database page's own frontmatter, so a row is a
+  // record and never a page of its own.
   // ---------------------------------------------------------------------------
 
   async getDatabase(id: PageId): Promise<{ page: Page; database: Database; rows: DbRow[] }> {
@@ -395,7 +401,12 @@ export class FsContentStore implements ContentStore {
     if (page === null) throw notFound(`No page with id ${id}`);
     const database = page.database;
     if (database === undefined) throw validation(`Page ${page.path} is not a database`);
-    return { page, database, rows: await this.#rowsOf(page.path, database) };
+    const parsed = parsePageFile(await readFile(page.filePath, 'utf8'));
+    const rows = (parsed.frontmatter.rows ?? []).map((row) => ({
+      ...row,
+      props: coerceProps(database.properties, row.props),
+    }));
+    return { page, database, rows };
   }
 
   async setDatabase(id: PageId, database: Database): Promise<Page> {
@@ -410,42 +421,43 @@ export class FsContentStore implements ContentStore {
     return this.#writes.runExclusive(() =>
       this.#writeFrontmatter(id, (next) => {
         delete next.db;
+        delete next.rows;
       }),
     );
   }
 
   async createRow(id: PageId, input: CreateRowBody): Promise<DbRow> {
-    const parent = await this.getPageById(id);
-    if (parent === null) throw notFound(`No page with id ${id}`);
-    const database = parent.database;
-    if (database === undefined) throw validation(`Page ${parent.path} is not a database`);
+    return this.#writes.runExclusive(async () => {
+      let added: DbRow | null = null;
+      await this.#writeFrontmatter(id, (next) => {
+        const database = next.db;
+        if (database === undefined) throw validation(`Page ${id} is not a database`);
+        const rows = next.rows ?? [];
+        if (rows.length >= MAX_ROWS) throw validation(`A database holds at most ${MAX_ROWS} rows`);
 
-    const title = (input.title ?? '').trim().length > 0 ? (input.title as string).trim() : 'Untitled';
-    const props = coerceProps(database.properties, input.props ?? {});
-    const created = await this.createPage({ path: this.#freeChildPath(parent.path, title), title });
-
-    if (Object.keys(props).length > 0) {
-      await this.#writes.runExclusive(() =>
-        this.#writeFrontmatter(created.id, (next) => {
-          next.props = props;
-        }),
-      );
-    }
-    return this.#rowOf(created.id, database);
+        const title = (input.title ?? '').trim();
+        const row = newRow(title.length > 0 ? title : UNTITLED_ROW, new Date().toISOString());
+        row.props = coerceProps(database.properties, input.props ?? {});
+        added = row;
+        next.rows = [...rows, row];
+      });
+      if (added === null) throw validation(`Page ${id} is not a database`);
+      return added;
+    });
   }
 
-  async updateRow(id: PageId, patch: UpdateRowBody): Promise<DbRow> {
-    const row = await this.getPageById(id);
-    if (row === null) throw notFound(`No page with id ${id}`);
-    const parent = parentPath(row.path);
-    const owner = parent === null ? null : await this.getPageByPath(parent);
-    const database = owner?.database;
-    if (database === undefined) throw validation(`Page ${row.path} is not a database row`);
+  async updateRow(id: PageId, rowId: string, patch: UpdateRowBody): Promise<DbRow> {
+    return this.#writes.runExclusive(async () => {
+      let changed: DbRow | null = null;
+      await this.#writeFrontmatter(id, (next) => {
+        const database = next.db;
+        if (database === undefined) throw validation(`Page ${id} is not a database`);
+        const rows = next.rows ?? [];
+        const current = rows.find((row) => row.id === rowId);
+        if (current === undefined) throw notFound(`No row ${rowId} on this database`);
 
-    const known = new Map(database.properties.map((property) => [property.id, property]));
-    await this.#writes.runExclusive(() =>
-      this.#writeFrontmatter(id, (next) => {
-        const props: RowProps = { ...(next.props ?? {}) };
+        const known = new Map(database.properties.map((property) => [property.id, property]));
+        const props: RowProps = { ...current.props };
         for (const [key, raw] of Object.entries(patch.props ?? {})) {
           const property = known.get(key);
           if (property === undefined) throw validation(`No property ${key} on this database`);
@@ -453,52 +465,32 @@ export class FsContentStore implements ContentStore {
           if (value === null) delete props[key];
           if (value !== null) props[key] = value;
         }
-        if (Object.keys(props).length > 0) next.props = props;
-        if (Object.keys(props).length === 0) delete next.props;
-        if (patch.title !== undefined && patch.title.trim().length > 0) next.title = patch.title.trim();
-      }),
-    );
-    return this.#rowOf(id, database);
+
+        const title = (patch.title ?? '').trim();
+        const row: DbRow = {
+          ...current,
+          props,
+          title: patch.title === undefined || title.length === 0 ? current.title : title,
+          updated: new Date().toISOString(),
+        };
+        changed = row;
+        next.rows = rows.map((entry) => (entry.id === rowId ? row : entry));
+      });
+      if (changed === null) throw notFound(`No row ${rowId} on this database`);
+      return changed;
+    });
   }
 
-  async #rowsOf(pagePath: PagePath, database: Database): Promise<DbRow[]> {
-    const rows: DbRow[] = [];
-    for (const page of await this.#allPages()) {
-      if (parentPath(page.path) !== pagePath) continue;
-      rows.push(this.#toRow(page, database));
-    }
-    // Oldest first, which is the order rows were added. A view's sort replaces it.
-    rows.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-    return rows;
-  }
-
-  async #rowOf(id: PageId, database: Database): Promise<DbRow> {
-    const page = await this.getPageById(id);
-    if (page === null) throw notFound(`No page with id ${id}`);
-    return this.#toRow(page, database);
-  }
-
-  #toRow(page: Page, database: Database): DbRow {
-    const row: DbRow = {
-      id: page.id,
-      path: page.path,
-      title: page.title,
-      created: page.created,
-      updated: page.updated,
-      props: coerceProps(database.properties, page.props ?? {}),
-    };
-    if (page.icon !== undefined) row.icon = page.icon;
-    return row;
-  }
-
-  /** A child path nothing occupies yet. Two rows may carry the same title. */
-  #freeChildPath(parent: PagePath, title: string): PagePath {
-    const base = slugify(title);
-    for (let attempt = 0; attempt < 50; attempt += 1) {
-      const candidate = `${parent}/${base}${attempt === 0 ? '' : `-${attempt + 1}`}`;
-      if (this.#fileOf(candidate) === null) return candidate;
-    }
-    return `${parent}/${base}-${newPageId().toLowerCase()}`;
+  async deleteRow(id: PageId, rowId: string): Promise<void> {
+    await this.#writes.runExclusive(async () => {
+      await this.#writeFrontmatter(id, (next) => {
+        const rows = next.rows ?? [];
+        if (!rows.some((row) => row.id === rowId)) throw notFound(`No row ${rowId} on this database`);
+        const kept = rows.filter((row) => row.id !== rowId);
+        if (kept.length > 0) next.rows = kept;
+        if (kept.length === 0) delete next.rows;
+      });
+    });
   }
 
   /** Rewrite one page's frontmatter and leave its body byte for byte as it was. */
@@ -603,7 +595,6 @@ export class FsContentStore implements ContentStore {
     if (frontmatter.icon !== undefined) page.icon = frontmatter.icon;
     if (frontmatter.order !== undefined) page.order = frontmatter.order;
     if (frontmatter.db !== undefined) page.database = frontmatter.db;
-    if (frontmatter.props !== undefined) page.props = frontmatter.props;
     // Like the real store: every rev a caller can hold was read here, so this is where the
     // merge base is learnt.
     this.#history.record(page.id, page.rev, page.markdown);

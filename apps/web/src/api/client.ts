@@ -403,8 +403,16 @@ export const api = {
   createRow: (id: PageId, body: CreateRowBody = {}): Promise<RowResponse> =>
     request(`/pages/${encodeURIComponent(id)}/database/rows`, { method: 'POST', body }),
 
-  updateRow: (rowId: PageId, body: UpdateRowBody): Promise<RowResponse> =>
-    request(`/pages/${encodeURIComponent(rowId)}/row`, { method: 'PATCH', body }),
+  updateRow: (id: PageId, rowId: string, body: UpdateRowBody): Promise<RowResponse> =>
+    request(`/pages/${encodeURIComponent(id)}/database/rows/${encodeURIComponent(rowId)}`, {
+      method: 'PATCH',
+      body,
+    }),
+
+  deleteRow: (id: PageId, rowId: string): Promise<OkResponse> =>
+    request(`/pages/${encodeURIComponent(id)}/database/rows/${encodeURIComponent(rowId)}`, {
+      method: 'DELETE',
+    }),
 
 
   gitStatus: (signal?: AbortSignal): Promise<GitStatusResponse> => request('/git/status', { signal }),

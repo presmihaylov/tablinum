@@ -24,7 +24,7 @@ import {
 import {
   useCreateRow,
   useDatabase,
-  useDeletePage,
+  useDeleteRow,
   useSetDatabase,
   useUpdateRow,
   useUsers,
@@ -34,6 +34,7 @@ import { Plus } from '../ui/Icon';
 import { nextOptionColor } from './Cell';
 import { BoardView } from './BoardView';
 import { Pop } from './Pop';
+import { RecordPanel } from './RecordPanel';
 import { TableView } from './TableView';
 import { TYPE_LABEL } from './PropertyHead';
 import './database.css';
@@ -75,10 +76,11 @@ export function DatabaseView({ page }: DatabaseViewProps) {
   const setDatabase = useSetDatabase();
   const createRow = useCreateRow();
   const updateRow = useUpdateRow();
-  const deletePage = useDeletePage();
+  const deleteRow = useDeleteRow();
 
   const [viewId, setViewId] = useState<string | null>(null);
   const [panel, setPanel] = useState<Panel>(null);
+  const [openRowId, setOpenRowId] = useState<string | null>(null);
 
   const database = query.data?.database ?? page.database ?? null;
   const rows = useMemo<DbRow[]>(() => query.data?.rows ?? [], [query.data]);
@@ -93,6 +95,12 @@ export function DatabaseView({ page }: DatabaseViewProps) {
     if (database === null || view === null) return rows;
     return applyView(database, view, rows);
   }, [database, view, rows]);
+
+  // Read back from the list every render, so an edit made in the panel shows up in the panel.
+  const openRow = useMemo<DbRow | null>(
+    () => rows.find((row) => row.id === openRowId) ?? null,
+    [rows, openRowId],
+  );
 
   if (database === null || view === null) return null;
 
@@ -193,8 +201,8 @@ export function DatabaseView({ page }: DatabaseViewProps) {
   };
 
   const removeRow = (row: DbRow): void => {
-    deletePage.mutate(
-      { id: row.id },
+    deleteRow.mutate(
+      { pageId: page.id, rowId: row.id },
       { onError: (error) => toast.pushError(error, 'The row could not be deleted') },
     );
   };
@@ -284,6 +292,7 @@ export function DatabaseView({ page }: DatabaseViewProps) {
           onCellChange={changeCell}
           onCreateRow={addRow}
           onDeleteRow={removeRow}
+          onOpenRow={(row) => setOpenRowId(row.id)}
         />
       ) : (
         <TableView
@@ -297,11 +306,24 @@ export function DatabaseView({ page }: DatabaseViewProps) {
           onTitleChange={changeTitle}
           onCreateRow={() => addRow()}
           onDeleteRow={removeRow}
+          onOpenRow={(row) => setOpenRowId(row.id)}
           onCreateOption={createOption}
         />
       )}
 
       {rows.length === 0 ? <p className="db__empty">This database has no rows yet.</p> : null}
+
+      {openRow === null ? null : (
+        <RecordPanel
+          row={openRow}
+          properties={database.properties}
+          people={people}
+          onClose={() => setOpenRowId(null)}
+          onTitleChange={(title) => changeTitle(openRow.id, title)}
+          onCellChange={(propertyId, value) => changeCell(openRow.id, propertyId, value)}
+          onCreateOption={createOption}
+        />
+      )}
     </section>
   );
 }

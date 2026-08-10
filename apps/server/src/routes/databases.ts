@@ -2,17 +2,16 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import {
   CreateRowBodySchema,
+  RowIdSchema,
   SetDatabaseBodySchema,
   UpdateRowBodySchema,
   notFound,
-  parentPath,
   parseOrThrow,
-  segments,
   starterDatabase,
   type DatabaseResponse,
+  type OkResponse,
   type Page,
   type PageId,
-  type PagePath,
   type PageResponse,
   type RowResponse,
 } from '@tablinum/shared';
@@ -22,22 +21,13 @@ import type { ContentStore } from '../deps.js';
 import { pageFileVariants } from '../wiring.js';
 
 const IdParamsSchema = z.object({ id: z.string().min(1) });
+const RowParamsSchema = z.object({ id: z.string().min(1), rowId: RowIdSchema });
 
 /**
- * Databases. The schema lives in the database page's frontmatter and every row is one of its
- * child pages, so each endpoint here is a page write and goes through the same commit path as
- * an edit made in the editor.
+ * Databases. The schema and the rows both live in the database page's frontmatter, so every
+ * endpoint here writes exactly one file and goes through the same commit path as an edit made
+ * in the editor.
  */
-
-/** Every file a write under `pagePath` can touch: the page itself and each of its ancestors. */
-function plannedFiles(pagePath: PagePath): string[] {
-  const out = new Set<string>();
-  const parts = segments(pagePath);
-  for (let end = 1; end <= parts.length; end += 1) {
-    for (const variant of pageFileVariants(parts.slice(0, end).join('/'))) out.add(variant);
-  }
-  return [...out];
-}
 
 async function requirePageIn(store: ContentStore, id: PageId): Promise<Page> {
   const page = await store.getPageById(id);
@@ -46,25 +36,12 @@ async function requirePageIn(store: ContentStore, id: PageId): Promise<Page> {
 }
 
 export function registerDatabaseRoutes(app: FastifyInstance, ctx: RouteContext): void {
-  /** Commit one page write, plus the parent whose file the write may have promoted. */
-  async function commit(
-    ctx2: RouteContext,
-    request: FastifyRequest,
-    page: Page,
-    message: string,
-  ): Promise<void> {
-    const { store, wiring } = await partsOf(ctx2, request);
-    const files = new Set(pageFileVariants(page.path));
-    const pages: Page[] = [page];
-    const parent = parentPath(page.path);
-    if (parent !== null) {
-      for (const variant of pageFileVariants(parent)) files.add(variant);
-      const parentPage = await store.getPageByPath(parent);
-      if (parentPage !== null) pages.push(parentPage);
-    }
+  /** Commit the one page the write touched. */
+  async function commit(request: FastifyRequest, page: Page, message: string): Promise<void> {
+    const { wiring } = await partsOf(ctx, request);
     await wiring.recordMutation({
-      pages,
-      files: [...files],
+      pages: [page],
+      files: pageFileVariants(page.path),
       message,
       by: clientOf(request),
       agent: agentOf(request),
@@ -84,26 +61,26 @@ export function registerDatabaseRoutes(app: FastifyInstance, ctx: RouteContext):
     const { id } = parseOrThrow(IdParamsSchema, request.params, 'params');
     const before = await requirePageIn(store, id);
     // An empty body turns a plain page into a database with the starter schema, which is what
-    // the "Turn into a database" button sends.
+    // the slash commands send.
     const body =
       request.body === undefined || request.body === null || Object.keys(request.body).length === 0
         ? { database: starterDatabase() }
         : parseOrThrow(SetDatabaseBodySchema, request.body, 'database');
 
-    wiring.markWritten(plannedFiles(before.path));
+    wiring.markWritten(pageFileVariants(before.path));
     const page = await store.setDatabase(id, body.database);
-    await commit(ctx, request, page, `Update the database on ${page.path}`);
+    await commit(request, page, `Update the database on ${page.path}`);
     return { page };
   });
 
-  /** Make it a plain page again. The rows stay: they were child pages all along. */
+  /** Make it a plain page again. The rows are records inside the file, so they go with it. */
   app.delete(`${API_PREFIX}/pages/:id/database`, async (request): Promise<PageResponse> => {
     const { store, wiring } = await partsOf(ctx, request);
     const { id } = parseOrThrow(IdParamsSchema, request.params, 'params');
     const before = await requirePageIn(store, id);
-    wiring.markWritten(plannedFiles(before.path));
+    wiring.markWritten(pageFileVariants(before.path));
     const page = await store.removeDatabase(id);
-    await commit(ctx, request, page, `Remove the database on ${page.path}`);
+    await commit(request, page, `Remove the database on ${page.path}`);
     return { page };
   });
 
@@ -111,27 +88,45 @@ export function registerDatabaseRoutes(app: FastifyInstance, ctx: RouteContext):
     const { store, wiring } = await partsOf(ctx, request);
     const { id } = parseOrThrow(IdParamsSchema, request.params, 'params');
     const body = parseOrThrow(CreateRowBodySchema, request.body ?? {}, 'row');
-    const database = await requirePageIn(store, id);
-    wiring.markWritten(plannedFiles(`${database.path}/x`));
+    const before = await requirePageIn(store, id);
+    wiring.markWritten(pageFileVariants(before.path));
 
     const row = await store.createRow(id, body);
-    const page = await requirePageIn(store, row.id);
-    await commit(ctx, request, page, `Create ${page.path}`);
+    const page = await requirePageIn(store, id);
+    await commit(request, page, `Add a row to ${page.path}`);
     reply.status(201);
     return { row };
   });
 
-  /** Edit the cells of one row. The row's own page body is edited through the page endpoints. */
-  app.patch(`${API_PREFIX}/pages/:id/row`, async (request): Promise<RowResponse> => {
-    const { store, wiring } = await partsOf(ctx, request);
-    const { id } = parseOrThrow(IdParamsSchema, request.params, 'params');
-    const body = parseOrThrow(UpdateRowBodySchema, request.body, 'row');
-    const before = await requirePageIn(store, id);
-    wiring.markWritten(plannedFiles(before.path));
+  /** Edit the cells of one row, its title, or both. */
+  app.patch(
+    `${API_PREFIX}/pages/:id/database/rows/:rowId`,
+    async (request): Promise<RowResponse> => {
+      const { store, wiring } = await partsOf(ctx, request);
+      const { id, rowId } = parseOrThrow(RowParamsSchema, request.params, 'params');
+      const body = parseOrThrow(UpdateRowBodySchema, request.body, 'row');
+      const before = await requirePageIn(store, id);
+      wiring.markWritten(pageFileVariants(before.path));
 
-    const row = await store.updateRow(id, body);
-    const page = await requirePageIn(store, row.id);
-    await commit(ctx, request, page, `Update ${page.path}`);
-    return { row };
-  });
+      const row = await store.updateRow(id, rowId, body);
+      const page = await requirePageIn(store, id);
+      await commit(request, page, `Update a row on ${page.path}`);
+      return { row };
+    },
+  );
+
+  app.delete(
+    `${API_PREFIX}/pages/:id/database/rows/:rowId`,
+    async (request): Promise<OkResponse> => {
+      const { store, wiring } = await partsOf(ctx, request);
+      const { id, rowId } = parseOrThrow(RowParamsSchema, request.params, 'params');
+      const before = await requirePageIn(store, id);
+      wiring.markWritten(pageFileVariants(before.path));
+
+      await store.deleteRow(id, rowId);
+      const page = await requirePageIn(store, id);
+      await commit(request, page, `Delete a row on ${page.path}`);
+      return { ok: true };
+    },
+  );
 }

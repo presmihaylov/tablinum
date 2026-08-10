@@ -2,21 +2,23 @@ import { z } from 'zod';
 import { newUlid } from './ids.js';
 
 /**
- * Databases, the way Notion does them: a database is a page, and every row is a page too.
+ * Databases. A database is a page; a row is a record inside that page, not a page of its own.
  *
- * The schema and the views live in the database page's frontmatter under `db`. A row's values
- * live in the row page's frontmatter under `props`, keyed by property id. Nothing is stored
- * outside the markdown files, so a database survives a clone, an editor and a `git push`.
+ * The schema and the views live in the database page's frontmatter under `db`, and the rows live
+ * beside them under `rows`. Nothing is stored outside the markdown file, so a database survives a
+ * clone, an editor and a `git push`, and a row never reaches the sidebar or the search index.
  */
 
 export const PROPERTY_ID_PREFIX = 'pr_';
 export const VIEW_ID_PREFIX = 'vw_';
 export const OPTION_ID_PREFIX = 'op_';
+export const ROW_ID_PREFIX = 'rw_';
 
 const ULID_BODY = '[0-9ABCDEFGHJKMNPQRSTVWXYZ]{26}';
 const PROPERTY_ID_RE = new RegExp(`^pr_${ULID_BODY}$`);
 const VIEW_ID_RE = new RegExp(`^vw_${ULID_BODY}$`);
 const OPTION_ID_RE = new RegExp(`^op_${ULID_BODY}$`);
+const ROW_ID_RE = new RegExp(`^rw_${ULID_BODY}$`);
 
 export const isPropertyId = (value: unknown): value is string =>
   typeof value === 'string' && PROPERTY_ID_RE.test(value);
@@ -24,14 +26,18 @@ export const isViewId = (value: unknown): value is string =>
   typeof value === 'string' && VIEW_ID_RE.test(value);
 export const isOptionId = (value: unknown): value is string =>
   typeof value === 'string' && OPTION_ID_RE.test(value);
+export const isRowId = (value: unknown): value is string =>
+  typeof value === 'string' && ROW_ID_RE.test(value);
 
 export const newPropertyId = (now?: number): string => PROPERTY_ID_PREFIX + newUlid(now);
 export const newViewId = (now?: number): string => VIEW_ID_PREFIX + newUlid(now);
 export const newOptionId = (now?: number): string => OPTION_ID_PREFIX + newUlid(now);
+export const newRowId = (now?: number): string => ROW_ID_PREFIX + newUlid(now);
 
 export const PropertyIdSchema = z.string().refine(isPropertyId, 'Expected a property id like "pr_<ULID>"');
 export const ViewIdSchema = z.string().refine(isViewId, 'Expected a view id like "vw_<ULID>"');
 export const OptionIdSchema = z.string().refine(isOptionId, 'Expected an option id like "op_<ULID>"');
+export const RowIdSchema = z.string().refine(isRowId, 'Expected a row id like "rw_<ULID>"');
 
 // ---------------------------------------------------------------------------
 // properties
@@ -266,18 +272,34 @@ export const DatabaseSchema = z.object({
 });
 export type Database = z.infer<typeof DatabaseSchema>;
 
-/** A row: a page, its title, and the values of the current schema. */
-export interface DbRow {
-  id: string;
-  path: string;
-  title: string;
-  icon?: string;
-  created: string;
-  updated: string;
-  props: RowProps;
-}
+/**
+ * How many rows one database holds. A row is a record inside the page file, so the whole
+ * database is read and written as one unit, and the cap is what keeps that write small.
+ */
+export const MAX_ROWS = 5000;
+
+/** A row: an id, a title, and the values of the current schema. It is not a page. */
+export const DbRowSchema = z.object({
+  id: RowIdSchema,
+  title: z.string().max(200),
+  icon: z.string().max(64).optional(),
+  created: z.string(),
+  updated: z.string(),
+  props: RowPropsSchema,
+});
+export type DbRow = z.infer<typeof DbRowSchema>;
+
+export const DbRowsSchema = z.array(DbRowSchema).max(MAX_ROWS);
 
 export const DEFAULT_VIEW_NAME = 'Table';
+
+/** What a row is called until somebody names it. */
+export const UNTITLED_ROW = 'Untitled';
+
+/** A row with no cells filled in, ready for the caller to write over. */
+export function newRow(title: string, at: string, now?: number): DbRow {
+  return { id: newRowId(now), title, created: at, updated: at, props: {} };
+}
 
 /** The database a brand new page is turned into: one text column and one table view. */
 export function starterDatabase(now?: number): Database {

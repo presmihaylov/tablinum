@@ -4,6 +4,7 @@ import {
   CreatePageBodySchema,
   DatabaseSchema,
   INDEX_BASENAME,
+  MAX_ROWS,
   PAGE_EXT,
   NewSpaceSlugSchema,
   SpaceFileSchema,
@@ -23,15 +24,16 @@ import {
   isPageId,
   mergeText,
   newPageId,
+  newRow,
   notFound,
   pagePathToRelFile,
   parentPath,
   parseOrThrow,
   saveConflict,
   segments,
-  slugify,
   spaceFileRelPath,
   spaceOf,
+  UNTITLED_ROW,
   validation,
   type Backlink,
   type Database,
@@ -150,10 +152,6 @@ export interface UpdateRowInput {
   title?: string;
 }
 
-const UNTITLED_ROW = 'Untitled';
-
-/** How many `-2`, `-3` suffixes a duplicate row title is given before the id is used instead. */
-const MAX_SLUG_ATTEMPTS = 50;
 
 /** Overrides for the home page a new space is created with. */
 interface SpaceHome {
@@ -222,6 +220,14 @@ function patchedIcon(current: string | undefined, patch: string | null | undefin
   if (patch === undefined) return current;
   if (patch === null) return undefined;
   return normalizeIcon(patch) ?? undefined;
+}
+
+/**
+ * The rows a caller sees. A property can be renamed, retyped or removed after a cell was
+ * written, so every cell is read back through the schema that is in force now.
+ */
+function rowsFor(database: Database, rows: readonly DbRow[] | undefined): DbRow[] {
+  return (rows ?? []).map((row) => ({ ...row, props: coerceProps(database.properties, row.props) }));
 }
 
 function toSummary(page: IndexedPage): PageSummary {
@@ -488,7 +494,6 @@ export class ContentStore {
       rev,
     };
     if (parsed.frontmatter.db !== undefined) page.database = parsed.frontmatter.db;
-    if (parsed.frontmatter.props !== undefined) page.props = parsed.frontmatter.props;
     return page;
   }
 
@@ -761,9 +766,9 @@ export class ContentStore {
   // -------------------------------------------------------------------------
   // databases
   //
-  // A database is a page whose frontmatter carries a `db` block, and every row is one of its
-  // child pages. Nothing else holds the data, so a row keeps its history, its comments and its
-  // body, and a database survives being cloned and edited by hand.
+  // A database is a page whose frontmatter carries a `db` block, and its rows live beside that
+  // block under `rows`. A row is a record, not a page, so it never reaches the sidebar tree or
+  // the search index, and the whole database moves, clones and merges as one file.
   // -------------------------------------------------------------------------
 
   /** The schema and the rows of a database page. */
@@ -771,31 +776,11 @@ export class ContentStore {
     await this.#index.ensureBuilt();
     const record = this.#index.byId(id);
     if (record === undefined) throw notFound(`No page with id ${id}`);
+    const parsed = await this.#readParsed(record);
     const page = await this.#readPage(record);
     const database = page.database;
     if (database === undefined) throw validation(`Page ${record.path} is not a database`);
-    return { page, database, rows: await this.#rowsOf(record.path, database) };
-  }
-
-  async #rowsOf(pagePath: PagePath, database: Database): Promise<DbRow[]> {
-    const children = this.#index.childrenOf(pagePath);
-    const rows: DbRow[] = [];
-    for (const child of children) {
-      const parsed = await this.#readParsed(child);
-      const row: DbRow = {
-        id: child.id,
-        path: child.path,
-        title: parsed.frontmatter.title,
-        created: parsed.frontmatter.created,
-        updated: parsed.frontmatter.updated,
-        props: coerceProps(database.properties, parsed.frontmatter.props ?? {}),
-      };
-      if (parsed.frontmatter.icon !== undefined) row.icon = parsed.frontmatter.icon;
-      rows.push(row);
-    }
-    // Oldest first, which is the order rows were added. A view's sort replaces it.
-    rows.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-    return rows;
+    return { page, database, rows: rowsFor(database, parsed.frontmatter.rows) };
   }
 
   /** Give the page a `db` block, or replace the one it has. */
@@ -805,52 +790,48 @@ export class ContentStore {
     }));
   }
 
-  /** Take the `db` block away. The rows stay: they are ordinary pages and always were. */
+  /** Take the `db` block away, and the rows with it. The page itself keeps its body. */
   async removeDatabase(id: PageId): Promise<Page> {
     return this.#writes.runExclusive(() => this.#writeFrontmatter(id, (next) => {
       delete next.db;
+      delete next.rows;
     }));
   }
 
-  /** Add a row: a child page of the database, carrying the cells it was created with. */
+  /** Add a row to the end of the database, carrying the cells it was created with. */
   async createRow(id: PageId, input: CreateRowInput = {}): Promise<DbRow> {
     return this.#writes.runExclusive(async () => {
-      await this.#index.ensureBuilt();
-      const record = this.#index.byId(id);
-      if (record === undefined) throw notFound(`No page with id ${id}`);
-      const parsed = await this.#readParsed(record);
-      const database = parsed.frontmatter.db;
-      if (database === undefined) throw validation(`Page ${record.path} is not a database`);
+      let added: DbRow | null = null;
+      await this.#writeFrontmatter(id, (next) => {
+        const database = next.db;
+        if (database === undefined) throw validation(`Page ${id} is not a database`);
+        const rows = next.rows ?? [];
+        if (rows.length >= MAX_ROWS) throw validation(`A database holds at most ${MAX_ROWS} rows`);
 
-      const title = (input.title ?? '').trim().length > 0 ? (input.title as string).trim() : UNTITLED_ROW;
-      const target = await this.#freeChildPath(record.path, title);
-      const props = coerceProps(database.properties, input.props ?? {});
-      const created = await this.#createPageUnlocked({ path: target, title });
-
-      if (Object.keys(props).length === 0) return this.#rowOf(created.id, database);
-      await this.#writeFrontmatter(created.id, (next) => {
-        next.props = props;
+        const title = (input.title ?? '').trim();
+        const row = newRow(title.length > 0 ? title : UNTITLED_ROW, this.#nowIso());
+        row.props = coerceProps(database.properties, input.props ?? {});
+        added = row;
+        next.rows = [...rows, row];
       });
-      return this.#rowOf(created.id, database);
+      if (added === null) throw validation(`Page ${id} is not a database`);
+      return added;
     });
   }
 
   /** Change a row's cells, its title, or both. An absent cell keeps its value; null clears it. */
-  async updateRow(id: PageId, patch: UpdateRowInput): Promise<DbRow> {
+  async updateRow(id: PageId, rowId: string, patch: UpdateRowInput): Promise<DbRow> {
     return this.#writes.runExclusive(async () => {
-      await this.#index.ensureBuilt();
-      const record = this.#index.byId(id);
-      if (record === undefined) throw notFound(`No page with id ${id}`);
-      const parent = parentPath(record.path);
-      const parentRecord = parent === null ? undefined : this.#index.byPath(parent);
-      if (parentRecord === undefined) throw validation(`Page ${record.path} is not a database row`);
-      const parentParsed = await this.#readParsed(parentRecord);
-      const database = parentParsed.frontmatter.db;
-      if (database === undefined) throw validation(`Page ${record.path} is not a database row`);
-
-      const known = new Map(database.properties.map((property) => [property.id, property]));
+      let changed: DbRow | null = null;
       await this.#writeFrontmatter(id, (next) => {
-        const props: RowProps = { ...(next.props ?? {}) };
+        const database = next.db;
+        if (database === undefined) throw validation(`Page ${id} is not a database`);
+        const rows = next.rows ?? [];
+        const current = rows.find((row) => row.id === rowId);
+        if (current === undefined) throw notFound(`No row ${rowId} on this database`);
+
+        const known = new Map(database.properties.map((property) => [property.id, property]));
+        const props: RowProps = { ...current.props };
         for (const [key, raw] of Object.entries(patch.props ?? {})) {
           const property = known.get(key);
           if (property === undefined) throw validation(`No property ${key} on this database`);
@@ -858,41 +839,33 @@ export class ContentStore {
           if (value === null) delete props[key];
           if (value !== null) props[key] = value;
         }
-        if (Object.keys(props).length > 0) next.props = props;
-        if (Object.keys(props).length === 0) delete next.props;
-        if (patch.title !== undefined && patch.title.trim().length > 0) next.title = patch.title.trim();
+
+        const title = (patch.title ?? '').trim();
+        const row: DbRow = {
+          ...current,
+          props,
+          title: patch.title === undefined || title.length === 0 ? current.title : title,
+          updated: this.#nowIso(),
+        };
+        changed = row;
+        next.rows = rows.map((entry) => (entry.id === rowId ? row : entry));
       });
-      return this.#rowOf(id, database);
+      if (changed === null) throw notFound(`No row ${rowId} on this database`);
+      return changed;
     });
   }
 
-  async #rowOf(id: PageId, database: Database): Promise<DbRow> {
-    const record = this.#index.byId(id);
-    if (record === undefined) throw notFound(`No page with id ${id}`);
-    const parsed = await this.#readParsed(record);
-    const row: DbRow = {
-      id: record.id,
-      path: record.path,
-      title: parsed.frontmatter.title,
-      created: parsed.frontmatter.created,
-      updated: parsed.frontmatter.updated,
-      props: coerceProps(database.properties, parsed.frontmatter.props ?? {}),
-    };
-    if (parsed.frontmatter.icon !== undefined) row.icon = parsed.frontmatter.icon;
-    return row;
-  }
-
-  /** A child path under `parent` that nothing occupies yet. Two rows may share a title. */
-  async #freeChildPath(parent: PagePath, title: string): Promise<PagePath> {
-    const slug = slugify(title);
-    const base = slug.length > 0 ? slug : 'row';
-    for (let attempt = 0; attempt < MAX_SLUG_ATTEMPTS; attempt += 1) {
-      const suffix = attempt === 0 ? '' : `-${attempt + 1}`;
-      const candidate = assertValidPagePath(`${parent}/${base}${suffix}`);
-      if (!this.#index.has(candidate) && !(await this.#pageFileExists(candidate))) return candidate;
-    }
-    // Falling back to the id keeps "add a row" working however many rows share a title.
-    return assertValidPagePath(`${parent}/${base}-${newPageId().toLowerCase()}`);
+  /** Take a row out of the database. Nothing else holds it, so it is gone. */
+  async deleteRow(id: PageId, rowId: string): Promise<void> {
+    await this.#writes.runExclusive(async () => {
+      await this.#writeFrontmatter(id, (next) => {
+        const rows = next.rows ?? [];
+        if (!rows.some((row) => row.id === rowId)) throw notFound(`No row ${rowId} on this database`);
+        const kept = rows.filter((row) => row.id !== rowId);
+        if (kept.length > 0) next.rows = kept;
+        if (kept.length === 0) delete next.rows;
+      });
+    });
   }
 
   /**

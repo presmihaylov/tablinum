@@ -77,7 +77,9 @@ export {
   readDatabase,
   readPropValue,
   readRowProps,
+  readRows,
   rowPropsEqual,
+  rowsEqual,
   stringifyDatabase,
-  stringifyRowProps,
+  stringifyRows,
 } from './db-frontmatter.js';

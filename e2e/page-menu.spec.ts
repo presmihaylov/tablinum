@@ -51,6 +51,26 @@ test.describe('the page menu', () => {
     await expect(rail(page).getByRole('region')).toHaveCount(2);
   });
 
+  test('the rail closes from its own button, and from Escape', async ({ page, api }) => {
+    const seeded = await seedPage(api, 'dismissed');
+
+    await page.goto(seeded.href);
+    await pageMenu(page, 'History');
+    await expect(rail(page)).toBeVisible();
+
+    await rail(page).getByRole('button', { name: 'Hide the page details' }).click();
+    await expect(rail(page)).toHaveCount(0);
+
+    // Two panels on, and one Escape inside the rail takes both away.
+    await pageMenu(page, 'History');
+    await pageMenu(page, 'Backlinks');
+    await expect(rail(page).getByRole('region')).toHaveCount(2);
+
+    await rail(page).getByRole('button', { name: 'Hide the page details' }).focus();
+    await page.keyboard.press('Escape');
+    await expect(rail(page)).toHaveCount(0);
+  });
+
   test('a backlink from another page shows up in the rail', async ({ page, api }) => {
     const target = await seedPage(api, 'target');
     await api.createPage({

@@ -5,18 +5,42 @@ import { useBacklinks } from '../../api/hooks';
 import { absoluteTime, relativeTime } from '../../lib/format';
 import { pageHref } from '../../lib/href';
 import type { PanelState } from '../../lib/panels';
+import { Close } from '../ui/Icon';
 import { HistoryPanel } from './HistoryPanel';
 import './pagemeta.css';
 
 interface PageMetaProps {
   page: Page;
   panels: PanelState;
+  onClose: () => void;
 }
 
 /** The rail beside the page. The page menu decides which parts of it are on. */
-export function PageMeta({ page, panels }: PageMetaProps) {
+export function PageMeta({ page, panels, onClose }: PageMetaProps) {
   return (
-    <aside className="pagemeta" aria-label="Page details">
+    <aside
+      className="pagemeta"
+      aria-label="Page details"
+      // Bound to the rail, so a press in the editor still belongs to the editor.
+      onKeyDown={(event) => {
+        if (event.key !== 'Escape') return;
+        event.preventDefault();
+        onClose();
+      }}
+    >
+      <div className="pagemeta__head">
+        <h2 className="section-label">Page details</h2>
+        <button
+          type="button"
+          className="btn btn--icon"
+          onClick={onClose}
+          aria-label="Hide the page details"
+          title="Hide the page details (⌘⇧.)"
+        >
+          <Close />
+        </button>
+      </div>
+
       <dl className="pagemeta__facts">
         <dt>Created</dt>
         <dd title={absoluteTime(page.created)}>{relativeTime(page.created)}</dd>

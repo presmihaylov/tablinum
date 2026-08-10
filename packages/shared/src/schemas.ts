@@ -5,6 +5,7 @@ import {
   DbRowsSchema,
   PropertyIdSchema,
   PropValueSchema,
+  RowIdSchema,
   RowPropsSchema,
 } from './databases.js';
 import { validation } from './errors.js';
@@ -337,9 +338,12 @@ export const CreateRowBodySchema = z.object({
  * The property must exist on the database, which the server checks against the schema.
  */
 export const UpdateRowBodySchema = z.object({
-  // Both are optional: a rename touches no cell, and a cell edit leaves the title alone.
+  // All three are optional: a rename touches no cell, a cell edit leaves the title alone, and a
+  // card dragged up its own stack changes only where the row sits.
   props: z.record(PropertyIdSchema, PropValueSchema).optional(),
   title: z.string().min(1).max(200).optional(),
+  /** Where the row lands: in front of this row, or at the end of the database when null. */
+  before: z.union([RowIdSchema, z.null()]).optional(),
 });
 
 export const DatabaseResponseSchema = z.object({

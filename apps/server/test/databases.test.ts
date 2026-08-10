@@ -379,6 +379,30 @@ describe('PATCH /pages/:id/database/rows/:rowId', () => {
     expect(response.statusCode).toBe(400);
   });
 
+  it('moves a row in front of another one', async () => {
+    const { database, row } = await makeRow();
+    const second = bodyOf(await createRow(database, { title: 'Second' }), RowResponseSchema).row;
+
+    expect((await patch(database, second.id, { before: row })).statusCode).toBe(200);
+    const body = bodyOf(await readDatabase(database), DatabaseResponseSchema);
+    expect(body.rows.map((entry) => entry.title)).toEqual(['Second', 'Row']);
+  });
+
+  it('moves a row to the end when it lands in front of nothing', async () => {
+    const { database, row } = await makeRow();
+    await createRow(database, { title: 'Second' });
+
+    expect((await patch(database, row, { before: null })).statusCode).toBe(200);
+    const body = bodyOf(await readDatabase(database), DatabaseResponseSchema);
+    expect(body.rows.map((entry) => entry.title)).toEqual(['Second', 'Row']);
+  });
+
+  it('refuses an order that names something other than a row', async () => {
+    const { database, row } = await makeRow();
+    expect((await patch(database, row, { before: 'nonsense' })).statusCode).toBe(400);
+  });
+
+
   it('refuses a page that carries no database', async () => {
     await seed(harness);
     const id = await makePage();

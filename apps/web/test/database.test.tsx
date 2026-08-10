@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { createEvent, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   newOptionId,
@@ -559,6 +559,29 @@ async function card(title: string): Promise<HTMLElement> {
   });
 }
 
+/** Three cards in one stack, for the tests about the order inside a stack. */
+const STACK: DbRow[] = [
+  row('sa', 'Alpha', { [STATUS]: TODO }),
+  row('sb', 'Bravo', { [STATUS]: TODO }),
+  row('sc', 'Charlie', { [STATUS]: TODO }),
+];
+
+/** The card of any row, whether or not it belongs to the shared fixture. */
+async function cardOf(id: string): Promise<HTMLElement> {
+  return waitFor(() => {
+    const found = document.querySelector(`article[data-row-id="${id}"]`);
+    if (!(found instanceof HTMLElement)) throw new Error(`No card for ${id}`);
+    return found;
+  });
+}
+
+/** The strip a card sits in. It is the strip, not the card, that answers a drop. */
+async function slot(id: string): Promise<HTMLElement> {
+  const found = (await cardOf(id)).parentElement;
+  if (!(found instanceof HTMLElement)) throw new Error(`No strip for ${id}`);
+  return found;
+}
+
 /** A stand-in for the drag payload, which jsdom does not carry itself. */
 function dragPayload(): DataTransfer {
   const store: Record<string, string> = {};
@@ -577,14 +600,14 @@ function dragPayload(): DataTransfer {
 }
 
 describe('the board', () => {
-  it('draws the empty stack first and then one stack per option', async () => {
+  it('draws one stack per option and leaves the empty one last', async () => {
     mount({ db: boardDatabase() });
 
     const board = await screen.findByTestId('db-board');
     const names = [...board.querySelectorAll('.db-board__col')].map((col) =>
       col.getAttribute('aria-label'),
     );
-    expect(names).toEqual(['No Status', 'Todo', 'Done']);
+    expect(names).toEqual(['Todo', 'Done', 'No Status']);
   });
 
   it('deals every card to the stack of its option', async () => {
@@ -644,7 +667,10 @@ describe('the board', () => {
     fireEvent.dragOver(await column(DONE), { dataTransfer: payload });
     fireEvent.drop(await column(DONE), { dataTransfer: payload });
 
-    await waitFor(() => expect(lastCall('PATCH', ROWS[0]!.id)).toEqual({ props: { [STATUS]: DONE } }));
+    // A drop on the stack itself, below its cards, means the end of it.
+    await waitFor(() =>
+      expect(lastCall('PATCH', ROWS[0]!.id)).toEqual({ props: { [STATUS]: DONE }, before: null }),
+    );
   });
 
   it('clears the cell of a card dropped on the empty stack', async () => {
@@ -660,7 +686,9 @@ describe('the board', () => {
     fireEvent.dragStart(await card('Ship it'), { dataTransfer: payload });
     fireEvent.drop(await column(null), { dataTransfer: payload });
 
-    await waitFor(() => expect(lastCall('PATCH', ROWS[0]!.id)).toEqual({ props: { [STATUS]: null } }));
+    await waitFor(() =>
+      expect(lastCall('PATCH', ROWS[0]!.id)).toEqual({ props: { [STATUS]: null }, before: null }),
+    );
   });
 
   it('says nothing to the server when a card lands on the stack it came from', async () => {
@@ -750,6 +778,174 @@ describe('the board', () => {
 
     expect((await column(DONE)).textContent).toContain('Write it');
     expect((await column(TODO)).textContent).not.toContain('Ship it');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// the order inside a stack
+// ---------------------------------------------------------------------------
+
+/** jsdom lays nothing out, so a card that a drop is measured against is given a box by hand. */
+const CARD_HEIGHT = 100;
+const UPPER = 10;
+const LOWER = 90;
+
+function boxed(node: HTMLElement): HTMLElement {
+  node.getBoundingClientRect = () => new DOMRect(0, 0, 240, CARD_HEIGHT);
+  return node;
+}
+
+/** A drag event carrying the height of the pointer, which fireEvent does not pass on its own. */
+function drag(
+  kind: 'dragOver' | 'drop',
+  node: HTMLElement,
+  dataTransfer: DataTransfer,
+  clientY: number,
+): void {
+  const event = createEvent[kind](node, { dataTransfer });
+  Object.defineProperty(event, 'clientY', { value: clientY });
+  fireEvent(node, event);
+}
+
+describe('the order of the cards in a stack', () => {
+  function mountStack(view: Partial<DbView> = {}): void {
+    mount({
+      db: boardDatabase(view),
+      rows: STACK,
+      routes: Object.fromEntries(
+        STACK.map((entry) => [
+          `PATCH /api/v1/pages/${PAGE.id}/database/rows/${entry.id}`,
+          () => ({ row: entry }),
+        ]),
+      ),
+    });
+  }
+
+  it('puts a card dropped on the upper half of another in front of it', async () => {
+    mountStack();
+    await screen.findByTestId('db-board');
+
+    const payload = dragPayload();
+    const target = boxed(await slot(STACK[0]!.id));
+    fireEvent.dragStart(await cardOf(STACK[2]!.id), { dataTransfer: payload });
+    drag('dragOver', target, payload, UPPER);
+    drag('drop', target, payload, UPPER);
+
+    // Only the place changes: the card never left the stack it was in.
+    await waitFor(() =>
+      expect(lastCall('PATCH', STACK[2]!.id)).toEqual({ before: STACK[0]!.id }),
+    );
+  });
+
+  it('puts a card dropped on the lower half of another behind it', async () => {
+    mountStack();
+    await screen.findByTestId('db-board');
+
+    const payload = dragPayload();
+    const target = boxed(await slot(STACK[0]!.id));
+    fireEvent.dragStart(await cardOf(STACK[2]!.id), { dataTransfer: payload });
+    drag('drop', target, payload, LOWER);
+
+    await waitFor(() =>
+      expect(lastCall('PATCH', STACK[2]!.id)).toEqual({ before: STACK[1]!.id }),
+    );
+  });
+
+  it('draws a line where the card in the air would land', async () => {
+    mountStack();
+    await screen.findByTestId('db-board');
+
+    const payload = dragPayload();
+    const target = boxed(await slot(STACK[0]!.id));
+    fireEvent.dragStart(await cardOf(STACK[2]!.id), { dataTransfer: payload });
+    drag('dragOver', target, payload, UPPER);
+
+    const lines = document.querySelectorAll('.db-board__line');
+    expect(lines).toHaveLength(1);
+    expect((await slot(STACK[0]!.id)).querySelector('.db-board__line')).not.toBeNull();
+  });
+
+  it('says nothing when a card is dropped back where it already was', async () => {
+    mountStack();
+    await screen.findByTestId('db-board');
+
+    const payload = dragPayload();
+    const target = boxed(await slot(STACK[1]!.id));
+    fireEvent.dragStart(await cardOf(STACK[0]!.id), { dataTransfer: payload });
+    drag('drop', target, payload, UPPER);
+
+    expect(lastCall('PATCH', STACK[0]!.id)).toBeNull();
+  });
+
+  it('leaves the order alone when the view sorts the cards itself', async () => {
+    mountStack({ sorts: [{ property: NOTES, direction: 'asc' }] });
+    await screen.findByTestId('db-board');
+
+    const payload = dragPayload();
+    fireEvent.dragStart(await cardOf(STACK[0]!.id), { dataTransfer: payload });
+    fireEvent.drop(await column(DONE), { dataTransfer: payload });
+
+    await waitFor(() =>
+      expect(lastCall('PATCH', STACK[0]!.id)).toEqual({ props: { [STATUS]: DONE } }),
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// the stacks themselves
+// ---------------------------------------------------------------------------
+
+/** The options of the select column, as the last save left them. */
+function savedOptions(): Array<{ id: string; name: string }> {
+  const saved = lastCall('PUT', '/database') as { database: Database } | null;
+  return saved?.database.properties.find((entry) => entry.id === STATUS)?.options ?? [];
+}
+
+describe('the stacks of a board', () => {
+  it('adds a stack from the right end of the board', async () => {
+    const user = userEvent.setup();
+    mount({ db: boardDatabase() });
+    await screen.findByTestId('db-board');
+
+    await user.click(screen.getByLabelText('Add a stack'));
+    await user.type(await screen.findByLabelText('New stack name'), 'In review{Enter}');
+
+    await waitFor(() => expect(savedOptions().map((one) => one.name)).toEqual([
+      'Todo',
+      'Done',
+      'In review',
+    ]));
+  });
+
+  it('renames a stack from its own head', async () => {
+    const user = userEvent.setup();
+    mount({ db: boardDatabase() });
+    await screen.findByTestId('db-board');
+
+    await user.click(screen.getByLabelText('Stack menu for Todo'));
+    const box = await screen.findByLabelText('Stack name');
+    await user.clear(box);
+    await user.type(box, 'Next up{Enter}');
+
+    await waitFor(() => expect(savedOptions().map((one) => one.name)).toEqual(['Next up', 'Done']));
+  });
+
+  it('takes a stack off the board', async () => {
+    const user = userEvent.setup();
+    mount({ db: boardDatabase() });
+    await screen.findByTestId('db-board');
+
+    await user.click(screen.getByLabelText('Stack menu for Todo'));
+    await user.click(await screen.findByRole('menuitem', { name: /Delete stack/ }));
+
+    await waitFor(() => expect(savedOptions().map((one) => one.name)).toEqual(['Done']));
+  });
+
+  it('has no menu on the stack that holds no option', async () => {
+    mount({ db: boardDatabase() });
+    await screen.findByTestId('db-board');
+
+    expect(within(await column(null)).queryByRole('button', { name: /Stack menu/ })).toBeNull();
   });
 });
 

@@ -406,6 +406,7 @@
 .db-board__col {
   flex: 0 0 15rem;
   min-width: 15rem;
+  max-height: 34rem;
   border-radius: var(--radius-md);
   background: var(--bg-inset);
   padding: var(--space-2);
@@ -420,9 +421,24 @@
 }
 
 .db-board__head {
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--space-2);
+}
+
+/* The head opens the menu of the stack, so the tag inside it carries no button chrome. */
+.db-board__group {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.db-board__group:hover {
+  opacity: 0.8;
 }
 
 .db-board__count {
@@ -430,11 +446,54 @@
   font-size: var(--text-xs);
 }
 
+/* A tall stack scrolls on its own, so the board never grows past the height of the screen. */
 .db-board__cards {
+  flex: 1;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
   min-height: 1.5rem;
+}
+
+/* One card and the room above it, which is where the line that answers a drop is drawn. */
+.db-board__slot {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+/* Where the card in the air would land. */
+.db-board__line {
+  height: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+}
+
+.db-board__add {
+  flex: 0 0 15rem;
+  min-width: 15rem;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  background: transparent;
+  padding: var(--space-2);
+  color: var(--text-faint);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.db-board__add:hover {
+  background: var(--bg-inset);
+  color: var(--text);
+}
+
+.db-board__add--open {
+  border-style: solid;
+  cursor: default;
 }
 
 .db-card {

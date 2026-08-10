@@ -57,11 +57,16 @@ async function turnIntoBoard(page: Page): Promise<void> {
   await expect(page.getByLabel('View layout')).toHaveCount(0);
 }
 
+/** The row titles the page file holds, in the order it holds them. */
+function rowTitles(text: string | null): string[] {
+  return [...(text ?? '').matchAll(/^ {4}title: (.+)$/gm)].map((match) => match[1] ?? '');
+}
+
 /**
  * Drag one element onto another. `dragTo` moves the mouse once, and Chromium needs several
  * moves before it raises a native drag at all.
  */
-async function drag(from: Locator, to: Locator): Promise<void> {
+async function drag(from: Locator, to: Locator, where: 'middle' | 'top' = 'middle'): Promise<void> {
   const page = from.page();
   const start = await from.boundingBox();
   const end = await to.boundingBox();
@@ -69,7 +74,10 @@ async function drag(from: Locator, to: Locator): Promise<void> {
 
   await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2);
   await page.mouse.down();
-  const target = { x: end.x + end.width / 2, y: end.y + end.height / 2 };
+  const target = {
+    x: end.x + end.width / 2,
+    y: where === 'top' ? end.y + 3 : end.y + end.height / 2,
+  };
   for (let step = 1; step <= 6; step += 1) {
     const ratio = step / 6;
     await page.mouse.move(
@@ -139,6 +147,93 @@ test.describe('kanban boards', () => {
         message: 'the move never reached the database page',
       })
       .toContain('Doing');
+  });
+
+  test('moves a card up its own stack and keeps the order in the page file', async ({
+    page,
+    content,
+  }) => {
+    await page.goto(`/p/${path}`);
+    await openDatabase(page);
+    await addRow(page, 'Alpha');
+    await addRow(page, 'Bravo');
+    await addRow(page, 'Charlie');
+    await turnIntoBoard(page);
+
+    const stack = column(page, 'No Status');
+    await expect(stack.locator('.db-card')).toHaveCount(3);
+
+    await drag(card(page, 'Charlie'), card(page, 'Alpha'), 'top');
+
+    await expect(stack.locator('.db-card')).toHaveText([/Charlie/, /Alpha/, /Bravo/]);
+    await expect
+      .poll(async () => rowTitles(await content.pageFileText(path)), {
+        message: 'the new order never reached the database page',
+      })
+      .toEqual(['Charlie', 'Alpha', 'Bravo']);
+  });
+
+  test('leaves a card where it is when it lands where it already was', async ({
+    page,
+    content,
+  }) => {
+    await page.goto(`/p/${path}`);
+    await openDatabase(page);
+    await addRow(page, 'Alpha');
+    await addRow(page, 'Bravo');
+    await turnIntoBoard(page);
+
+    await drag(card(page, 'Alpha'), card(page, 'Bravo'), 'top');
+
+    await expect(column(page, 'No Status').locator('.db-card')).toHaveText([/Alpha/, /Bravo/]);
+    expect(rowTitles(await content.pageFileText(path))).toEqual(['Alpha', 'Bravo']);
+  });
+
+  test('adds a stack to the board', async ({ page, content }) => {
+    await page.goto(`/p/${path}`);
+    await openDatabase(page);
+    await addRow(page, 'Ship it');
+    await turnIntoBoard(page);
+
+    await board(page).getByRole('button', { name: 'Add a stack' }).click();
+    const name = page.getByLabel('New stack name');
+    await name.fill('In review');
+    await name.press('Enter');
+
+    await expect(column(page, 'In review')).toBeVisible();
+    await expect
+      .poll(async () => (await content.pageFileText(path)) ?? '')
+      .toContain('name: In review');
+  });
+
+  test('renames a stack from its own menu', async ({ page }) => {
+    await page.goto(`/p/${path}`);
+    await openDatabase(page);
+    await addRow(page, 'Ship it');
+    await addStatus(page, 0, 'Doing');
+    await turnIntoBoard(page);
+
+    await page.getByLabel('Stack menu for Doing').click();
+    const name = page.getByLabel('Stack name');
+    await name.fill('Underway');
+    await name.press('Enter');
+
+    await expect(column(page, 'Underway')).toContainText('Ship it');
+    await expect(page.getByLabel('Stack menu for Doing')).toHaveCount(0);
+  });
+
+  test('deletes a stack and leaves its cards on the board', async ({ page }) => {
+    await page.goto(`/p/${path}`);
+    await openDatabase(page);
+    await addRow(page, 'Ship it');
+    await addStatus(page, 0, 'Doing');
+    await turnIntoBoard(page);
+
+    await page.getByLabel('Stack menu for Doing').click();
+    await page.getByRole('menuitem', { name: 'Delete stack' }).click();
+
+    await expect(page.getByLabel('Stack menu for Doing')).toHaveCount(0);
+    await expect(column(page, 'No Status')).toContainText('Ship it');
   });
 
   test('moves a card from its own menu', async ({ page }) => {

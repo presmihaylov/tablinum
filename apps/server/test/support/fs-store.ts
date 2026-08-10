@@ -13,6 +13,7 @@ import {
   internal,
   isDescendantOf,
   mergeText,
+  moveRowBefore,
   newPageId,
   newRow,
   notFound,
@@ -480,7 +481,9 @@ export class FsContentStore implements ContentStore {
           updated: new Date().toISOString(),
         };
         changed = row;
-        next.rows = rows.map((entry) => (entry.id === rowId ? row : entry));
+        const written = rows.map((entry) => (entry.id === rowId ? row : entry));
+        next.rows =
+          patch.before === undefined ? written : moveRowBefore(written, rowId, patch.before);
       });
       if (changed === null) throw notFound(`No row ${rowId} on this database`);
       return changed;

@@ -10,6 +10,7 @@ import {
   type DbView,
   type PropValue,
   type RowProps,
+  type SelectOption,
 } from '@tablinum/shared';
 import { Plus, Trash } from '../ui/Icon';
 import { Tag } from './Cell';
@@ -18,36 +19,55 @@ import { Pop } from './Pop';
 /** A private type, so a card dragged out of the board is never taken for a page from the tree. */
 const DRAG_MIME = 'application/x-tablinum-row';
 
+/** The stack a card is over, and the card it would land in front of. Null means the end. */
+interface DropAt {
+  group: string | null;
+  before: string | null;
+}
+
+/** How the board writes a move: the cell it lands in, and where in the file the row goes. */
+export interface RowMove {
+  props?: RowProps;
+  before?: string | null;
+}
+
 interface BoardViewProps {
   database: Database;
   view: DbView;
   rows: DbRow[];
   people: Account[];
-  onCellChange: (rowId: string, propertyId: string, value: PropValue) => void;
+  onMoveRow: (rowId: string, move: RowMove) => void;
   onCreateRow: (props: RowProps) => void;
   onDeleteRow: (row: DbRow) => void;
   onOpenRow: (row: DbRow) => void;
+  onDatabaseChange: (database: Database) => void;
+  onCreateOption: (property: DbProperty, name: string) => Promise<SelectOption | null>;
 }
 
-/** The kanban board: one stack of cards for each option of the select property it groups by. */
+/** A stack of cards for each option of the select property the view groups by. */
 export function BoardView({
   database,
   view,
   rows,
   people,
-  onCellChange,
+  onMoveRow,
   onCreateRow,
   onDeleteRow,
   onOpenRow,
+  onDatabaseChange,
+  onCreateOption,
 }: BoardViewProps) {
   const [dragging, setDragging] = useState<string | null>(null);
-  const [over, setOver] = useState<string | null>(null);
+  const [over, setOver] = useState<DropAt | null>(null);
 
   const property = boardProperty(database, view);
   const groups = boardGroups(database, view, rows);
   const visible = database.properties.filter(
     (entry) => !view.hidden.includes(entry.id) && entry.id !== property?.id,
   );
+  // A sorted view arranges the cards itself, so dropping one between two others would mean
+  // nothing. Only an unsorted board keeps the order a hand gives it.
+  const byHand = view.sorts.length === 0;
 
   if (property === null) {
     return (
@@ -57,80 +77,372 @@ export function BoardView({
     );
   }
 
-  const move = (rowId: string, group: BoardGroup): void => {
-    const row = rows.find((entry) => entry.id === rowId);
-    if (row === undefined) return;
-    if ((row.props[property.id] ?? null) === group.id) return;
-    onCellChange(rowId, property.id, group.id);
+  /** True when the drop would leave the card exactly where it already is. */
+  const settled = (rowId: string, at: DropAt): boolean => {
+    const target = groups.find((one) => one.id === at.group);
+    if (target === undefined) return false;
+    const now = target.rows.findIndex((one) => one.id === rowId);
+    // A card from another stack always lands somewhere new.
+    if (now < 0) return false;
+    const to =
+      at.before === null ? target.rows.length : target.rows.findIndex((one) => one.id === at.before);
+    // Before itself, or before the card that already follows it: both mean it has not moved.
+    return to === now || to === now + 1;
   };
 
-  const onDrop = (event: DragEvent<HTMLElement>, group: BoardGroup): void => {
-    event.preventDefault();
-    setOver(null);
-    setDragging(null);
-    const rowId = event.dataTransfer.getData(DRAG_MIME) || dragging;
-    if (rowId) move(rowId, group);
+  const write = (rowId: string, move: RowMove): void => {
+    if (move.props === undefined && move.before === undefined) return;
+    onMoveRow(rowId, move);
+  };
+
+  const groupOf = (rowId: string): string | null => {
+    const row = rows.find((entry) => entry.id === rowId);
+    const value = row?.props[property.id] ?? null;
+    return typeof value === 'string' ? value : null;
+  };
+
+  const drop = (rowId: string, at: DropAt): void => {
+    const move: RowMove = {};
+    if (groupOf(rowId) !== at.group) move.props = { [property.id]: at.group };
+    if (byHand && !settled(rowId, at)) move.before = at.before;
+    write(rowId, move);
+  };
+
+  /** The menu moves a card between stacks, and never says anything about the order. */
+  const pick = (rowId: string, group: BoardGroup): void => {
+    if (groupOf(rowId) === group.id) return;
+    write(rowId, { props: { [property.id]: group.id } });
+  };
+
+  const renameOption = (option: SelectOption, name: string): void => {
+    onDatabaseChange({
+      ...database,
+      properties: database.properties.map((entry) =>
+        entry.id !== property.id
+          ? entry
+          : {
+              ...entry,
+              options: entry.options.map((one) => (one.id === option.id ? { ...one, name } : one)),
+            },
+      ),
+    });
+  };
+
+  /** Take a stack off the board. The cards it held keep their place and lose their option. */
+  const removeOption = (option: SelectOption): void => {
+    onDatabaseChange({
+      ...database,
+      properties: database.properties.map((entry) =>
+        entry.id !== property.id
+          ? entry
+          : { ...entry, options: entry.options.filter((one) => one.id !== option.id) },
+      ),
+    });
   };
 
   return (
     <div className="db-board" data-testid="db-board">
       {groups.map((group) => (
-        <section
+        <Column
           key={group.id ?? 'none'}
-          className={over === (group.id ?? 'none') ? 'db-board__col db-board__col--over' : 'db-board__col'}
-          aria-label={group.name}
-          data-group={group.id ?? 'none'}
-          onDragOver={(event) => {
-            // `types` is all a drop target may read while the drag is in flight, and it is
-            // enough to tell a card of this board from a page dragged out of the sidebar.
-            if (!event.dataTransfer.types.includes(DRAG_MIME) && dragging === null) return;
-            event.preventDefault();
-            event.dataTransfer.dropEffect = 'move';
-            setOver(group.id ?? 'none');
+          group={group}
+          groups={groups}
+          properties={visible}
+          people={people}
+          option={property.options.find((one) => one.id === group.id) ?? null}
+          dragging={dragging}
+          byHand={byHand}
+          over={over?.group === group.id ? over : null}
+          onOver={setOver}
+          onLeave={() => setOver((prev) => (prev?.group === group.id ? null : prev))}
+          onDrop={drop}
+          onPick={pick}
+          onDragStart={setDragging}
+          onDragEnd={() => {
+            setDragging(null);
+            setOver(null);
           }}
-          onDragLeave={() => setOver((prev) => (prev === (group.id ?? 'none') ? null : prev))}
-          onDrop={(event) => onDrop(event, group)}
-        >
-          <header className="db-board__head">
-            <Tag option={{ id: group.id ?? 'none', name: group.name, color: group.color }} />
-            <span className="db-board__count">{group.rows.length}</span>
-          </header>
-
-          <div className="db-board__cards">
-            {group.rows.map((row) => (
-              <Card
-                key={row.id}
-                row={row}
-                groups={groups}
-                properties={visible}
-                people={people}
-                dragging={dragging === row.id}
-                onDragStart={() => setDragging(row.id)}
-                onDragEnd={() => {
-                  setDragging(null);
-                  setOver(null);
-                }}
-                onMove={(target) => move(row.id, target)}
-                onDelete={() => onDeleteRow(row)}
-                onOpen={() => onOpenRow(row)}
-              />
-            ))}
-          </div>
-
-          <button
-            type="button"
-            className="db-new-row"
-            aria-label={`New card in ${group.name}`}
-            onClick={() => onCreateRow(group.id === null ? {} : { [property.id]: group.id })}
-          >
-            <Plus size={12} />
-            New
-          </button>
-        </section>
+          onCreateRow={() => onCreateRow(group.id === null ? {} : { [property.id]: group.id })}
+          onDeleteRow={onDeleteRow}
+          onOpenRow={onOpenRow}
+          onRename={renameOption}
+          onRemove={removeOption}
+        />
       ))}
+
+      <AddGroup onAdd={(name) => onCreateOption(property, name)} />
     </div>
   );
 }
+
+// ---------------------------------------------------------------------------
+// one stack
+// ---------------------------------------------------------------------------
+
+interface ColumnProps {
+  group: BoardGroup;
+  groups: BoardGroup[];
+  properties: DbProperty[];
+  people: Account[];
+  /** The option behind the stack, or null for the cards that hold none. */
+  option: SelectOption | null;
+  dragging: string | null;
+  byHand: boolean;
+  over: DropAt | null;
+  onOver: (at: DropAt) => void;
+  onLeave: () => void;
+  onDrop: (rowId: string, at: DropAt) => void;
+  onPick: (rowId: string, group: BoardGroup) => void;
+  onDragStart: (rowId: string) => void;
+  onDragEnd: () => void;
+  onCreateRow: () => void;
+  onDeleteRow: (row: DbRow) => void;
+  onOpenRow: (row: DbRow) => void;
+  onRename: (option: SelectOption, name: string) => void;
+  onRemove: (option: SelectOption) => void;
+}
+
+function Column({
+  group,
+  groups,
+  properties,
+  people,
+  option,
+  dragging,
+  byHand,
+  over,
+  onOver,
+  onLeave,
+  onDrop,
+  onPick,
+  onDragStart,
+  onDragEnd,
+  onCreateRow,
+  onDeleteRow,
+  onOpenRow,
+  onRename,
+  onRemove,
+}: ColumnProps) {
+  const id = group.id ?? 'none';
+
+  /** True while a card of this board is in the air. `types` is all a drop target may read. */
+  const carrying = (event: DragEvent<HTMLElement>): boolean =>
+    event.dataTransfer.types.includes(DRAG_MIME) || dragging !== null;
+
+  const take = (event: DragEvent<HTMLElement>, before: string | null): void => {
+    if (!carrying(event)) return;
+    event.preventDefault();
+    // The stack under the cards is a target of its own, and it must not answer for a card.
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = 'move';
+    onOver({ group: group.id, before: byHand ? before : null });
+  };
+
+  const land = (event: DragEvent<HTMLElement>, before: string | null): void => {
+    event.preventDefault();
+    event.stopPropagation();
+    const rowId = event.dataTransfer.getData(DRAG_MIME) || dragging;
+    onDragEnd();
+    if (rowId) onDrop(rowId, { group: group.id, before: byHand ? before : null });
+  };
+
+  /** The card the pointer sits above: its own top half, or the top of the one after it. */
+  const nearest = (event: DragEvent<HTMLElement>, row: DbRow, index: number): string | null => {
+    const box = event.currentTarget.getBoundingClientRect();
+    if (event.clientY < box.top + box.height / 2) return row.id;
+    return group.rows[index + 1]?.id ?? null;
+  };
+
+  return (
+    <section
+      className={over === null ? 'db-board__col' : 'db-board__col db-board__col--over'}
+      aria-label={group.name}
+      data-group={id}
+      onDragOver={(event) => take(event, null)}
+      onDragLeave={onLeave}
+      onDrop={(event) => land(event, null)}
+    >
+      <header className="db-board__head">
+        {option === null ? (
+          <Tag option={{ id, name: group.name, color: group.color }} />
+        ) : (
+          <GroupMenu
+            option={option}
+            onRename={(name) => onRename(option, name)}
+            onRemove={() => onRemove(option)}
+          />
+        )}
+        <span className="db-board__count">{group.rows.length}</span>
+      </header>
+
+      <div className="db-board__cards">
+        {group.rows.map((row, index) => (
+          <div
+            key={row.id}
+            className="db-board__slot"
+            onDragOver={(event) => take(event, nearest(event, row, index))}
+            onDrop={(event) => land(event, nearest(event, row, index))}
+          >
+            {over?.before === row.id ? <div className="db-board__line" /> : null}
+            <Card
+              row={row}
+              groups={groups}
+              properties={properties}
+              people={people}
+              dragging={dragging === row.id}
+              onDragStart={() => onDragStart(row.id)}
+              onDragEnd={onDragEnd}
+              onMove={(target) => onPick(row.id, target)}
+              onDelete={() => onDeleteRow(row)}
+              onOpen={() => onOpenRow(row)}
+            />
+          </div>
+        ))}
+        {over !== null && over.before === null && dragging !== null ? (
+          <div className="db-board__line" />
+        ) : null}
+      </div>
+
+      <button
+        type="button"
+        className="db-new-row"
+        aria-label={`New card in ${group.name}`}
+        onClick={onCreateRow}
+      >
+        <Plus size={12} />
+        New
+      </button>
+    </section>
+  );
+}
+
+interface GroupMenuProps {
+  option: SelectOption;
+  onRename: (name: string) => void;
+  onRemove: () => void;
+}
+
+/** The head of a named stack. It opens the menu that renames the option or takes it away. */
+function GroupMenu({ option, onRename, onRemove }: GroupMenuProps) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState(option.name);
+
+  const commit = (): void => {
+    const next = name.trim();
+    if (next.length === 0 || next === option.name) {
+      setName(option.name);
+      return;
+    }
+    onRename(next);
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        className="db-board__group"
+        aria-label={`Stack menu for ${option.name}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((prev) => !prev)}
+      >
+        <Tag option={option} />
+      </button>
+      {open ? (
+        <Pop
+          label={`Stack ${option.name}`}
+          onClose={() => {
+            setOpen(false);
+            setName(option.name);
+          }}
+        >
+          <input
+            className="input"
+            autoFocus
+            aria-label="Stack name"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            onBlur={commit}
+            onKeyDown={(event) => {
+              if (event.key !== 'Enter') return;
+              event.preventDefault();
+              commit();
+              setOpen(false);
+            }}
+          />
+          <div className="db-pop__sep" />
+          <button
+            type="button"
+            role="menuitem"
+            className="db-pop__item db-pop__item--danger"
+            onClick={() => {
+              setOpen(false);
+              onRemove();
+            }}
+          >
+            <Trash size={12} />
+            Delete stack
+          </button>
+        </Pop>
+      ) : null}
+    </>
+  );
+}
+
+/** The column at the right end that adds an option, which is a stack of its own. */
+function AddGroup({ onAdd }: { onAdd: (name: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState('');
+
+  const commit = (): void => {
+    const next = name.trim();
+    setName('');
+    setOpen(false);
+    if (next.length > 0) onAdd(next);
+  };
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        className="db-board__add"
+        aria-label="Add a stack"
+        onClick={() => setOpen(true)}
+      >
+        <Plus size={12} />
+        Add a stack
+      </button>
+    );
+  }
+
+  return (
+    <div className="db-board__add db-board__add--open">
+      <input
+        className="input"
+        autoFocus
+        aria-label="New stack name"
+        placeholder="In review"
+        value={name}
+        onChange={(event) => setName(event.target.value)}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            commit();
+          }
+          if (event.key === 'Escape') {
+            setName('');
+            setOpen(false);
+          }
+        }}
+      />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// one card
+// ---------------------------------------------------------------------------
 
 interface CardProps {
   row: DbRow;

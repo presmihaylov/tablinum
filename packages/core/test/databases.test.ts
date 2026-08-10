@@ -480,6 +480,57 @@ describe('updateRow', () => {
     expect(saved.id).toBe(row.id);
   });
 
+  it('moves the row in front of another one', async () => {
+    const id = await makeTasksPage();
+    await store.setDatabase(id, sampleDatabase());
+    const first = await store.createRow(id, { title: 'First' });
+    await store.createRow(id, { title: 'Second' });
+    const third = await store.createRow(id, { title: 'Third' });
+
+    await store.updateRow(id, third.id, { before: first.id });
+    const read = await store.getDatabase(id);
+    expect(read.rows.map((row) => row.title)).toEqual(['Third', 'First', 'Second']);
+  });
+
+  it('moves the row to the end when it lands in front of nothing', async () => {
+    const id = await makeTasksPage();
+    await store.setDatabase(id, sampleDatabase());
+    const first = await store.createRow(id, { title: 'First' });
+    await store.createRow(id, { title: 'Second' });
+
+    await store.updateRow(id, first.id, { before: null });
+    expect((await rowsOnDisk('docs/tasks.md'))?.map((row) => row.title)).toEqual([
+      'Second',
+      'First',
+    ]);
+  });
+
+  it('changes a cell and the order in one write', async () => {
+    const id = await makeTasksPage();
+    await store.setDatabase(id, sampleDatabase());
+    const first = await store.createRow(id, { title: 'First' });
+    const second = await store.createRow(id, { title: 'Second' });
+
+    const saved = await store.updateRow(id, second.id, {
+      props: { [TEXT]: 'moved' },
+      before: first.id,
+    });
+    expect(saved.props).toEqual({ [TEXT]: 'moved' });
+    const read = await store.getDatabase(id);
+    expect(read.rows.map((row) => row.title)).toEqual(['Second', 'First']);
+  });
+
+  it('leaves the order alone when the patch says nothing about it', async () => {
+    const id = await makeTasksPage();
+    await store.setDatabase(id, sampleDatabase());
+    const first = await store.createRow(id, { title: 'First' });
+    await store.createRow(id, { title: 'Second' });
+
+    await store.updateRow(id, first.id, { title: 'Renamed' });
+    const read = await store.getDatabase(id);
+    expect(read.rows.map((row) => row.title)).toEqual(['Renamed', 'Second']);
+  });
+
   it('drops a select value no option matches', async () => {
     const id = await makeTasksPage();
     await store.setDatabase(id, sampleDatabase());

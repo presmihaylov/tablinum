@@ -1,9 +1,10 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from './fixtures';
+import { pageTree } from './sidebar';
 
 /** The sidebar tree, the only place page rows are asserted on. */
 function sidebar(page: Page): Locator {
-  return page.getByRole('navigation', { name: 'Pages' });
+  return pageTree(page);
 }
 
 /** The clickable title of a page row. Rows have no role of their own. */

@@ -1,6 +1,7 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from './fixtures';
 import type { ApiClient, ContentRepo } from './fixtures';
+import { pageTree } from './sidebar';
 
 /**
  * The markdown editor, driven through the real UI. It mirrors apps/web/test/editor:
@@ -164,7 +165,7 @@ test.describe('the markdown editor', () => {
     await page.keyboard.press('ControlOrMeta+s');
 
     // Leaving the page flushes the pending save, so anything queued has gone out by now.
-    await page.getByRole('navigation', { name: 'Pages' }).getByText('Elsewhere', { exact: true }).click();
+    await pageTree(page).getByText('Elsewhere', { exact: true }).click();
     await expect(page.getByLabel('Page title')).toHaveValue('Elsewhere');
 
     expect(patched).toEqual([]);
@@ -233,7 +234,7 @@ test.describe('the markdown editor', () => {
     const alphaFile = await content.waitForPageFile(alpha);
     const betaFile = await content.waitForPageFile(beta);
 
-    const tree = page.getByRole('navigation', { name: 'Pages' });
+    const tree = pageTree(page);
     await page.goto(pageHref(alpha));
     await caretAfter(page, 'Alpha body.');
     await page.keyboard.type(' One.');

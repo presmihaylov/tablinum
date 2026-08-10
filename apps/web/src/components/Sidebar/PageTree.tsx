@@ -31,7 +31,8 @@ interface MenuState {
 }
 
 export function PageTree({ nodes, expanded, currentPath, onToggle, onExpand, onOpen }: PageTreeProps) {
-  const { movePage, moveToSpace, newPage, renamePage, duplicatePage, deletePage, copyLink } = useContent();
+  const { movePage, moveToSpace, newPage, renamePage, duplicatePage, deletePage, copyLink, editSpace } =
+    useContent();
   const [dragPath, setDragPath] = useState<PagePath | null>(null);
   const [drop, setDrop] = useState<DropState | null>(null);
   const [menu, setMenu] = useState<MenuState | null>(null);
@@ -58,13 +59,16 @@ export function PageTree({ nodes, expanded, currentPath, onToggle, onExpand, onO
       if (pathDepth(node.path) > 1) {
         items.push({ id: 'move', label: 'Move to space', icon: <MoveTo />, onSelect: () => moveToSpace(node) });
       }
+      if (pathDepth(node.path) === 1) {
+        items.push({ id: 'space', label: 'Edit space', icon: <Pencil />, onSelect: () => editSpace(node.path) });
+      }
       items.push(
         { id: 'link', label: 'Copy link', icon: <Link />, onSelect: () => copyLink(node.path) },
         { id: 'delete', label: 'Delete', icon: <Trash />, danger: true, onSelect: () => deletePage(node) },
       );
       return items;
     },
-    [newPage, renamePage, duplicatePage, moveToSpace, copyLink, deletePage],
+    [newPage, renamePage, duplicatePage, moveToSpace, editSpace, copyLink, deletePage],
   );
 
   return (

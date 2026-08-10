@@ -1,15 +1,14 @@
 import { Node, mergeAttributes } from '@tiptap/core';
 import { ReactNodeViewRenderer } from '@tiptap/react';
+import type { Page } from '@tablinum/shared';
 import { PageEmbedView } from '../ui/PageEmbedView';
 import { DATA } from '../markdown';
 
-/** Everything the view needs about the page an embed names. */
-export interface EmbeddedPage {
-  path: string;
-  title: string;
-  icon: string | null;
-  markdown: string;
-}
+/**
+ * The page an embed names. It is the whole page, not a summary: an embed of a database draws
+ * the database itself, and that needs the id and the schema too.
+ */
+export type EmbeddedPage = Page;
 
 export interface PageEmbedOptions {
   /** Fetches the embedded page, or null when there is no page at that path. */

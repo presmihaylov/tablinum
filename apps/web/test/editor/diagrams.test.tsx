@@ -102,6 +102,7 @@ describe('the diagram slash command', () => {
         onPickVideo: () => undefined,
         onPickPage: () => undefined,
         onPickDiagram,
+        onInsertDatabase: () => undefined,
       },
     );
     expect(onPickDiagram).toHaveBeenCalledTimes(1);

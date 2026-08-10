@@ -122,7 +122,7 @@ describe('slash menu', () => {
       typeText(editor, '/page');
     });
 
-    await waitFor(() => expect(titles()).toEqual(['Page']));
+    await waitFor(() => expect(titles()).toEqual(['Page', 'Database - Page']));
     fireEvent.keyDown(editor.view.dom, { key: 'Enter' });
 
     await waitFor(() => expect(onPickPage).toHaveBeenCalledTimes(1));

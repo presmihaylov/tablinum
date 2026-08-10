@@ -26,6 +26,7 @@ function pick(instance: Editor, id: string): void {
       onPickVideo: () => undefined,
       onPickPage: () => undefined,
       onPickDiagram: () => undefined,
+      onInsertDatabase: () => undefined,
     },
   );
 }
@@ -75,6 +76,58 @@ describe('slash menu inside a table cell', () => {
     inFirstCell(instance, 'one');
     pick(instance, 'bulletList');
     expect(toMarkdown(instance)).toBe(TABLE);
+  });
+});
+
+describe('database commands', () => {
+  /** Runs a slash command and returns every kind it asked the shell to make. */
+  function kinds(instance: Editor, id: string): string[] {
+    const seen: string[] = [];
+    const item = SLASH_COMMANDS.find((command) => command.id === id);
+    if (item === undefined) throw new Error(`unknown slash command: ${id}`);
+    const { from } = instance.state.selection;
+    item.run(
+      instance,
+      { from, to: from },
+      {
+        onPickImage: () => undefined,
+        onPickEmoji: () => undefined,
+        onPickVideo: () => undefined,
+        onPickPage: () => undefined,
+        onPickDiagram: () => undefined,
+        onInsertDatabase: (kind) => seen.push(kind),
+      },
+    );
+    return seen;
+  }
+
+  it('asks the shell for each kind, and writes nothing itself', () => {
+    for (const [id, kind] of [
+      ['database-inline', 'inline'],
+      ['database-page', 'page'],
+      ['board-view', 'board'],
+    ]) {
+      const instance = open('text\n');
+      expect(kinds(instance, id ?? '')).toEqual([kind]);
+      // The node arrives from the shell once the child page exists, not from the command.
+      expect(toMarkdown(instance)).toBe('text\n');
+      instance.destroy();
+    }
+  });
+
+  it('stays out of a table cell, where a database has no markdown to live in', () => {
+    const instance = open(TABLE);
+    inFirstCell(instance, 'one');
+    const offered = filterSlashCommands('database', instance).map((item) => item.id);
+    expect(offered).toEqual([]);
+  });
+
+  it('is reachable by the words a person would type', () => {
+    const instance = open('text\n');
+    expect(filterSlashCommands('board', instance).map((item) => item.id)).toContain('board-view');
+    expect(filterSlashCommands('inline', instance).map((item) => item.id)).toContain(
+      'database-inline',
+    );
   });
 });
 

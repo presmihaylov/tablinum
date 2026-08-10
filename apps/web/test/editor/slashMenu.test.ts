@@ -27,6 +27,9 @@ describe('slash menu filtering', () => {
         'horizontalRule',
         'table',
         'image',
+        'database-inline',
+        'database-page',
+        'board-view',
       ]),
     );
   });
@@ -41,7 +44,8 @@ describe('slash menu filtering', () => {
   });
 
   it('ignores case and surrounding spaces', () => {
-    expect(ids('  TABLE ')).toEqual(['table']);
+    expect(ids('  TABLE ')).toEqual(ids('table'));
+    expect(ids('  TABLE ')[0]).toBe('table');
   });
 
   it('narrows as more characters are typed', () => {

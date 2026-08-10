@@ -59,7 +59,7 @@ export function PageRoute({ metaOpen }: PageRouteProps) {
     // Keyed on the page: a thread in focus, a draft and a panel state all belong to one page.
     <CommentsProvider key={page.id} pageId={page.id}>
       <div className="app-content">
-        <div className="page-shell">
+        <div className={`page-shell${page.database ? ' page-shell--database' : ''}`}>
           <PageEditor
             page={page}
             saveState={doc.saveState}

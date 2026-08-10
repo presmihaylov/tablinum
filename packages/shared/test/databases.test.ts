@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DEFAULT_BOARD_NAME,
   DatabaseSchema,
   OPS_FOR_TYPE,
   applyView,
@@ -18,6 +19,7 @@ import {
   newPropertyId,
   newViewId,
   opTakesNoValue,
+  starterBoard,
   starterDatabase,
   type Database,
   type DbProperty,
@@ -442,5 +444,23 @@ describe('boardGroups', () => {
     const other: DbProperty = { id: newPropertyId(), name: 'Stage', type: 'select', options: [] };
     const wider: Database = { properties: [other, ...database.properties], views: [board] };
     expect(boardGroups(wider, board, [])[0]?.name).toBe('No Stage');
+  });
+});
+
+describe('starterBoard', () => {
+  it('gives the starter schema with one board view over the select property', () => {
+    const made = starterBoard(1000);
+    const status = made.properties.find((entry) => entry.type === 'select');
+    expect(made.properties.map((entry) => [entry.name, entry.type])).toEqual(
+      starterDatabase(1000).properties.map((entry) => [entry.name, entry.type]),
+    );
+    expect(made.views).toHaveLength(1);
+    expect(made.views[0]?.type).toBe('board');
+    expect(made.views[0]?.name).toBe(DEFAULT_BOARD_NAME);
+    expect(made.views[0]?.groupBy).toBe(status?.id);
+  });
+
+  it('passes the schema check, so the server accepts it as written', () => {
+    expect(DatabaseSchema.safeParse(starterBoard(1000)).success).toBe(true);
   });
 });

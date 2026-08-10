@@ -18,7 +18,12 @@ export interface SlashMenuOptions {
   onPickPage: () => void;
   /** Opens a blank drawing canvas for the "Diagram" command. */
   onPickDiagram: () => void;
+  /** Makes a database on a new child page for the three database commands. */
+  onInsertDatabase: (kind: DatabaseKind) => void;
 }
+
+/** Inline draws the grid here; page opens a page that is nothing but the database. */
+export type DatabaseKind = 'inline' | 'page' | 'board';
 
 export interface SlashCommandItem {
   id: string;
@@ -254,6 +259,42 @@ export const SLASH_COMMANDS: readonly SlashCommandItem[] = [
     },
   },
   {
+    id: 'database-inline',
+    title: 'Database - Inline',
+    hint: 'A table of pages, drawn here',
+    glyph: 'DB',
+    keywords: ['database', 'db', 'table', 'grid', 'inline', 'rows', 'notion'],
+    available: outsideTableCell,
+    run: (editor, range, options) => {
+      editor.chain().focus().deleteRange(range).run();
+      options.onInsertDatabase('inline');
+    },
+  },
+  {
+    id: 'database-page',
+    title: 'Database - Page',
+    hint: 'A new page that is nothing but the database',
+    glyph: 'DB',
+    keywords: ['database', 'db', 'table', 'page', 'full', 'child', 'notion'],
+    available: outsideTableCell,
+    run: (editor, range, options) => {
+      editor.chain().focus().deleteRange(range).run();
+      options.onInsertDatabase('page');
+    },
+  },
+  {
+    id: 'board-view',
+    title: 'Board view',
+    hint: 'A database drawn as a kanban board',
+    glyph: 'BOARD',
+    keywords: ['board', 'kanban', 'database', 'db', 'stack', 'column', 'status', 'notion'],
+    available: outsideTableCell,
+    run: (editor, range, options) => {
+      editor.chain().focus().deleteRange(range).run();
+      options.onInsertDatabase('board');
+    },
+  },
+  {
     id: 'emoji',
     title: 'Emoji',
     hint: 'Insert an emoji',
@@ -295,6 +336,7 @@ export const SlashMenuExtension = Extension.create<SlashMenuOptions>({
       onPickVideo: () => undefined,
       onPickPage: () => undefined,
       onPickDiagram: () => undefined,
+      onInsertDatabase: () => undefined,
     };
   },
 

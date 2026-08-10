@@ -66,6 +66,7 @@ test.describe('the settings page', () => {
     // The menu holds one door to the settings page, not one for each section.
     await expect(page.getByRole('menuitem', { name: 'Invite members' })).toHaveCount(0);
     await expect(page.getByRole('menuitem', { name: 'Workspace settings' })).toHaveCount(0);
+    await expect(page.getByRole('menuitem', { name: /Import/ })).toHaveCount(0);
     await page.getByRole('menuitem', { name: 'Settings' }).click();
 
     await expect(page).toHaveURL(/\/settings$/);

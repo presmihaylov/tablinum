@@ -113,31 +113,6 @@ describe('the workspace switcher', () => {
       expect(mock.calls.some((call) => call.headers[WORKSPACE_HEADER] === 'operations')).toBe(true);
     });
   });
-
-  it('imports a zip as a new workspace', async () => {
-    const mock = startServer({
-      'POST /api/v1/workspaces/import': {
-        workspace: { ...HANDBOOK, id: 'ws_00000000000000000000000004', slug: 'field-notes', name: 'field notes' },
-      },
-    });
-    renderApp(<WorkspaceSwitcher />);
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Workspace' })).toBeTruthy());
-
-    const archive = new File([new Uint8Array([0x50, 0x4b, 0x03, 0x04])], 'field-notes.zip', {
-      type: 'application/zip',
-    });
-    fireEvent.change(screen.getByLabelText('Workspace archive'), { target: { files: [archive] } });
-
-    await waitFor(() => {
-      const post = mock.calls.find((call) => call.url.pathname === '/api/v1/workspaces/import');
-      expect(post?.method).toBe('POST');
-      const body = post?.body;
-      expect(body).toBeInstanceOf(FormData);
-      const sent = body instanceof FormData ? body.get('file') : null;
-      expect(sent instanceof File ? sent.name : null).toBe('field-notes.zip');
-    });
-    expect(await screen.findByText('Imported field notes')).toBeTruthy();
-  });
 });
 
 describe('the switcher menu', () => {
@@ -158,6 +133,16 @@ describe('the switcher menu', () => {
     await screen.findByRole('menuitem', { name: 'Settings' });
     expect(screen.queryByRole('menuitem', { name: 'Invite members' })).toBeNull();
     expect(screen.queryByRole('menuitem', { name: 'Workspace settings' })).toBeNull();
+  });
+
+  // The import took a zip nobody makes by hand and put a file picker in a menu of workspaces.
+  it('offers no zip import', async () => {
+    startServer();
+    await showSwitcher();
+
+    await screen.findByRole('menuitem', { name: 'Settings' });
+    expect(screen.queryByRole('menuitem', { name: /Import/ })).toBeNull();
+    expect(screen.queryByLabelText('Workspace archive')).toBeNull();
   });
 });
 

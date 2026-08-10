@@ -477,13 +477,6 @@ export const api = {
   workspaceExportUrl: (id: string): string =>
     `${API_BASE}/workspaces/${encodeURIComponent(id)}/export`,
 
-  importWorkspace: (file: File, name?: string): Promise<WorkspaceResponse> => {
-    const form = new FormData();
-    if (name !== undefined && name.length > 0) form.append('name', name);
-    form.append('file', file, file.name);
-    return request('/workspaces/import', { method: 'POST', form });
-  },
-
   // `replace` writes over the file of the same name instead of taking a free one beside it.
   uploadAsset: (file: File, pageId?: PageId, replace = false): Promise<AssetResponse> => {
     const form = new FormData();

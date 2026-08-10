@@ -93,11 +93,6 @@
   background: var(--border);
 }
 
-/* The menu opens it; nobody needs to see the control itself. */
-.workspace-switcher__file {
-  display: none;
-}
-
 /* workspace dialog ---------------------------------------------------- */
 
 .workspace-head {

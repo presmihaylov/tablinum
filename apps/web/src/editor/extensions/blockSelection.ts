@@ -16,6 +16,8 @@ export const SELECTED_CLASS = 'gd-block-selected';
 const GUTTER = 72;
 /** How far right of the document a drag may start. */
 const EDGE = 24;
+/** The class the rubber band carries. The stylesheet paints it. */
+export const BAND_CLASS = 'gd-block-band';
 
 /**
  * A run of whole sibling blocks. Both ends sit between blocks rather than inside text, so a
@@ -125,6 +127,33 @@ function blockPosAt(view: EditorView, clientY: number): number | null {
   }
 }
 
+/**
+ * The box a drag paints between the point it started at and the pointer. It hangs off the body
+ * and takes no pointer events, so nothing on the page clips it or is hidden behind it.
+ */
+class Band {
+  #node: HTMLDivElement | null = null;
+
+  draw(from: { x: number; y: number }, to: { x: number; y: number }): void {
+    if (this.#node === null) {
+      this.#node = document.createElement('div');
+      this.#node.className = BAND_CLASS;
+      this.#node.setAttribute('aria-hidden', 'true');
+      document.body.appendChild(this.#node);
+    }
+    const style = this.#node.style;
+    style.left = `${Math.min(from.x, to.x)}px`;
+    style.top = `${Math.min(from.y, to.y)}px`;
+    style.width = `${Math.abs(to.x - from.x)}px`;
+    style.height = `${Math.abs(to.y - from.y)}px`;
+  }
+
+  clear(): void {
+    this.#node?.remove();
+    this.#node = null;
+  }
+}
+
 /** True when a drag from this point belongs to the gutter rather than to a control on it. */
 function startsInGutter(view: EditorView, event: MouseEvent): boolean {
   if (event.button !== 0 || event.defaultPrevented) return false;
@@ -136,8 +165,8 @@ function startsInGutter(view: EditorView, event: MouseEvent): boolean {
   return (
     event.clientX >= rect.left - GUTTER &&
     event.clientX <= rect.right + EDGE &&
-    event.clientY >= rect.top &&
-    event.clientY <= rect.bottom
+    event.clientY >= rect.top - EDGE &&
+    event.clientY <= rect.bottom + EDGE
   );
 }
 
@@ -208,31 +237,47 @@ export const BlockSelect = Extension.create({
         },
 
         view: (view) => {
+          const band = new Band();
+          let live = false;
           let anchor: number | null = null;
+          let start = { x: 0, y: 0 };
+
+          const anchorAt = (clientY: number): number | null => {
+            anchor ??= blockPosAt(view, clientY);
+            return anchor;
+          };
 
           const move = (event: MouseEvent): void => {
-            if (anchor === null) return;
+            if (!live) return;
+            // Painted first, so the box follows the pointer even over a gap the lookup misses.
+            band.draw(start, { x: event.clientX, y: event.clientY });
+            const from = anchorAt(event.clientY);
             const pos = blockPosAt(view, event.clientY);
-            if (pos === null) return;
-            const next = BlockSelection.between(view.state.doc, anchor, pos);
+            if (from === null || pos === null) return;
+            const next = BlockSelection.between(view.state.doc, from, pos);
             if (next.eq(view.state.selection)) return;
             view.dispatch(view.state.tr.setSelection(next));
           };
 
           const up = (): void => {
+            live = false;
             anchor = null;
+            band.clear();
             window.removeEventListener('mousemove', move);
             window.removeEventListener('mouseup', up);
           };
 
           const down = (event: MouseEvent): void => {
             if (!startsInGutter(view, event)) return;
-            const pos = blockPosAt(view, event.clientY);
-            if (pos === null) return;
-            anchor = pos;
+            live = true;
+            anchor = null;
+            start = { x: event.clientX, y: event.clientY };
             event.preventDefault();
-            view.dispatch(view.state.tr.setSelection(BlockSelection.between(view.state.doc, pos, pos)));
-            view.focus();
+            const pos = anchorAt(event.clientY);
+            if (pos !== null) {
+              view.dispatch(view.state.tr.setSelection(BlockSelection.between(view.state.doc, pos, pos)));
+              view.focus();
+            }
             window.addEventListener('mousemove', move);
             window.addEventListener('mouseup', up);
           };

@@ -29,3 +29,18 @@ export function startNodeDrag(
   transfer.effectAllowed = 'move';
   transfer.setDragImage(image, 0, 0);
 }
+
+/**
+ * The same, for a run of whole blocks that is already picked. The slice is the run itself, so
+ * the drop moves every block in it and leaves none behind.
+ */
+export function startSelectionDrag(
+  editor: Editor,
+  image: HTMLElement,
+  transfer: DataTransfer,
+): void {
+  const { view } = editor;
+  view.dragging = { slice: view.state.selection.content(), move: true };
+  transfer.effectAllowed = 'move';
+  transfer.setDragImage(image, 0, 0);
+}

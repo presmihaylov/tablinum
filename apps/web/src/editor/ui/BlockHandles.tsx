@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { DragEvent as ReactDragEvent, RefObject } from 'react';
 import type { Editor } from '@tiptap/core';
-import { TextSelection } from '@tiptap/pm/state';
+import { TextSelection, type Selection } from '@tiptap/pm/state';
 import { anchorIdAt } from '../blockLinks';
-import { nodeSelectionAt, startNodeDrag } from './nodeDrag';
+import { BlockSelection } from '../extensions/blockSelection';
+import { nodeSelectionAt, startNodeDrag, startSelectionDrag } from './nodeDrag';
 
 interface HandleTarget {
   pos: number;
@@ -124,6 +125,12 @@ export function BlockHandles({ editor, canvas, onComment, onCopyLink }: BlockHan
   };
 
   const startDrag = (event: ReactDragEvent<HTMLButtonElement>): void => {
+    // The grip stands beside one block, but a run of blocks may already be picked. Dragging
+    // the grip of one of them moves the whole run, which is what the reader marked it for.
+    if (holdsTarget(editor.state.selection, target.pos)) {
+      startSelectionDrag(editor, target.element, event.dataTransfer);
+      return;
+    }
     startNodeDrag(editor, target.pos, target.element, event.dataTransfer);
   };
 
@@ -213,6 +220,11 @@ export function BlockHandles({ editor, canvas, onComment, onCopyLink }: BlockHan
       ) : null}
     </div>
   );
+}
+
+/** True when a block selection is up and `pos` names one of the blocks in it. */
+function holdsTarget(selection: Selection, pos: number): boolean {
+  return selection instanceof BlockSelection && pos >= selection.from && pos < selection.to;
 }
 
 /** The gutter the handles stand in, to the left of the editable box. */

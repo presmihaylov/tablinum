@@ -339,6 +339,19 @@ button.editor__icon:hover {
 }
 
 /*
+ * The box the pointer paints while it picks blocks. It hangs off the body, so no scroller of
+ * the page clips it, and it takes no pointer events so the drag under it keeps running.
+ */
+.gd-block-band {
+  position: fixed;
+  z-index: 40;
+  pointer-events: none;
+  background: var(--bg-selected);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+}
+
+/*
  * ProseMirror hides the native highlight while a block selection is up, which it asks for with
  * this class. Without the rule the browser would paint its own band over the one above.
  */

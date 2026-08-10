@@ -40,6 +40,53 @@ async function seedPage(
   return { path, file: await content.waitForPageFile(path) };
 }
 
+/** The box the pointer paints while it picks blocks. */
+function band(page: Page): Locator {
+  return page.locator('.gd-block-band');
+}
+
+/**
+ * Drag in the gutter beside the document, from one line down to another. The button stays
+ * down when `hold` is set, so a test may look at the box while it is painted.
+ */
+async function dragGutter(
+  page: Page,
+  from: Locator,
+  to: Locator,
+  hold = false,
+): Promise<void> {
+  const surface = await editorBody(page).boundingBox();
+  const start = await from.boundingBox();
+  const end = await to.boundingBox();
+  if (surface === null || start === null || end === null) throw new Error('a line has no box');
+
+  await page.mouse.move(surface.x - GUTTER_X, start.y + 2);
+  await page.mouse.down();
+  await page.mouse.move(surface.x - GUTTER_X, end.y + end.height - 2, { steps: 12 });
+  if (hold) return;
+  await page.mouse.up();
+}
+
+/**
+ * Drag the grip beside one line and drop it on another. Chromium needs several moves before
+ * it raises a native drag at all, so one `dragTo` is not enough.
+ */
+async function dragGrip(page: Page, grip: Locator, onto: Locator): Promise<void> {
+  const start = await grip.boundingBox();
+  const end = await onto.boundingBox();
+  if (start === null || end === null) throw new Error('the grip has no box');
+
+  const from = { x: start.x + start.width / 2, y: start.y + start.height / 2 };
+  const to = { x: end.x + end.width / 2, y: end.y + end.height - 2 };
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  for (let step = 1; step <= 8; step += 1) {
+    const ratio = step / 8;
+    await page.mouse.move(from.x + (to.x - from.x) * ratio, from.y + (to.y - from.y) * ratio);
+  }
+  await page.mouse.up();
+}
+
 /** Press the button on one line, drag to another, and let go. */
 async function dragBetween(page: Page, from: Locator, to: Locator): Promise<void> {
   const start = await from.boundingBox();
@@ -79,21 +126,55 @@ test.describe('selecting whole blocks', () => {
     const seeded = await seedPage(api, content, 'gutter', PARAGRAPHS);
 
     await page.goto(`/p/${seeded.path}`);
-    const surface = await editorBody(page).boundingBox();
-    const beta = await line(page, 'Beta line.').boundingBox();
-    const delta = await line(page, 'Delta line.').boundingBox();
-    if (surface === null || beta === null || delta === null) throw new Error('a line has no box');
+    await expect(line(page, 'Alpha line.')).toBeVisible();
 
-    await page.mouse.move(surface.x - GUTTER_X, beta.y + 2);
-    await page.mouse.down();
-    await page.mouse.move(surface.x - GUTTER_X, delta.y + delta.height - 2, { steps: 12 });
-    await page.mouse.up();
+    await dragGutter(page, line(page, 'Beta line.'), line(page, 'Delta line.'));
 
     await expect(litBlocks(page)).toHaveCount(3);
 
     await page.keyboard.press('Delete');
 
     await expect(editorBody(page)).toHaveText('Alpha line.');
+  });
+
+  test('the gutter drag paints a box, and takes it away again', async ({ api, content, page }) => {
+    const seeded = await seedPage(api, content, 'band', PARAGRAPHS);
+
+    await page.goto(`/p/${seeded.path}`);
+    await expect(line(page, 'Alpha line.')).toBeVisible();
+    await expect(band(page)).toHaveCount(0);
+
+    await dragGutter(page, line(page, 'Beta line.'), line(page, 'Delta line.'), true);
+
+    await expect(band(page)).toBeVisible();
+    const box = await band(page).boundingBox();
+    expect(box?.height ?? 0).toBeGreaterThan(20);
+    await expect(litBlocks(page)).toHaveCount(3);
+
+    await page.mouse.up();
+    await expect(band(page)).toHaveCount(0);
+    // The box goes, the blocks stay: the reader now has a run to move or to delete.
+    await expect(litBlocks(page)).toHaveCount(3);
+  });
+
+  test('the grip of a marked run moves every line in it', async ({ api, content, page }) => {
+    const seeded = await seedPage(api, content, 'move', PARAGRAPHS);
+
+    await page.goto(`/p/${seeded.path}`);
+    await expect(line(page, 'Alpha line.')).toBeVisible();
+
+    await dragGutter(page, line(page, 'Beta line.'), line(page, 'Gamma line.'));
+    await expect(litBlocks(page)).toHaveCount(2);
+
+    await line(page, 'Beta line.').hover();
+    const grip = page.getByRole('button', { name: 'Block actions' });
+    await expect(grip).toBeVisible();
+    await dragGrip(page, grip, line(page, 'Delta line.'));
+
+    // Moved, not copied: the two lines stand once, and they stand after Delta.
+    await expect
+      .poll(async () => (await content.pageFileText(seeded.path)) ?? '')
+      .toContain('Alpha line.\n\nDelta line.\n\nBeta line.\n\nGamma line.');
   });
 
   test('a drag inside one line still picks words, so the mark bar comes up', async ({

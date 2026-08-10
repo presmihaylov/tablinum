@@ -41,7 +41,11 @@ const INLINE_TYPES: Record<string, string> = {
   '.ogg': 'audio/ogg',
 };
 
-/** What an upload may carry. `.svg` and `.html` are absent on purpose: both run script. */
+/**
+ * What an upload may carry. A plain `.svg` and a `.html` are absent on purpose: both run script.
+ * The editor's own `.excalidraw.svg` is allowed through isDiagramPath() instead, because an
+ * `<img>` never runs script and a direct hit is sandboxed by the header the GET route sets.
+ */
 const ALLOWED_UPLOAD_EXTENSIONS = new Set([
   ...Object.keys(INLINE_TYPES),
   '.pdf',
@@ -51,6 +55,9 @@ const ALLOWED_UPLOAD_EXTENSIONS = new Set([
   '.json',
   '.zip',
 ]);
+
+/** A diagram is drawn by an `<img>`, so it needs the real type even though it is SVG. */
+const DIAGRAM_TYPE = 'image/svg+xml';
 
 const AssetQuerySchema = z.object({ pageId: z.string().min(1).optional() });
 
@@ -121,7 +128,9 @@ export function registerAssetRoutes(app: FastifyInstance, ctx: RouteContext): vo
 
     // The type is ours, not the file's: `contentType: false` keeps @fastify/send from
     // deriving one from the extension. This also covers files stored before the allowlist.
-    const inline = INLINE_TYPES[extname(rel).toLowerCase()];
+    const inline = isDiagramPath(rel)
+      ? DIAGRAM_TYPE
+      : INLINE_TYPES[extname(rel).toLowerCase()];
     reply
       .header('x-content-type-options', 'nosniff')
       .header('content-security-policy', "default-src 'none'; sandbox")
@@ -155,7 +164,7 @@ export function registerAssetRoutes(app: FastifyInstance, ctx: RouteContext): vo
 
     // Here and not in assetRelPath(): the store saves attachments through that helper too.
     const extension = extname(safeName).toLowerCase();
-    if (!ALLOWED_UPLOAD_EXTENSIONS.has(extension)) {
+    if (!isDiagramPath(safeName) && !ALLOWED_UPLOAD_EXTENSIONS.has(extension)) {
       const named = extension.length === 0 ? '(none)' : extension;
       throw validation(`Attachments of type ${named} are not accepted`);
     }

@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { AssetResponseSchema, ErrorBodySchema } from '@tablinum/shared';
+import { AssetResponseSchema, DIAGRAM_EXT, ErrorBodySchema } from '@tablinum/shared';
 import { MAX_ASSET_BYTES } from '../src/routes/assets.js';
 import { bodyOf, makeHarness, seed, type Harness } from './support/harness.js';
 import { multipart } from './support/multipart.js';
@@ -227,6 +227,39 @@ describe('attachments are never active content', () => {
     expect(fetched.headers['content-type']).toBe('image/png');
     expect(fetched.headers['content-disposition']).toBeUndefined();
     expect(fetched.headers['x-content-type-options']).toBe('nosniff');
+  });
+
+  it('serves the editor own diagram as an image, sandboxed', async () => {
+    const stored = await upload({
+      fields: { pageId },
+      filename: `scene${DIAGRAM_EXT}`,
+      data: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>'),
+    });
+    const asset = bodyOf(stored, AssetResponseSchema);
+
+    const fetched = await harness.app.inject({
+      method: 'GET',
+      url: asset.url,
+      headers: harness.authHeaders(),
+    });
+    expect(fetched.statusCode).toBe(200);
+    // An <img> needs the real type. Script inside it never runs there, and a direct hit is
+    // sandboxed into an opaque origin by the CSP below.
+    expect(fetched.headers['content-type']).toBe('image/svg+xml');
+    expect(fetched.headers['content-disposition']).toBeUndefined();
+    expect(fetched.headers['x-content-type-options']).toBe('nosniff');
+    expect(String(fetched.headers['content-security-policy'])).toContain('sandbox');
+  });
+
+  it('still refuses a plain svg that only pretends to be a diagram', async () => {
+    for (const filename of ['excalidraw.svg', 'a.excalidraw.svg.svg']) {
+      const response = await upload({
+        fields: { pageId },
+        filename,
+        data: Buffer.from('<svg onload="alert(1)"/>'),
+      });
+      expect(`${filename} -> ${response.statusCode}`).toBe(`${filename} -> 400`);
+    }
   });
 
   it('downloads a file that predates the allowlist instead of rendering it', async () => {

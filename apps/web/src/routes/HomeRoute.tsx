@@ -32,7 +32,7 @@ export function HomeRoute() {
               Create the first page
             </button>
           ) : (
-            <button type="button" className="btn btn--primary" onClick={newSpace}>
+            <button type="button" className="btn btn--primary" onClick={() => newSpace()}>
               Create a space
             </button>
           )}

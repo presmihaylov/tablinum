@@ -125,6 +125,14 @@ export function ContentProvider({ children }: { children: ReactNode }) {
     writeStored(SPACE_KEY, slug);
   }, []);
 
+  // "New page" follows the reader. Without this the space it falls back to is the first one in
+  // the tree, so a page made after a step off a private page landed in a public space.
+  useEffect(() => {
+    const space = segments(currentPath)[0];
+    if (space === undefined || space === storedSpace) return;
+    setCurrentSpace(space);
+  }, [currentPath, storedSpace, setCurrentSpace]);
+
   useEffect(() => {
     if (currentPath === '') return;
     setRecents((prev) => {

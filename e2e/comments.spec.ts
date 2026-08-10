@@ -167,6 +167,31 @@ test.describe('comments', () => {
     await expect(panel(page).locator('.comments__count')).toHaveText('1 open');
   });
 
+  test('names somebody from the menu the @ opens, and draws the chip', async ({ page, api }) => {
+    const seeded = await seedPage(api, 'mention', BODY);
+
+    await open(page, seeded.href);
+    await commentsButton(page).click();
+    await panel(page).getByRole('button', { name: 'Comment on the page' }).click();
+
+    const field = panel(page).getByLabel('Write a comment');
+    await field.fill('over to @e2e');
+    const menu = panel(page).getByRole('listbox', { name: 'Mention somebody' });
+    await expect(menu).toBeVisible();
+    await menu.getByRole('option', { name: /E2E Admin/ }).click();
+
+    // The whole handle lands in the field, not the fragment that was typed.
+    await expect(field).toHaveValue('over to @e2e.admin ');
+    await expect(menu).toHaveCount(0);
+
+    await panel(page).getByRole('button', { name: 'Comment', exact: true }).click();
+
+    const chip = panel(page).locator('.comment__mention');
+    await expect(chip).toHaveText('@e2e.admin');
+    // The admin is reading their own page, so the chip is the one that marks the reader.
+    await expect(chip).toHaveClass(/comment__mention--me/);
+  });
+
   test('scrolls the page and its comments as one canvas', async ({ page, api }) => {
     const long = `${LINE}\n\n${'A line of the plan.\n\n'.repeat(120)}`;
     const seeded = await seedPage(api, 'canvas', long);

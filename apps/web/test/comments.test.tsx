@@ -111,7 +111,8 @@ async function mount(threads: CommentThread[], routes: Routes = {}): Promise<voi
 
   await screen.findByRole('complementary', { name: 'Comments' });
   const first = threads[0];
-  if (first !== undefined) await screen.findByText(first.comments[0]?.body ?? '');
+  // The card, not the words: a body that names somebody is drawn in several pieces.
+  if (first !== undefined) await waitFor(() => cardFor(first.id));
 }
 
 /**
@@ -335,6 +336,79 @@ describe('the comments panel', () => {
     expect(sent?.body).toEqual({ body: 'Is this still right?', anchor: ANCHOR });
   });
 
+  it('names somebody from the menu the @ opens', async () => {
+    await mount([], {
+      [`POST /api/v1/pages/${PAGE.id}/comments`]: { thread: thread() },
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Comment on the page' }));
+    const field = screen.getByLabelText('Write a comment');
+    await userEvent.type(field, 'over to @sam');
+
+    const menu = await screen.findByRole('listbox', { name: 'Mention somebody' });
+    expect(within(menu).getByRole('option', { name: /Sam Rivers/ })).toBeTruthy();
+    await userEvent.click(within(menu).getByRole('option', { name: /Sam Rivers/ }));
+
+    // The whole handle goes in, not the fragment that was typed.
+    expect(field).toHaveValue('over to @sam.rivers ');
+    expect(screen.queryByRole('listbox', { name: 'Mention somebody' })).toBeNull();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Comment' }));
+    await waitFor(() => expect(callsTo('POST', `/api/v1/pages/${PAGE.id}/comments`)).toHaveLength(1));
+    const [sent] = callsTo('POST', `/api/v1/pages/${PAGE.id}/comments`);
+    expect(sent?.body).toEqual({ body: 'over to @sam.rivers' });
+  });
+
+  it('takes the highlighted person on Enter and never posts on that key', async () => {
+    await mount([]);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Comment on the page' }));
+    const field = screen.getByLabelText('Write a comment');
+    await userEvent.type(field, 'ping @');
+
+    await screen.findByRole('listbox', { name: 'Mention somebody' });
+    await userEvent.keyboard('{ArrowDown}{Enter}');
+
+    expect(field).toHaveValue('ping @sam.rivers ');
+    expect(callsTo('POST', `/api/v1/pages/${PAGE.id}/comments`)).toHaveLength(0);
+  });
+
+  // Escape belongs to the menu while it is open, or a mistyped handle throws the draft away.
+  it('closes the menu on Escape and keeps the draft', async () => {
+    await mount([]);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Comment on the page' }));
+    await userEvent.type(screen.getByLabelText('Write a comment'), 'ping @ada');
+    await screen.findByRole('listbox', { name: 'Mention somebody' });
+
+    await userEvent.keyboard('{Escape}');
+
+    expect(screen.queryByRole('listbox', { name: 'Mention somebody' })).toBeNull();
+    expect(screen.getByLabelText('Write a comment')).toHaveValue('ping @ada');
+  });
+
+  it('draws a posted mention as a chip, and marks the reader in it', async () => {
+    const named = thread({
+      comments: [
+        {
+          id: 'cm_00000000000000000000000001',
+          threadId: 'ct_00000000000000000000000001',
+          author: SAM.id,
+          body: 'over to @ada.lovelace and @sam.rivers',
+          created: '2026-01-01T00:00:00.000Z',
+          updated: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+    });
+    await mount([named]);
+
+    const chips = [...cardFor(named.id).querySelectorAll('.comment__mention')];
+    expect(chips.map((chip) => chip.textContent)).toEqual(['@ada.lovelace', '@sam.rivers']);
+    // Ada is reading, and she is the one who was asked to do something.
+    expect(chips[0]?.classList.contains('comment__mention--me')).toBe(true);
+    expect(chips[1]?.classList.contains('comment__mention--me')).toBe(false);
+  });
+
   it('comments on the whole page when no text is selected', async () => {
     await mount([], {
       [`POST /api/v1/pages/${PAGE.id}/comments`]: { thread: thread({ anchor: null }) },
@@ -388,8 +462,11 @@ describe('a card that nobody is in', () => {
 
     await openCard(WITH_REPLY.id);
 
+    // The card opens on the click that focuses it, which is a render later under load.
+    await waitFor(() =>
+      expect(within(cardFor(WITH_REPLY.id)).getByText('It is. I checked it on Monday.')).toBeTruthy(),
+    );
     const card = within(cardFor(WITH_REPLY.id));
-    expect(card.getByText('It is. I checked it on Monday.')).toBeTruthy();
     expect(card.queryByText('1 more reply')).toBeNull();
     expect(card.getByRole('button', { name: 'Reply' })).toBeTruthy();
   });

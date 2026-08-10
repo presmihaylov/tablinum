@@ -48,3 +48,43 @@ describe('comment bodies', () => {
     expect(host.querySelector('a')?.getAttribute('rel')).toBe('noopener noreferrer nofollow');
   });
 });
+
+describe('mentions in a comment', () => {
+  it('draws a handle as a chip', () => {
+    const host = asElement('nice one @ada.lovelace');
+
+    const chip = host.querySelector('.comment__mention');
+    expect(chip?.textContent).toBe('@ada.lovelace');
+    expect(chip?.classList.contains('comment__mention--me')).toBe(false);
+  });
+
+  it('marks a mention of the reader apart from the rest', () => {
+    const host = document.createElement('div');
+    host.innerHTML = renderCommentBody('@ada.lovelace and @sam.rivers', 'ada.lovelace');
+
+    const chips = [...host.querySelectorAll('.comment__mention')];
+    expect(chips.map((chip) => chip.textContent)).toEqual(['@ada.lovelace', '@sam.rivers']);
+    expect(chips[0]?.classList.contains('comment__mention--me')).toBe(true);
+    expect(chips[1]?.classList.contains('comment__mention--me')).toBe(false);
+  });
+
+  // The rule the pages use, so one body reads the same in both places.
+  it('leaves an address and a handle in code alone', () => {
+    expect(asElement('write to mail@example.com').querySelector('.comment__mention')).toBeNull();
+    expect(asElement('run `deploy @ada.lovelace`').querySelector('.comment__mention')).toBeNull();
+  });
+
+  it('reads a handle in brackets and one that opens the body', () => {
+    expect(asElement('(@ada.lovelace)').querySelector('.comment__mention')?.textContent).toBe(
+      '@ada.lovelace',
+    );
+    expect(asElement('@sam.rivers has it').querySelector('.comment__mention')?.textContent).toBe(
+      '@sam.rivers',
+    );
+  });
+
+  it('builds no markup out of a handle', () => {
+    const html = renderCommentBody('@ada.lovelace');
+    expect(html).toContain('<span class="comment__mention">@ada.lovelace</span>');
+  });
+});

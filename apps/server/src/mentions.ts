@@ -14,6 +14,8 @@ import type { SlackApi } from './slack.js';
 export interface MentionNotifier {
   /** Tells whoever is newly mentioned. Returns at once and never throws. */
   pageSaved(input: PageSaved): void;
+  /** The same for a comment on a page. */
+  commentPosted(input: CommentPosted): void;
   /** Resolves once every queued notification is done. Tests use this. */
   idle(): Promise<void>;
 }
@@ -23,6 +25,15 @@ export interface PageSaved {
   /** The body before this save. Null for a new page, where every mention is new. */
   before: string | null;
   /** Who saved it, so nobody is told about their own mention. */
+  by: Account | null;
+}
+
+export interface CommentPosted {
+  /** The page the thread is about. The message points at it. */
+  page: Page;
+  body: string;
+  /** The body before an edit. Null for a new comment, where every mention is new. */
+  before: string | null;
   by: Account | null;
 }
 
@@ -39,31 +50,42 @@ export function createMentionNotifier(options: MentionNotifierOptions): MentionN
   const { accounts, slack, log } = options;
   let queue: Promise<void> = Promise.resolve();
 
-  async function deliver(input: PageSaved): Promise<void> {
-    if (slack === null) return;
-    const added = newMentions(input.page.markdown, input.before);
-    if (added.length === 0) return;
-
-    for (const handle of added) {
+  /** Sends one message to everybody the handles name, skipping the writer and the unreachable. */
+  async function tell(handles: string[], by: Account | null, text: string): Promise<void> {
+    if (slack === null || handles.length === 0) return;
+    for (const handle of handles) {
       const target = accounts.getUserByHandle(handle);
       if (target === null || target.disabled) continue;
-      if (input.by !== null && target.id === input.by.id) continue;
+      if (by !== null && target.id === by.id) continue;
 
       const slackUserId = accounts.getSlackUserId(target.id);
       if (slackUserId === null) continue;
-      await slack.postMessage(slackUserId, messageFor(input, options.publicUrl ?? null));
+      await slack.postMessage(slackUserId, text);
     }
+  }
+
+  /** Queues one delivery. A save must never fail because Slack is unreachable. */
+  function later(path: string, run: () => Promise<void>): void {
+    queue = queue.then(async () => {
+      try {
+        await run();
+      } catch (err) {
+        log.warn({ err, path }, 'failed to send a mention notification');
+      }
+    });
   }
 
   return {
     pageSaved(input: PageSaved): void {
-      queue = queue.then(async () => {
-        try {
-          await deliver(input);
-        } catch (err) {
-          // A save must never fail because Slack is unreachable.
-          log.warn({ err, path: input.page.path }, 'failed to send a mention notification');
-        }
+      later(input.page.path, async () => {
+        const added = newMentions(input.page.markdown, input.before);
+        await tell(added, input.by, pageMessage(input, options.publicUrl ?? null));
+      });
+    },
+    commentPosted(input: CommentPosted): void {
+      later(input.page.path, async () => {
+        const added = newMentions(input.body, input.before);
+        await tell(added, input.by, commentMessage(input, options.publicUrl ?? null));
       });
     },
     idle(): Promise<void> {
@@ -78,11 +100,25 @@ export function newMentions(markdown: string, before: string | null): string[] {
   return findMentions(markdown).filter((handle) => !had.has(handle));
 }
 
-function messageFor(input: PageSaved, publicUrl: string | null): string {
-  const title = escape(input.page.title.length === 0 ? input.page.path : input.page.title);
-  const who = input.by === null ? 'Somebody' : escape(input.by.name);
-  const link = publicUrl === null ? input.page.path : pageUrl(publicUrl, input.page.path);
-  return `*${who}* mentioned you in *${title}*\n${link}`;
+function pageMessage(input: PageSaved, publicUrl: string | null): string {
+  return `*${who(input.by)}* mentioned you in *${titleOf(input.page)}*\n${linkOf(input.page, publicUrl)}`;
+}
+
+function commentMessage(input: CommentPosted, publicUrl: string | null): string {
+  const head = `*${who(input.by)}* mentioned you in a comment on *${titleOf(input.page)}*`;
+  return `${head}\n${linkOf(input.page, publicUrl)}`;
+}
+
+function who(by: Account | null): string {
+  return by === null ? 'Somebody' : escape(by.name);
+}
+
+function titleOf(page: Page): string {
+  return escape(page.title.length === 0 ? page.path : page.title);
+}
+
+function linkOf(page: Page, publicUrl: string | null): string {
+  return publicUrl === null ? page.path : pageUrl(publicUrl, page.path);
 }
 
 function pageUrl(publicUrl: string, path: string): string {

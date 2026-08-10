@@ -73,6 +73,23 @@ export function registerCommentRoutes(app: FastifyInstance, ctx: RouteContext): 
     live.commentsChanged(pageId, clientOf(request));
   }
 
+  /**
+   * Tell whoever the body newly names. The comment is already written, so a mention that
+   * cannot be delivered never costs the writer their remark.
+   */
+  async function notify(
+    request: FastifyRequest,
+    pageId: PageId,
+    body: string,
+    before: string | null,
+    by: Account,
+  ): Promise<void> {
+    const { store } = await partsOf(ctx, request);
+    const page = await store.getPageById(pageId);
+    if (page === null) return;
+    ctx.mentions.commentPosted({ page, body, before, by });
+  }
+
   app.get(`${API_PREFIX}/pages/:id/comments`, async (request): Promise<CommentThreadsResponse> => {
     const workspaceId = workspaceFor(ctx, request);
     const { id } = parseOrThrow(PageParamsSchema, request.params, 'page id');
@@ -98,6 +115,7 @@ export function registerCommentRoutes(app: FastifyInstance, ctx: RouteContext): 
       anchor: body.anchor ?? null,
     });
     await announce(request, pageId);
+    await notify(request, pageId, body.body, null, account);
 
     reply.status(201);
     return { thread };
@@ -112,6 +130,7 @@ export function registerCommentRoutes(app: FastifyInstance, ctx: RouteContext): 
 
       const thread = accounts.addReply(workspaceId, id, account.id, body.body);
       await announce(request, thread.pageId);
+      await notify(request, thread.pageId, body.body, null, account);
       reply.status(201);
       return { thread };
     },
@@ -140,6 +159,8 @@ export function registerCommentRoutes(app: FastifyInstance, ctx: RouteContext): 
 
     const thread = accounts.updateComment(workspaceId, id, body.body);
     await announce(request, thread.pageId);
+    // Only what the edit adds: a handle that was already there was told about once.
+    await notify(request, thread.pageId, body.body, comment.body, account);
     return { thread };
   });
 

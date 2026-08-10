@@ -265,6 +265,72 @@
   font-size: var(--text-sm);
 }
 
+/* The mention menu hangs off the field, so it never pushes the buttons of the composer down. */
+.comments__field-box {
+  position: relative;
+}
+
+.comments__mentions {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 2px);
+  left: 0;
+  right: 0;
+  max-height: 13rem;
+  overflow-y: auto;
+  padding: var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-lg);
+}
+
+.comments__mention-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.comments__mention-row.is-active {
+  background: var(--bg-hover);
+}
+
+.comments__mention-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-strong);
+}
+
+.comments__mention-handle {
+  flex: none;
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+}
+
+/* The same chip the page carries, so one name looks the same wherever it is written. */
+.comment__mention {
+  padding: 0 3px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* A mention of the reader is the one thing on the card they must not miss. */
+.comment__mention--me {
+  background: var(--accent);
+  color: #fff;
+}
+
 .comments__composer-row {
   display: flex;
   justify-content: flex-end;

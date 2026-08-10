@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { PageResponseSchema, SlackStateResponseSchema } from '@tablinum/shared';
+import {
+  CommentThreadResponseSchema,
+  PageResponseSchema,
+  SlackStateResponseSchema,
+} from '@tablinum/shared';
 import { contextOf } from '../src/context.js';
 import type { SlackApi } from '../src/slack.js';
 import { bodyOf, makeHarness, TEST_TOKEN, type Harness } from './support/harness.js';
@@ -187,6 +191,23 @@ async function twoPeople(harness: Harness): Promise<{ cookie: string; samId: str
   return { cookie, samId: sam.id };
 }
 
+/** A page to hang a thread on. The space has to exist first, as it does for a page save. */
+async function pageFor(harness: Harness, cookie: string) {
+  await harness.app.inject({
+    method: 'POST',
+    url: '/api/v1/spaces',
+    headers: { cookie },
+    payload: { slug: 'eng', name: 'Engineering' },
+  });
+  const created = await harness.app.inject({
+    method: 'POST',
+    url: '/api/v1/pages',
+    headers: { cookie },
+    payload: { path: 'eng/plan', title: 'The plan', markdown: 'Nothing yet.' },
+  });
+  return bodyOf(created, PageResponseSchema).page;
+}
+
 describe('mention notifications', () => {
   it('sends a direct message when a new page names somebody', async () => {
     const slack = slackStub();
@@ -300,6 +321,111 @@ describe('mention notifications', () => {
     await settle(harness);
 
     expect(slack.sent).toHaveLength(0);
+  });
+
+  it('sends a direct message when a comment names somebody', async () => {
+    const slack = slackStub();
+    const harness = await harnessFor({
+      slack,
+      env: { TABLINUM_PUBLIC_URL: 'https://docs.example.com/' },
+    });
+    const { cookie } = await twoPeople(harness);
+    const page = await pageFor(harness, cookie);
+
+    await harness.app.inject({
+      method: 'POST',
+      url: `/api/v1/pages/${page.id}/comments`,
+      headers: { cookie },
+      payload: { body: 'Is this right, @sam.rivers?' },
+    });
+    await settle(harness);
+
+    expect(slack.sent).toHaveLength(1);
+    expect(slack.sent[0]?.userId).toBe('U0SAM0000');
+    expect(slack.sent[0]?.text).toContain('Ada Lovelace');
+    expect(slack.sent[0]?.text).toContain('a comment on');
+    expect(slack.sent[0]?.text).toContain('The plan');
+    expect(slack.sent[0]?.text).toContain('https://docs.example.com/p/eng/plan');
+  });
+
+  it('sends one for a reply too', async () => {
+    const slack = slackStub();
+    const harness = await harnessFor({ slack });
+    const { cookie } = await twoPeople(harness);
+    const page = await pageFor(harness, cookie);
+
+    const opened = await harness.app.inject({
+      method: 'POST',
+      url: `/api/v1/pages/${page.id}/comments`,
+      headers: { cookie },
+      payload: { body: 'Who owns this?' },
+    });
+    const thread = bodyOf(opened, CommentThreadResponseSchema).thread;
+    await settle(harness);
+    expect(slack.sent).toHaveLength(0);
+
+    await harness.app.inject({
+      method: 'POST',
+      url: `/api/v1/comment-threads/${thread.id}/replies`,
+      headers: { cookie },
+      payload: { body: 'Ask @sam.rivers.' },
+    });
+    await settle(harness);
+
+    expect(slack.sent.map((entry) => entry.userId)).toEqual(['U0SAM0000']);
+  });
+
+  it('tells only the handles an edit adds', async () => {
+    const slack = slackStub();
+    const harness = await harnessFor({ slack });
+    const { cookie } = await twoPeople(harness);
+    const grace = harness.accounts.createUser({
+      email: 'grace@example.com',
+      name: 'Grace Hopper',
+      password: 'a third long passphrase',
+    });
+    harness.accounts.setSlackUserId(grace.id, 'U0GRACE00');
+    const page = await pageFor(harness, cookie);
+
+    const opened = await harness.app.inject({
+      method: 'POST',
+      url: `/api/v1/pages/${page.id}/comments`,
+      headers: { cookie },
+      payload: { body: 'Ask @sam.rivers.' },
+    });
+    const comment = bodyOf(opened, CommentThreadResponseSchema).thread.comments[0];
+    await settle(harness);
+    slack.sent.length = 0;
+
+    await harness.app.inject({
+      method: 'PATCH',
+      url: `/api/v1/comments/${comment?.id ?? ''}`,
+      headers: { cookie },
+      payload: { body: 'Ask @sam.rivers and @grace.hopper.' },
+    });
+    await settle(harness);
+
+    expect(slack.sent.map((entry) => entry.userId)).toEqual(['U0GRACE00']);
+  });
+
+  it('keeps the comment working when Slack throws', async () => {
+    const slack: SlackApi = {
+      lookupByEmail: () => Promise.resolve(null),
+      postMessage: () => Promise.reject(new Error('slack is down')),
+    };
+    const harness = await harnessFor({ slack });
+    const { cookie } = await twoPeople(harness);
+    const page = await pageFor(harness, cookie);
+
+    const posted = await harness.app.inject({
+      method: 'POST',
+      url: `/api/v1/pages/${page.id}/comments`,
+      headers: { cookie },
+      payload: { body: 'Ask @sam.rivers.' },
+    });
+
+    expect(posted.statusCode).toBe(201);
+    await expect(settle(harness)).resolves.toBeUndefined();
   });
 
   it('keeps the save working when Slack throws', async () => {

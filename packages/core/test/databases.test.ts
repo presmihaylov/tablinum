@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+  databaseRev,
   newOptionId,
   newPropertyId,
   newRowId,
@@ -324,6 +325,87 @@ describe('setDatabase', () => {
     expect(
       await codeOf(() => store.setDatabase('pg_00000000000000000000000000', sampleDatabase())),
     ).toBe('NOT_FOUND');
+  });
+});
+
+describe('setDatabase with a base revision', () => {
+  const OWNER = newPropertyId();
+  const DUE = newPropertyId();
+
+  /** The property a writer appends without having seen what the other writer appended. */
+  function plus(id: string, name: string): Database {
+    const database = sampleDatabase();
+    database.properties = [...database.properties, { id, name, type: 'text', options: [] }];
+    return database;
+  }
+
+  it('keeps both properties when two writers add one from the same base', async () => {
+    const id = await makeTasksPage();
+    await store.setDatabase(id, sampleDatabase());
+    const base = databaseRev((await store.getDatabase(id)).database);
+
+    await store.setDatabase(id, plus(OWNER, 'Owner'), base);
+    const page = await store.setDatabase(id, plus(DUE, 'Due'), base);
+
+    expect(page.database?.properties.map((entry) => entry.name)).toEqual([
+      'Status',
+      'Notes',
+      'Owner',
+      'Due',
+    ]);
+    expect(await dbOnDisk('docs/tasks.md')).toEqual(page.database);
+  });
+
+  it('replaces the schema whole when no base revision is given', async () => {
+    const id = await makeTasksPage();
+    await store.setDatabase(id, sampleDatabase());
+    await store.setDatabase(id, plus(OWNER, 'Owner'));
+    const page = await store.setDatabase(id, plus(DUE, 'Due'));
+    expect(page.database?.properties.map((entry) => entry.name)).toEqual(['Status', 'Notes', 'Due']);
+  });
+
+  it('takes the edit whole when nothing changed since it started', async () => {
+    const id = await makeTasksPage();
+    await store.setDatabase(id, sampleDatabase());
+    const base = databaseRev((await store.getDatabase(id)).database);
+    const page = await store.setDatabase(id, plus(OWNER, 'Owner'), base);
+    expect(page.database?.properties.map((entry) => entry.name)).toEqual([
+      'Status',
+      'Notes',
+      'Owner',
+    ]);
+  });
+
+  it('refuses two writers that rename the same property differently', async () => {
+    const id = await makeTasksPage();
+    await store.setDatabase(id, sampleDatabase());
+    const base = databaseRev((await store.getDatabase(id)).database);
+
+    const mine = sampleDatabase();
+    mine.properties[1]!.name = 'Detail';
+    const theirs = sampleDatabase();
+    theirs.properties[1]!.name = 'Remarks';
+
+    await store.setDatabase(id, mine, base);
+    expect(await codeOf(() => store.setDatabase(id, theirs, base))).toBe('CONFLICT');
+    expect((await store.getDatabase(id)).database.properties[1]?.name).toBe('Detail');
+  });
+
+  it('refuses a base revision it no longer remembers', async () => {
+    const id = await makeTasksPage();
+    await store.setDatabase(id, sampleDatabase());
+    await store.setDatabase(id, plus(OWNER, 'Owner'));
+    expect(await codeOf(() => store.setDatabase(id, plus(DUE, 'Due'), 'dbforgotten'))).toBe(
+      'CONFLICT',
+    );
+  });
+
+  it('hands the answer back as a base the next edit can build on', async () => {
+    const id = await makeTasksPage();
+    const first = await store.setDatabase(id, sampleDatabase());
+    const base = databaseRev(first.database!);
+    const page = await store.setDatabase(id, plus(OWNER, 'Owner'), base);
+    expect(page.database?.properties).toHaveLength(3);
   });
 });
 

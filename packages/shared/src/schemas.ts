@@ -326,7 +326,11 @@ export const TreeResponseSchema = z.object({
 // databases
 // ---------------------------------------------------------------------------
 
-export const SetDatabaseBodySchema = z.object({ database: DatabaseSchema });
+export const SetDatabaseBodySchema = z.object({
+  database: DatabaseSchema,
+  /** The schema revision this edit started from. See databaseRev() in db-merge.ts. */
+  baseRev: z.string().min(1).optional(),
+});
 
 export const CreateRowBodySchema = z.object({
   title: z.string().min(1).max(200).optional(),

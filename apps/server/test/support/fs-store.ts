@@ -8,6 +8,9 @@ import {
   PAGE_EXT,
   UNTITLED_ROW,
   conflict,
+  databaseRev,
+  DatabaseSchema,
+  mergeDatabases,
   contentRev,
   depth,
   internal,
@@ -127,6 +130,7 @@ export class FsContentStore implements ContentStore {
   readonly #idByFile = new Map<string, PageId>();
   readonly #writes = new Mutex();
   readonly #history = new RevHistory();
+  readonly #schemas = new RevHistory(16);
 
   constructor(readonly contentDir: string) {}
 
@@ -413,15 +417,49 @@ export class FsContentStore implements ContentStore {
       ...row,
       props: coerceProps(database.properties, row.props),
     }));
+    this.#rememberSchema(id, database);
     return { page, database, rows };
   }
 
-  async setDatabase(id: PageId, database: Database): Promise<Page> {
+  async setDatabase(id: PageId, database: Database, baseRev?: string): Promise<Page> {
     return this.#writes.runExclusive(() =>
       this.#writeFrontmatter(id, (next) => {
-        next.db = database;
+        const settled = this.#reconcileSchema(id, database, next.db, baseRev);
+        this.#rememberSchema(id, settled);
+        next.db = settled;
       }),
     );
+  }
+
+  /** The real store's rule for a schema: merge two edits per id, refuse a real overlap. */
+  #reconcileSchema(
+    id: PageId,
+    wanted: Database,
+    onDisk: unknown,
+    baseRev: string | undefined,
+  ): Database {
+    if (baseRev === undefined) return wanted;
+    const current = DatabaseSchema.safeParse(onDisk);
+    if (!current.success) return wanted;
+
+    if (baseRev === this.#rememberSchema(id, current.data)) return wanted;
+
+    const held = this.#schemas.find(id, baseRev);
+    if (held !== null) {
+      const base = DatabaseSchema.safeParse(JSON.parse(held));
+      if (base.success) {
+        const merged = mergeDatabases(base.data, wanted, current.data);
+        if (merged.clean) return merged.database;
+      }
+    }
+
+    throw conflict('The database changed since this edit started');
+  }
+
+  #rememberSchema(id: PageId, database: Database): string {
+    const rev = databaseRev(database);
+    this.#schemas.record(id, rev, JSON.stringify(database));
+    return rev;
   }
 
   async removeDatabase(id: PageId): Promise<Page> {

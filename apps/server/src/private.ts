@@ -177,9 +177,9 @@ class PrivateContentStore implements ContentStore {
     return this.inner.getDatabase(id);
   }
 
-  async setDatabase(id: PageId, database: Database): Promise<Page> {
+  async setDatabase(id: PageId, database: Database, baseRev?: string): Promise<Page> {
     await this.#refuseHiddenPage(id);
-    return this.inner.setDatabase(id, database);
+    return this.inner.setDatabase(id, database, baseRev);
   }
 
   async removeDatabase(id: PageId): Promise<Page> {

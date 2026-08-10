@@ -125,8 +125,8 @@ class CoreStoreAdapter implements ContentStore {
     return this.core.getDatabase(id);
   }
 
-  setDatabase(id: PageId, database: Database): Promise<Page> {
-    return this.core.setDatabase(id, database);
+  setDatabase(id: PageId, database: Database, baseRev?: string): Promise<Page> {
+    return this.core.setDatabase(id, database, baseRev);
   }
 
   removeDatabase(id: PageId): Promise<Page> {

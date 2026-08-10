@@ -2,6 +2,8 @@ import path from 'node:path';
 import {
   CreatePageBodySchema,
   DatabaseSchema,
+  databaseRev,
+  mergeDatabases,
   INDEX_BASENAME,
   MAX_ROWS,
   PAGE_EXT,
@@ -81,6 +83,12 @@ import { listSpaceSlugs } from './scan.js';
 import { parseSpaceFile, serializeSpaceFile } from './space-file.js';
 
 const INDEX_FILE = `${INDEX_BASENAME}${PAGE_EXT}`;
+
+/**
+ * How many schema revisions per page stay mergeable. A schema edit is a click, not a keystroke,
+ * so a handful covers every burst a person or a room of people produces.
+ */
+const SCHEMA_HISTORY_DEPTH = 16;
 
 export const DEFAULT_SPACE_SLUG = 'docs';
 export const DEFAULT_SPACE_NAME = 'Docs';
@@ -276,6 +284,8 @@ export class ContentStore {
   // requests would otherwise interleave between the "is this free" check and the write.
   readonly #writes = new Mutex();
   readonly #history = new RevHistory();
+  // A schema is small and a click storm is short, so a shallow memory is enough to merge one.
+  readonly #schemas = new RevHistory(SCHEMA_HISTORY_DEPTH);
 
   constructor(options: ContentStoreOptions) {
     const dir = options.contentDir;
@@ -797,14 +807,69 @@ export class ContentStore {
     const page = await this.#readPage(record);
     const database = page.database;
     if (database === undefined) throw validation(`Page ${record.path} is not a database`);
+    // Remembered here, because this is where a writer picks up the base it will send back.
+    this.#rememberSchema(id, database);
     return { page, database, rows: rowsFor(database, parsed.frontmatter.rows) };
   }
 
-  /** Give the page a `db` block, or replace the one it has. */
-  async setDatabase(id: PageId, database: Database): Promise<Page> {
-    return this.#writes.runExclusive(() => this.#writeFrontmatter(id, (next) => {
-      next.db = parseOrThrow(DatabaseSchema, database, 'database');
-    }));
+  /**
+   * Give the page a `db` block, or replace the one it has. `baseRev` names the revision the
+   * edit started from; without it the schema is replaced whole, which is what an agent and a
+   * script want.
+   */
+  async setDatabase(id: PageId, database: Database, baseRev?: string): Promise<Page> {
+    const wanted = parseOrThrow(DatabaseSchema, database, 'database');
+    return this.#writes.runExclusive(() =>
+      this.#writeFrontmatter(id, (next) => {
+        const settled = this.#reconcileSchema(id, wanted, next.db, baseRev);
+        // Remembered as written, so the schema the answer carries is a base a later edit can use.
+        this.#rememberSchema(id, settled);
+        next.db = settled;
+      }),
+    );
+  }
+
+  /**
+   * Settle a schema edit against the schema on disk now.
+   *
+   * Every schema write sends the whole schema, so two edits made from the same starting point
+   * used to overwrite each other: two quick clicks on "Add a property" left one property. A
+   * writer that says where it started from gets both, because properties and views carry
+   * permanent ids and a merge per id needs no guessing. Only a real overlap is refused.
+   */
+  #reconcileSchema(
+    id: PageId,
+    wanted: Database,
+    onDisk: unknown,
+    baseRev: string | undefined,
+  ): Database {
+    if (baseRev === undefined) return wanted;
+    const current = DatabaseSchema.safeParse(onDisk);
+    if (!current.success) return wanted;
+
+    const rev = this.#rememberSchema(id, current.data);
+    if (baseRev === rev) return wanted;
+
+    const held = this.#schemas.find(id, baseRev);
+    if (held !== null) {
+      const base = DatabaseSchema.safeParse(JSON.parse(held));
+      if (base.success) {
+        const merged = mergeDatabases(base.data, wanted, current.data);
+        if (merged.clean) return merged.database;
+      }
+    }
+
+    // A real overlap: the same property or view changed differently on both sides. The browser
+    // reads the schema again and the person makes the change once more, which is rare enough
+    // that a merge is not worth guessing at.
+    throw conflict('The database changed since this edit started');
+  }
+
+  /** Keep a schema under its own revision, and hand that revision back. */
+  #rememberSchema(id: PageId, database: Database): string {
+    const rev = databaseRev(database);
+    this.#schemas.record(id, rev, JSON.stringify(database));
+    return rev;
   }
 
   /** Take the `db` block away, and the rows with it. The page itself keeps its body. */

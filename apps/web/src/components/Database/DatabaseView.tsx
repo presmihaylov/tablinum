@@ -5,6 +5,7 @@ import {
   OPS_FOR_TYPE,
   applyView,
   boardProperty,
+  databaseRev,
   newPropertyId,
   newOptionId,
   newViewId,
@@ -104,9 +105,13 @@ export function DatabaseView({ page }: DatabaseViewProps) {
 
   if (database === null || view === null) return null;
 
+  // Every edit here is built from `database`, so it says so and the server merges rather than
+  // replaces. Two quick clicks on "Add a property" then leave two properties, not one.
+  const baseRev = databaseRev(database);
+
   const save = (next: Database): void => {
     setDatabase.mutate(
-      { pageId: page.id, database: next },
+      { pageId: page.id, database: next, baseRev },
       { onError: (error) => toast.pushError(error, 'The database could not be saved') },
     );
   };
@@ -157,6 +162,7 @@ export function DatabaseView({ page }: DatabaseViewProps) {
     try {
       await setDatabase.mutateAsync({
         pageId: page.id,
+        baseRev,
         database: {
           ...database,
           properties: database.properties.map((entry) =>

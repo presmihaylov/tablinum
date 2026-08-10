@@ -409,11 +409,14 @@ export const api = {
   getDatabase: (id: PageId, signal?: AbortSignal): Promise<DatabaseResponse> =>
     request(`/pages/${encodeURIComponent(id)}/database`, { signal }),
 
-  /** No `database` turns a plain page into one with the starter schema. */
-  setDatabase: (id: PageId, database?: Database): Promise<PageResponse> =>
+  /**
+   * No `database` turns a plain page into one with the starter schema. `baseRev` names the
+   * revision the edit started from, so the server merges it with whatever landed meanwhile.
+   */
+  setDatabase: (id: PageId, database?: Database, baseRev?: string): Promise<PageResponse> =>
     request(`/pages/${encodeURIComponent(id)}/database`, {
       method: 'PUT',
-      body: database === undefined ? {} : { database },
+      body: database === undefined ? {} : { database, baseRev },
     }),
 
   removeDatabase: (id: PageId): Promise<PageResponse> =>

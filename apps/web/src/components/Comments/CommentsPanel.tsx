@@ -1,5 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import type { Account, Comment, CommentThread } from '@tablinum/shared';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
+import type { Account, Comment, CommentAnchor, CommentThread } from '@tablinum/shared';
 import {
   useCreateThread,
   useDeleteComment,
@@ -16,10 +24,14 @@ import { Avatar, type AvatarPerson } from '../Account/Avatar';
 import { Check, Close } from '../ui/Icon';
 import { ConfirmDialog, type ConfirmRequest } from '../ui/ConfirmDialog';
 import { renderCommentBody } from './render';
+import { fieldHeight, groupByAnchor, stackGroups, type CardGroup } from './layout';
 import './comments.css';
 
 /** Somebody who has left the workspace still owns their remarks; only their name is gone. */
 const GONE: Omit<AvatarPerson, 'id'> = { name: 'A former member', color: 'var(--text-faint)' };
+
+/** The key the draft carries in the field, matching the id its highlight is drawn under. */
+const DRAFT_KEY = 'draft';
 
 function peopleById(users: Account[]): Map<string, Account> {
   return new Map(users.map((user) => [user.id, user]));
@@ -102,11 +114,22 @@ interface CommentRowProps {
   canEdit: boolean;
   canDelete: boolean;
   busy: boolean;
+  /** A closed card shows the remark cut short and offers nothing to do with it. */
+  preview?: boolean;
   onEdit: (body: string) => void;
   onDelete: () => void;
 }
 
-function CommentRow({ comment, person, canEdit, canDelete, busy, onEdit, onDelete }: CommentRowProps) {
+function CommentRow({
+  comment,
+  person,
+  canEdit,
+  canDelete,
+  busy,
+  preview = false,
+  onEdit,
+  onDelete,
+}: CommentRowProps) {
   const [editing, setEditing] = useState(false);
   const edited = comment.updated !== comment.created;
 
@@ -137,13 +160,13 @@ function CommentRow({ comment, person, canEdit, canDelete, busy, onEdit, onDelet
           />
         ) : (
           <div
-            className="comment__text"
+            className={preview ? 'comment__text comment__text--preview' : 'comment__text'}
             // Rendered by a markdown-it with raw HTML turned off; see render.ts.
             dangerouslySetInnerHTML={{ __html: renderCommentBody(comment.body) }}
           />
         )}
 
-        {editing ? null : (
+        {editing || preview ? null : (
           <div className="comment__actions">
             {canEdit ? (
               <button type="button" className="comments__link" onClick={() => setEditing(true)}>
@@ -192,14 +215,23 @@ function ThreadCard({
   onDelete,
 }: ThreadCardProps) {
   const [replying, setReplying] = useState(false);
+  // The thread in focus is the open one. Every other card shows only as much as it takes to
+  // recognise the remark, so a page full of comments can be read at a glance.
+  const open = active;
+  const shown = open ? thread.comments : thread.comments.slice(0, 1);
+  const rest = thread.comments.length - shown.length;
+
   const classes = ['comments__thread'];
   if (active) classes.push('comments__thread--active');
+  if (!open) classes.push('comments__thread--peek');
   if (thread.resolved) classes.push('comments__thread--resolved');
 
   return (
     <li
       className={classes.join(' ')}
       data-thread-id={thread.id}
+      // A card takes the focus from the keyboard too, and opens on the way in.
+      tabIndex={open ? -1 : 0}
       onClick={onFocus}
       onFocusCapture={onFocus}
     >
@@ -218,7 +250,7 @@ function ThreadCard({
       ) : null}
 
       <ul className="comments__comments">
-        {thread.comments.map((comment) => (
+        {shown.map((comment) => (
           <CommentRow
             key={comment.id}
             comment={comment}
@@ -226,13 +258,16 @@ function ThreadCard({
             canEdit={canEdit(comment)}
             canDelete={canDelete(comment)}
             busy={busy}
+            preview={!open}
             onEdit={(body) => onEdit(comment, body)}
             onDelete={() => onDelete(comment)}
           />
         ))}
       </ul>
 
-      {replying ? (
+      {rest > 0 ? <p className="comments__rest">{replyCount(rest)}</p> : null}
+
+      {!open ? null : replying ? (
         <Composer
           placeholder="Reply"
           submitLabel="Reply"
@@ -265,6 +300,101 @@ function ThreadCard({
       )}
     </li>
   );
+}
+
+function replyCount(rest: number): string {
+  return rest === 1 ? '1 more reply' : `${rest} more replies`;
+}
+
+interface DraftCardProps {
+  anchor: CommentAnchor | null;
+  busy: boolean;
+  onCancel: () => void;
+  onSubmit: (body: string) => void;
+}
+
+/** The card of a thread that is being written. It sits at the selection it is about. */
+function DraftCard({ anchor, busy, onCancel, onSubmit }: DraftCardProps) {
+  return (
+    <li className="comments__thread comments__thread--draft">
+      <div className="comments__quote">
+        {anchor === null ? (
+          <span className="comments__quote-none">On the whole page</span>
+        ) : (
+          <q className="comments__quote-text">{anchor.quote}</q>
+        )}
+      </div>
+      <Composer
+        placeholder="Write a comment"
+        submitLabel="Comment"
+        autoFocus
+        busy={busy}
+        onCancel={onCancel}
+        onSubmit={onSubmit}
+      />
+    </li>
+  );
+}
+
+interface FieldState {
+  groups: CardGroup[];
+  /** Where each group sits, keyed by the id of the thread that heads it. */
+  tops: Record<string, number>;
+  height: number;
+}
+
+const EMPTY_FIELD: FieldState = { groups: [], tops: {}, height: 0 };
+
+/** Where the words a card marks start, measured from the top of the field. */
+function anchorTop(id: string, base: number): number {
+  const mark = document.querySelector(`[data-comment-anchor="${id}"]`);
+  if (!(mark instanceof HTMLElement)) return 0;
+  return mark.getBoundingClientRect().top - base;
+}
+
+/**
+ * Puts every card level with the words it marks.
+ *
+ * The measurements are taken from the page itself after each render, so nothing has to be told
+ * when a line wraps, an image loads or somebody types. Two passes are enough: the first reads
+ * the anchors and groups them, the second reads the heights the grouping produced.
+ */
+function useField(ids: string[], priorityId: string | null) {
+  const fieldRef = useRef<HTMLDivElement>(null);
+  const boxes = useRef(new Map<string, HTMLElement>());
+  const [field, setField] = useState<FieldState>(EMPTY_FIELD);
+
+  const registerGroup = useCallback(
+    (key: string) => (node: HTMLElement | null) => {
+      if (node === null) boxes.current.delete(key);
+      else boxes.current.set(key, node);
+    },
+    [],
+  );
+
+  useLayoutEffect(() => {
+    const box = fieldRef.current;
+    if (box === null) return;
+
+    const base = box.getBoundingClientRect().top;
+    const groups = groupByAnchor(ids.map((id) => ({ id, desired: anchorTop(id, base) })));
+    const items = groups.map((group) => {
+      const key = group.ids[0] ?? '';
+      return { key, desired: group.desired, height: boxes.current.get(key)?.offsetHeight ?? 0 };
+    });
+    // A card in focus keeps its place; its whole group does, since they share one box.
+    const priority = groups.find((group) => group.ids.includes(priorityId ?? ''))?.ids[0] ?? null;
+    const placed = stackGroups(items, priority);
+
+    const next: FieldState = {
+      groups,
+      tops: Object.fromEntries(placed.map((one) => [one.key, one.top])),
+      height: fieldHeight(items, placed),
+    };
+    setField((prev) => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next));
+  });
+
+  return { field, fieldRef, registerGroup };
 }
 
 /** The side panel: every thread on the open page, newest business at the bottom of each. */
@@ -307,6 +437,22 @@ export function CommentsPanel() {
   );
   const resolvedCount = comments.threads.length - comments.threads.filter((one) => !one.resolved).length;
 
+  // A thread whose words are still on the page is drawn beside them. One about the whole page,
+  // and one whose words are gone, have nowhere to point, so they stay at the top of the panel.
+  const orphaned = (thread: CommentThread): boolean =>
+    thread.anchor !== null && comments.located !== null && !comments.located.has(thread.id);
+  const anchored = visible.filter((thread) => thread.anchor !== null && !orphaned(thread));
+  const loose = visible.filter((thread) => !anchored.includes(thread));
+
+  const draftAnchored = comments.drafting && comments.draft !== null;
+  const ids = [...anchored.map((thread) => thread.id), ...(draftAnchored ? [DRAFT_KEY] : [])];
+  // The draft is the thing being written, so it holds its place and everything else moves.
+  const { field, fieldRef, registerGroup } = useField(
+    ids,
+    draftAnchored ? DRAFT_KEY : comments.activeId,
+  );
+  const byId = new Map(visible.map((thread) => [thread.id, thread]));
+
   const fail = (error: unknown, message: string): void => toast.pushError(error, message);
 
   const submitDraft = (body: string): void => {
@@ -321,6 +467,47 @@ export function CommentsPanel() {
         },
         onError: (error) => fail(error, 'The comment could not be posted'),
       },
+    );
+  };
+
+  const card = (thread: CommentThread | undefined): ReactNode => {
+    if (thread === undefined) return null;
+    return (
+      <ThreadCard
+        key={thread.id}
+        thread={thread}
+        active={thread.id === comments.activeId}
+        orphaned={orphaned(thread)}
+        busy={busy}
+        personFor={personFor}
+        canEdit={canEdit}
+        canDelete={canDelete}
+        onFocus={() => comments.focus(thread.id)}
+        onReply={(body) => {
+          if (pageId === null) return;
+          reply.mutate(
+            { pageId, threadId: thread.id, body: { body } },
+            { onError: (error) => fail(error, 'The reply could not be posted') },
+          );
+        }}
+        onResolve={(resolved) => {
+          if (pageId === null) return;
+          // A thread in focus stays in the list even when resolved, so the focus goes first.
+          if (resolved) comments.focus(null);
+          resolve.mutate(
+            { pageId, threadId: thread.id, resolved },
+            { onError: (error) => fail(error, 'The thread could not be updated') },
+          );
+        }}
+        onEdit={(comment, body) => {
+          if (pageId === null) return;
+          update.mutate(
+            { pageId, commentId: comment.id, body: { body } },
+            { onError: (error) => fail(error, 'The comment could not be saved') },
+          );
+        }}
+        onDelete={(comment) => askDelete(comment, thread)}
+      />
     );
   };
 
@@ -376,24 +563,15 @@ export function CommentsPanel() {
         </button>
       )}
 
-      {comments.drafting ? (
-        <div className="comments__thread comments__thread--draft">
-          <div className="comments__quote">
-            {comments.draft === null ? (
-              <span className="comments__quote-none">On the whole page</span>
-            ) : (
-              <q className="comments__quote-text">{comments.draft.quote}</q>
-            )}
-          </div>
-          <Composer
-            placeholder="Write a comment"
-            submitLabel="Comment"
-            autoFocus
+      {comments.drafting && !draftAnchored ? (
+        <ul className="comments__list">
+          <DraftCard
+            anchor={null}
             busy={busy}
             onCancel={() => comments.cancelDraft()}
             onSubmit={submitDraft}
           />
-        </div>
+        </ul>
       ) : null}
 
       {comments.loading ? <p className="empty-note">Loading…</p> : null}
@@ -404,47 +582,38 @@ export function CommentsPanel() {
         </p>
       ) : null}
 
-      <ul className="comments__list">
-        {visible.map((thread) => (
-          <ThreadCard
-            key={thread.id}
-            thread={thread}
-            active={thread.id === comments.activeId}
-            orphaned={
-              thread.anchor !== null && comments.located !== null && !comments.located.has(thread.id)
-            }
-            busy={busy}
-            personFor={personFor}
-            canEdit={canEdit}
-            canDelete={canDelete}
-            onFocus={() => comments.focus(thread.id)}
-            onReply={(body) => {
-              if (pageId === null) return;
-              reply.mutate(
-                { pageId, threadId: thread.id, body: { body } },
-                { onError: (error) => fail(error, 'The reply could not be posted') },
-              );
-            }}
-            onResolve={(resolved) => {
-              if (pageId === null) return;
-              // A thread in focus stays in the list even when resolved, so the focus goes first.
-              if (resolved) comments.focus(null);
-              resolve.mutate(
-                { pageId, threadId: thread.id, resolved },
-                { onError: (error) => fail(error, 'The thread could not be updated') },
-              );
-            }}
-            onEdit={(comment, body) => {
-              if (pageId === null) return;
-              update.mutate(
-                { pageId, commentId: comment.id, body: { body } },
-                { onError: (error) => fail(error, 'The comment could not be saved') },
-              );
-            }}
-            onDelete={(comment) => askDelete(comment, thread)}
-          />
-        ))}
-      </ul>
+      {loose.length > 0 ? <ul className="comments__list">{loose.map(card)}</ul> : null}
+
+      <div className="comments__field" ref={fieldRef} style={{ height: field.height }}>
+        {field.groups.map((group) => {
+          const key = group.ids[0] ?? '';
+          const classes = ['comments__group'];
+          // Threads about the same spot are read together, and say so with one shared rail.
+          if (group.ids.length > 1) classes.push('comments__group--many');
+          return (
+            <ul
+              key={key}
+              className={classes.join(' ')}
+              ref={registerGroup(key)}
+              style={{ transform: `translateY(${field.tops[key] ?? 0}px)` }}
+            >
+              {group.ids.map((id) =>
+                id === DRAFT_KEY ? (
+                  <DraftCard
+                    key={DRAFT_KEY}
+                    anchor={comments.draft}
+                    busy={busy}
+                    onCancel={() => comments.cancelDraft()}
+                    onSubmit={submitDraft}
+                  />
+                ) : (
+                  card(byId.get(id))
+                ),
+              )}
+            </ul>
+          );
+        })}
+      </div>
 
       <ConfirmDialog request={confirm} onClose={() => setConfirm(null)} />
     </aside>

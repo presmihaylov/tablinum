@@ -159,6 +159,8 @@ test.describe('comments', () => {
     await commentsButton(page).click();
     await expect(panel(page).locator('[data-thread-id]')).toHaveCount(0);
     await panel(page).getByRole('checkbox').check();
+    // A card nobody is in shows only the first remark, so the reply needs a click to read.
+    await panel(page).locator('[data-thread-id]').click();
     await expect(panel(page).getByText('It is. I checked it on Monday.')).toBeVisible();
 
     await panel(page).getByRole('button', { name: 'Reopen' }).click();
@@ -251,6 +253,33 @@ test.describe('comments', () => {
     await content.waitForCleanTree();
   });
 
+  test('shows the first remark of a card until somebody clicks into it', async ({ page, api }) => {
+    const seeded = await seedPage(api, 'peek', BODY);
+
+    await open(page, seeded.href);
+    await selectWord(page, LINE, 'pipeline');
+    await comment(page, 'Is this still the right pipeline?');
+
+    const card = panel(page).locator('[data-thread-id]');
+    await card.getByRole('button', { name: 'Reply' }).click();
+    await panel(page).getByLabel('Reply').fill('It is. I checked it on Monday.');
+    await panel(page).getByRole('button', { name: 'Reply' }).click();
+    await expect(panel(page).getByText('It is. I checked it on Monday.')).toBeVisible();
+
+    // Nothing is in focus after a reload, so every card is closed.
+    await page.reload();
+    await commentsButton(page).click();
+    await expect(panel(page).getByText('Is this still the right pipeline?')).toBeVisible();
+    await expect(panel(page).getByText('It is. I checked it on Monday.')).toBeHidden();
+    await expect(panel(page).getByText('1 more reply')).toBeVisible();
+    await expect(panel(page).getByRole('button', { name: 'Reply' })).toHaveCount(0);
+
+    await card.click();
+
+    await expect(panel(page).getByText('It is. I checked it on Monday.')).toBeVisible();
+    await expect(panel(page).getByRole('button', { name: 'Reply' })).toBeVisible();
+  });
+
   test('turns a caller with no session away from both reading and writing', async ({
     page,
     api,
@@ -271,5 +300,108 @@ test.describe('comments', () => {
       data: { body: 'From nobody at all.' },
     });
     expect(written.status()).toBe(401);
+  });
+});
+
+/** A line far enough down the page that a card at the top of the panel is nowhere near it. */
+const DOWN = 'The deadline moved to the end of the quarter.';
+const SPACED = 'Nobody owns the runbook yet.';
+const FILLER = 'A line of the plan.';
+const PAGE_BODY = `${LINE}\n\n${`${FILLER}\n\n`.repeat(12)}${DOWN}\n\n${`${FILLER}\n\n`.repeat(2)}${SPACED}\n`;
+
+/** The top of a box on the screen, which is what "beside the text" is measured in. */
+async function topOf(locator: Locator): Promise<number> {
+  const box = await locator.boundingBox();
+  if (box === null) throw new Error('the element has no layout');
+  return box.y;
+}
+
+/** Every thread card on the screen, top to bottom, as plain boxes. */
+async function cardBoxes(page: Page): Promise<Array<{ top: number; bottom: number }>> {
+  const boxes = await panel(page)
+    .locator('[data-thread-id]')
+    .evaluateAll((nodes) =>
+      nodes.map((node) => {
+        const box = node.getBoundingClientRect();
+        return { top: box.top, bottom: box.bottom };
+      }),
+    );
+  return boxes.sort((a, b) => a.top - b.top);
+}
+
+/**
+ * Write a thread straight into the store. Each quote below is on the page exactly once, so the
+ * words alone find it and the test does not have to select anything with the pointer.
+ */
+async function seedThread(
+  request: APIRequestContext,
+  pageId: string,
+  quote: string,
+  body: string,
+): Promise<void> {
+  const made = await request.post(`/api/v1/pages/${pageId}/comments`, {
+    data: { body, anchor: { quote, prefix: '', suffix: '', start: 0 } },
+  });
+  expect(made.ok(), await made.text()).toBeTruthy();
+}
+
+test.describe('comments beside the text', () => {
+  test('stands a card level with the words it marks', async ({ page, api, request }) => {
+    const seeded = await seedPage(api, 'level', PAGE_BODY);
+    await seedThread(request, seeded.id, 'deadline', 'Which quarter is this?');
+
+    await page.goto(seeded.href);
+    await expect(editorBody(page)).toContainText(DOWN);
+    await commentsButton(page).click();
+
+    const card = panel(page).locator('[data-thread-id]');
+    await expect(card).toHaveCount(1);
+    const mark = highlight(page, 'deadline');
+
+    // The card does not sit at the top of the panel: it is beside its own line. A card that has
+    // just been placed is still on its way there, so the distance is polled rather than read once.
+    await expect
+      .poll(async () => Math.abs((await topOf(card)) - (await topOf(mark))))
+      .toBeLessThan(40);
+  });
+
+  test('reads two threads about one line as a single group', async ({ page, api, request }) => {
+    const seeded = await seedPage(api, 'grouped', PAGE_BODY);
+    await seedThread(request, seeded.id, 'deadline', 'Which quarter is this?');
+    await seedThread(request, seeded.id, 'quarter', 'The fourth one, I hope.');
+
+    await page.goto(seeded.href);
+    await expect(editorBody(page)).toContainText(DOWN);
+    await commentsButton(page).click();
+
+    const group = panel(page).locator('.comments__group--many');
+    await expect(group).toHaveCount(1);
+    await expect(group.locator('[data-thread-id]')).toHaveCount(2);
+  });
+
+  test('moves two cards apart rather than let one cover the other', async ({
+    page,
+    api,
+    request,
+  }) => {
+    const seeded = await seedPage(api, 'apart', PAGE_BODY);
+    await seedThread(request, seeded.id, 'deadline', 'Which quarter is this?');
+    await seedThread(request, seeded.id, 'runbook', 'I will take it.');
+
+    await page.goto(seeded.href);
+    await expect(editorBody(page)).toContainText(SPACED);
+    await commentsButton(page).click();
+
+    // Two spots on the page, so two groups, and the cards are too tall to both fit at their words.
+    await expect(panel(page).locator('.comments__group')).toHaveCount(2);
+    await expect(panel(page).locator('.comments__group--many')).toHaveCount(0);
+
+    // The room between the two cards, once they have both arrived where they belong.
+    const between = async (): Promise<number> => {
+      const boxes = await cardBoxes(page);
+      if (boxes.length !== 2) return -1;
+      return (boxes[1]?.top ?? 0) - (boxes[0]?.bottom ?? 0);
+    };
+    await expect.poll(between).toBeGreaterThanOrEqual(0);
   });
 });

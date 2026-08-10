@@ -38,8 +38,9 @@ describe('toolErrorMessage', () => {
 describe('style guide', () => {
   it('states the rules that stop an agent from corrupting a page', () => {
     expect(STYLE_GUIDE).toContain('Never write a `---` frontmatter block');
-    expect(STYLE_GUIDE).toContain('tablinum_append_page');
-    expect(STYLE_GUIDE).toContain('WITHOUT `markdown`');
+    expect(STYLE_GUIDE).toContain('tablinum_open_page');
+    expect(STYLE_GUIDE).toContain('tablinum_type replaces whatever is selected');
+    expect(STYLE_GUIDE).toContain('It never touches the body');
     expect(STYLE_GUIDE).toContain('[[page-path]]');
   });
 

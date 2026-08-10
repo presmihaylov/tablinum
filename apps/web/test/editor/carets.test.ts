@@ -2,7 +2,14 @@ import { describe, expect, it } from 'vitest';
 import type { Editor } from '@tiptap/core';
 import { DecorationSet } from '@tiptap/pm/view';
 import type { RemoteCaret } from '../../src/lib/docRoom';
-import { caretsKey, clearCarets, dropCaret, remoteCarets, setCaret } from '../../src/editor/carets';
+import {
+  caretsKey,
+  clearCarets,
+  dropCaret,
+  positionOfCursor,
+  remoteCarets,
+  setCaret,
+} from '../../src/editor/carets';
 import { createTestEditor } from './harness';
 
 function caret(client: string, anchor: number, head = anchor): RemoteCaret {
@@ -107,6 +114,54 @@ describe('remote carets', () => {
     expect(head).toBeGreaterThanOrEqual(0);
     // A position that survived a delete must still be drawable.
     expect(decorationCount(editor)).toBe(1);
+    editor.destroy();
+  });
+});
+
+const AGENT_PAGE = '# Deploy\n\nRun the pipeline from main.\n\n- build\n- ship\n';
+
+describe('an agent caret, said in blocks and offsets', () => {
+  function inside(markdown: string, block: number, offset: number) {
+    const editor = createTestEditor(markdown);
+    try {
+      const at = positionOfCursor(editor.state.doc, { block, offset });
+      const where = editor.state.doc.resolve(at);
+      return { at, parentOffset: where.parentOffset, text: where.parent.textContent };
+    } finally {
+      editor.destroy();
+    }
+  }
+
+  it('lands on the block it names', () => {
+    expect(inside(AGENT_PAGE, 1, 0).text).toBe('Run the pipeline from main.');
+    expect(inside(AGENT_PAGE, 1, 0).parentOffset).toBe(0);
+  });
+
+  it('counts characters inside a paragraph exactly', () => {
+    expect(inside(AGENT_PAGE, 1, 4).parentOffset).toBe(4);
+  });
+
+  it('holds the caret inside a block when the offset runs past its end', () => {
+    const end = inside(AGENT_PAGE, 1, 900);
+    expect(end.parentOffset).toBe('Run the pipeline from main.'.length);
+  });
+
+  it('holds the caret in the last block when the block runs past the end', () => {
+    expect(inside(AGENT_PAGE, 99, 0).text).toContain('build');
+  });
+
+  it('treats a caret before the start of the page as the start of the page', () => {
+    expect(inside(AGENT_PAGE, -3, -9).at).toBe(1);
+  });
+
+  it('gives a position the document can always resolve', () => {
+    const editor = createTestEditor(AGENT_PAGE);
+    for (const block of [0, 1, 2, 3]) {
+      for (const offset of [0, 3, 1000]) {
+        const at = positionOfCursor(editor.state.doc, { block, offset });
+        expect(() => editor.state.doc.resolve(at)).not.toThrow();
+      }
+    }
     editor.destroy();
   });
 });

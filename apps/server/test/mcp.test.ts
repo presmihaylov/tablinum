@@ -143,6 +143,36 @@ describe('remote MCP endpoint', () => {
     expect(paths).toContain('eng/rollback');
   });
 
+  it('edits a page through the caret tools, which need PUT over the loopback', async () => {
+    await seed(harness);
+    const headers = await agentHeaders();
+
+    const opened = await rpc('tools/call', { name: 'tablinum_open_page', arguments: { path: 'eng/deploy' } }, headers);
+    expect(textOf(opened)).toContain('0 |');
+
+    const selected = await rpc(
+      'tools/call',
+      { name: 'tablinum_select', arguments: { path: 'eng/deploy', all: true } },
+      headers,
+    );
+    expect(textOf(selected)).toContain('selected');
+
+    const typed = await rpc(
+      'tools/call',
+      { name: 'tablinum_type', arguments: { path: 'eng/deploy', text: 'Ship it on a Tuesday.\n' } },
+      headers,
+    );
+    expect(textOf(typed)).toContain('The caret is at');
+
+    const read = await harness.app.inject({
+      method: 'GET',
+      url: '/api/v1/pages',
+      query: { path: 'eng/deploy' },
+      headers: harness.authHeaders(),
+    });
+    expect(read.body).toContain('Ship it on a Tuesday.');
+  });
+
   it('reports a tool failure to the caller instead of crashing', async () => {
     const response = await rpc(
       'tools/call',

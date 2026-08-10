@@ -10,6 +10,7 @@ import {
   colorForId,
   spaceOf,
   type ClientMessage,
+  type Cursor,
   type DocBaseline,
   type DocResetReason,
   type GitStatus,
@@ -256,12 +257,38 @@ export class LiveHub {
     this.#announcePresence(path, now);
   }
 
+  /**
+   * Show an agent's caret to every tab on the page. It is sent in blocks and offsets, because
+   * that is how an agent addresses text; the tab turns it into a position in its own document.
+   */
+  agentCaret(agent: LiveAgent, path: PagePath, anchor: Cursor, head: Cursor): void {
+    const room = this.#rooms.get(path);
+    if (room === null) return;
+    this.#toRoom(room, {
+      type: 'doc-agent-caret',
+      path,
+      client: agent.id,
+      user: { id: agent.id, name: agent.name, color: colorForId(agent.id) },
+      agent,
+      anchor,
+      head,
+    });
+  }
+
   /** Take an agent off every page at once, e.g. when its token is revoked. */
   dropAgent(agentId: string): void {
     const seat = this.#agents.get(agentId);
     if (seat === undefined) return;
     this.#agents.delete(agentId);
+    this.#dropAgentCaret(seat.path, agentId);
     this.#announcePresence(seat.path);
+  }
+
+  /** Take an agent's caret off the screens of everyone reading the page it was on. */
+  #dropAgentCaret(path: PagePath, agentId: string): void {
+    const room = this.#rooms.get(path);
+    if (room === null) return;
+    this.#toRoom(room, { type: 'doc-left', path, client: agentId });
   }
 
   /** Tell every tab that a page now holds different bytes. */
@@ -378,6 +405,7 @@ export class LiveHub {
     for (const [id, seat] of this.#agents) {
       if (seat.expiresAt > now) continue;
       this.#agents.delete(id);
+      this.#dropAgentCaret(seat.path, id);
       emptied.add(seat.path);
     }
     for (const path of emptied) this.#announcePresence(path, now);

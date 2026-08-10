@@ -1,10 +1,15 @@
-import type {
-  CommentThread,
-  GitStatus,
-  Page,
-  Revision,
-  SearchHit,
-  TreeNode,
+import {
+  spanOffsets,
+  splitBlocks,
+  type Block,
+  type CommentThread,
+  type CursorState,
+  type GitStatus,
+  type Page,
+  type Revision,
+  type SearchHit,
+  type Span,
+  type TreeNode,
 } from '@tablinum/shared';
 import type { SpaceTree } from './client.js';
 
@@ -108,6 +113,47 @@ export function formatPageLine(page: Page): string {
   if (page.order !== undefined) bits.push(`order=${page.order}`);
   bits.push(`updated=${page.updated}`);
   return bits.join('  ');
+}
+
+// ---------------------------------------------------------------------------
+// blocks and the caret
+// ---------------------------------------------------------------------------
+
+/** A block longer than this is shown clipped, with its real length said out loud. */
+const BLOCK_MAX = 400;
+
+/**
+ * The blocks of a page, numbered. The number is the address every editing tool takes, so this
+ * is what an agent reads before it puts the caret anywhere.
+ */
+export function formatBlocks(blocks: Block[]): string {
+  const lines: string[] = [];
+  for (const block of blocks) {
+    const clipped = block.text.length > BLOCK_MAX;
+    const shown = clipped ? `${block.text.slice(0, BLOCK_MAX)}…` : block.text;
+    const label = String(block.index).padStart(3, ' ');
+    const rows = shown.split('\n');
+    rows.forEach((row, at) => {
+      lines.push(`${at === 0 ? label : '   '} | ${row}`);
+    });
+    if (clipped) lines.push(`    | (${count(block.text.length, 'character')} in all)`);
+  }
+  return lines.join('\n');
+}
+
+/** Where the caret is, and what it has hold of. */
+export function formatCursor(span: Span, markdown: string): string {
+  const blocks = splitBlocks(markdown);
+  const { from, to } = spanOffsets(blocks, span);
+  const at = `block ${span.head.block}, offset ${span.head.offset}`;
+  if (from === to) return `The caret is at ${at}. Nothing is selected.`;
+  const text = markdown.slice(from, to);
+  return `${count(to - from, 'character')} selected, up to ${at}: ${JSON.stringify(clip(text, SNIPPET_MAX))}`;
+}
+
+/** The same, for a caret the server has just confirmed. */
+export function formatCursorState(cursor: CursorState, markdown: string): string {
+  return formatCursor({ anchor: cursor.anchor, head: cursor.head }, markdown);
 }
 
 // ---------------------------------------------------------------------------

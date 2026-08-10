@@ -7,7 +7,7 @@ import { Step } from '@tiptap/pm/transform';
 import { mergeText, type DocStep, type Page } from '@tablinum/shared';
 import type { DocInit, DocRoom } from '../lib/docRoom';
 import { myClientId } from '../lib/identity';
-import { caretsKey, clearCarets, dropCaret, remoteCarets, setCaret } from './carets';
+import { caretsKey, clearCarets, dropCaret, positionOfCursor, remoteCarets, setCaret } from './carets';
 import { PARSE_OPTIONS, readMarkdown, writeMarkdown } from './markdown';
 import type { MarkdownFrame } from './markdown';
 
@@ -156,6 +156,15 @@ export function useDocStream({ editor, room, frame, page, onTitle }: StreamOptio
         scheduleSteps();
       },
       onCaret: (caret) => setCaret(editor.view, caret),
+      onAgentCaret: (caret) => {
+        const doc = editor.state.doc;
+        setCaret(editor.view, {
+          client: caret.client,
+          user: caret.user,
+          anchor: positionOfCursor(doc, caret.anchor),
+          head: positionOfCursor(doc, caret.head),
+        });
+      },
       onLeft: (client) => dropCaret(editor.view, client),
       // What is on screen stays there and is merged into the new baseline on the way back in.
       onReset: () => room.rejoin(),

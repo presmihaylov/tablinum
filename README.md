@@ -543,6 +543,29 @@ writes, and it leaves about a minute after the agent's last tool call. An agent 
 in the open editor as it happens: the text updates in place, your own unsaved edits are kept, and
 a small message names the agent that wrote.
 
+## How an agent edits a page
+
+An agent works on a page the way a person does. It opens the page, puts a caret somewhere, selects
+some text, and types over it. There is no tool that replaces a whole page in one call, so an agent
+must look at the text before it changes any of it.
+
+| Tool | What it does |
+| --- | --- |
+| `tablinum_open_page` | Shows the page as numbered blocks and puts the caret on it |
+| `tablinum_place_cursor` | Moves the caret: to a phrase, to a block and offset, or to the start or end |
+| `tablinum_select` | Selects a phrase, a block, a run of blocks, or the whole page |
+| `tablinum_type` | Types text. It replaces the selection, exactly like a keyboard |
+| `tablinum_erase` | Erases the selection, or a number of characters each side of the caret |
+
+A block is a paragraph, a heading, a list or a code block: one run of lines with a blank line on
+each side. The caret is said in a block number and a character offset inside that block, and the
+server keeps one caret per credential per page, so an agent can read, think, and come back to the
+same place. Two agents never share a caret.
+
+The caret is on screen while the agent works. Everybody reading the page sees it move, sees the
+text it selects, and sees the agent's name beside it, the same way they see another person's
+caret. Nothing happens behind a curtain.
+
 ## Configuration
 
 All configuration comes from environment variables. See `.env.example` for the annotated list.

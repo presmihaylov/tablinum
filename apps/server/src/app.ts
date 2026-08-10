@@ -13,6 +13,7 @@ import {
 } from '@tablinum/shared';
 import { registerAuthHook, routedPathname } from './auth.js';
 import { rememberContext, type RouteContext } from './context.js';
+import { CursorDesk } from './cursors.js';
 import type { ServerDeps } from './deps.js';
 import { registerErrorHandler } from './errors.js';
 import { LiveHub, registerLiveRoutes } from './live.js';
@@ -162,6 +163,7 @@ export async function buildApp(deps: ServerDeps): Promise<FastifyInstance> {
     workspaces,
     wiring: defaultParts.wiring,
     live,
+    cursors: new CursorDesk(),
     slack,
     mentions: createMentionNotifier({
       accounts: deps.accounts,

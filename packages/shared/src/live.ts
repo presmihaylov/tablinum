@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { Cursor } from './editing.js';
 import type { GitStatus, PageId, PagePath } from './types.js';
 
 /** A comment thread on a page was written, edited, resolved or removed. */
@@ -170,6 +171,19 @@ export type ServerMessage =
   /** Steps accepted by the authority. `version` is the version after applying them. */
   | { type: 'doc-steps'; path: PagePath; version: number; steps: DocStep[] }
   | { type: 'doc-caret'; path: PagePath; client: string; user: LiveUser; anchor: number; head: number }
+  /**
+   * An agent moved its caret. It is said in blocks and offsets rather than in document positions,
+   * because an agent works on the markdown of a page and has never seen the tab's document.
+   */
+  | {
+      type: 'doc-agent-caret';
+      path: PagePath;
+      client: string;
+      user: LiveUser;
+      agent: LiveAgent;
+      anchor: Cursor;
+      head: Cursor;
+    }
   /** The tab that now writes the file. Everyone else streams without saving. */
   | { type: 'doc-writer'; path: PagePath; writer: string | null }
   /** The shared document is no longer valid; rejoin from the file on disk. */

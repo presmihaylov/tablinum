@@ -11,6 +11,9 @@ const PAGE_TITLE = 'Release notes';
 /** The author the server commits as. See TABLINUM_GIT_AUTHOR_NAME in the config. */
 const AUTHOR = 'tablinum e2e';
 
+/** Longer than the engine spends waiting out a locked git index. See INDEX_LOCK_ATTEMPTS. */
+const INDEX_LOCK_RETRY_BUDGET_MS = 2000;
+
 /** Named here rather than imported: the spec must see what the server really writes. */
 const TEMP_FILE_PREFIX = '.tablinum-tmp-';
 const TEMP_FILE_PATTERN = `${TEMP_FILE_PREFIX}*`;
@@ -146,6 +149,11 @@ test.describe('git history and revisions', () => {
       // The pill refetches on load, so a reload is the shortest way to the fresh status.
       await page.reload();
       await expect(pill).toHaveText(`${branch}1`);
+
+      // The engine waits a lock out for a few hundred ms before it gives up. Let every retry
+      // the edit started run out first: one still alive would commit as soon as the lock goes,
+      // and the commit asked for by name below would then find nothing to do.
+      await page.waitForTimeout(INDEX_LOCK_RETRY_BUDGET_MS);
     } finally {
       await content.remove('.git/index.lock');
     }

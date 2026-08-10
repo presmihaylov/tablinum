@@ -20,10 +20,13 @@ import type {
   CommentThreadsResponse,
   ConnectSlackBody,
   CreatePageBody,
+  CreateRowBody,
   CreateSpaceBody,
   CreateThreadBody,
   CustomEmojiListResponse,
   CustomEmojiResponse,
+  Database,
+  DatabaseResponse,
   DeleteCommentResponse,
   DeletePageResponse,
   GitCommitBody,
@@ -48,6 +51,7 @@ import type {
   ReplyBody,
   RevisionContentResponse,
   RegisterBody,
+  RowResponse,
   SearchQuery,
   SearchResponse,
   SetupBody,
@@ -59,6 +63,7 @@ import type {
   UpdateCommentBody,
   UpdateMeBody,
   UpdatePageBody,
+  UpdateRowBody,
   UpdateSpaceBody,
   UpdateUserBody,
   UserResponse,
@@ -391,6 +396,119 @@ export function useDeleteComment(): UseMutationResult<DeleteCommentResponse, Api
   return useMutation({
     mutationFn: ({ commentId }: DeleteCommentVars) => api.deleteComment(commentId),
     onSuccess: (_data, vars) => void client.invalidateQueries({ queryKey: qk.comments(vars.pageId) }),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// databases
+// ---------------------------------------------------------------------------
+
+/** The schema and every row of a database page. */
+export function useDatabase(id: PageId | undefined): UseQueryResult<DatabaseResponse, ApiError> {
+  return useQuery({
+    queryKey: qk.database(id ?? ''),
+    queryFn: ({ signal }) => {
+      if (!id) throw new ApiError(400, 'VALIDATION', 'Missing page id');
+      return api.getDatabase(id, signal);
+    },
+    enabled: Boolean(id),
+  });
+}
+
+export interface SetDatabaseVars {
+  pageId: PageId;
+  database?: Database;
+}
+
+export function useSetDatabase(): UseMutationResult<PageResponse, ApiError, SetDatabaseVars> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ pageId, database }: SetDatabaseVars) => api.setDatabase(pageId, database),
+    onSuccess: (data, vars) => {
+      // Seed the schema from the response so a renamed column does not flash its old name.
+      const saved = data.page.database;
+      const key = qk.database(vars.pageId);
+      const previous = client.getQueryData<DatabaseResponse>(key);
+      if (saved !== undefined && previous !== undefined) {
+        client.setQueryData<DatabaseResponse>(key, { ...previous, database: saved });
+      }
+      void client.invalidateQueries({ queryKey: key });
+      invalidateContent(client);
+    },
+  });
+}
+
+export function useRemoveDatabase(): UseMutationResult<PageResponse, ApiError, PageId> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (pageId: PageId) => api.removeDatabase(pageId),
+    onSuccess: (_data, pageId) => {
+      void client.invalidateQueries({ queryKey: qk.database(pageId) });
+      invalidateContent(client);
+    },
+  });
+}
+
+export interface CreateRowVars {
+  pageId: PageId;
+  body?: CreateRowBody;
+}
+
+export function useCreateRow(): UseMutationResult<RowResponse, ApiError, CreateRowVars> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ pageId, body }: CreateRowVars) => api.createRow(pageId, body ?? {}),
+    onSuccess: (_data, vars) => {
+      void client.invalidateQueries({ queryKey: qk.database(vars.pageId) });
+      invalidateContent(client);
+    },
+  });
+}
+
+export interface UpdateRowVars {
+  /** The database page the row belongs to, so the right cached view is patched. */
+  pageId: PageId;
+  rowId: PageId;
+  body: UpdateRowBody;
+}
+
+/**
+ * Cell edits are applied to the cache before the request lands: a table where every keystroke
+ * waits for a git commit feels broken.
+ */
+export function useUpdateRow(): UseMutationResult<RowResponse, ApiError, UpdateRowVars> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ rowId, body }: UpdateRowVars) => api.updateRow(rowId, body),
+    onMutate: async (vars) => {
+      const key = qk.database(vars.pageId);
+      await client.cancelQueries({ queryKey: key });
+      const previous = client.getQueryData<DatabaseResponse>(key);
+      if (previous !== undefined) {
+        client.setQueryData<DatabaseResponse>(key, {
+          ...previous,
+          rows: previous.rows.map((row) =>
+            row.id === vars.rowId
+              ? {
+                  ...row,
+                  title: vars.body.title ?? row.title,
+                  props: { ...row.props, ...vars.body.props },
+                }
+              : row,
+          ),
+        });
+      }
+      return { previous };
+    },
+    onError: (_err, vars, context) => {
+      if (context?.previous !== undefined) {
+        client.setQueryData(qk.database(vars.pageId), context.previous);
+      }
+    },
+    onSettled: (_data, _err, vars) => {
+      void client.invalidateQueries({ queryKey: qk.database(vars.pageId) });
+      invalidateContent(client);
+    },
   });
 }
 

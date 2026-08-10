@@ -13,7 +13,10 @@ import {
   type Backlink,
   type Config,
   type CreatePageBody,
+  type CreateRowBody,
   type CreateSpaceBody,
+  type Database,
+  type DbRow,
   type GitStatus,
   type Page,
   type PageId,
@@ -23,6 +26,7 @@ import {
   type SearchHit,
   type Space,
   type UpdatePageBody,
+  type UpdateRowBody,
   type UpdateSpaceBody,
 } from '@tablinum/shared';
 import { buildApp } from './app.js';
@@ -111,6 +115,26 @@ class CoreStoreAdapter implements ContentStore {
 
   getBacklinks(id: PageId): Promise<Backlink[]> {
     return this.core.getBacklinks(id);
+  }
+
+  getDatabase(id: PageId): Promise<{ page: Page; database: Database; rows: DbRow[] }> {
+    return this.core.getDatabase(id);
+  }
+
+  setDatabase(id: PageId, database: Database): Promise<Page> {
+    return this.core.setDatabase(id, database);
+  }
+
+  removeDatabase(id: PageId): Promise<Page> {
+    return this.core.removeDatabase(id);
+  }
+
+  createRow(id: PageId, input: CreateRowBody): Promise<DbRow> {
+    return this.core.createRow(id, input);
+  }
+
+  updateRow(id: PageId, patch: UpdateRowBody): Promise<DbRow> {
+    return this.core.updateRow(id, patch);
   }
 
   async reloadFile(relFile: string): Promise<Page | null> {

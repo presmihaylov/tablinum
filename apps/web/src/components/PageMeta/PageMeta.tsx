@@ -1,9 +1,10 @@
 import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import type { Page } from '@tablinum/shared';
-import { useBacklinks } from '../../api/hooks';
+import { useBacklinks, useRemoveDatabase, useSetDatabase } from '../../api/hooks';
 import { absoluteTime, relativeTime } from '../../lib/format';
 import { pageHref } from '../../lib/href';
+import { useToast } from '../../lib/toast';
 import { ChevronRight } from '../ui/Icon';
 import { HistoryPanel } from './HistoryPanel';
 import './pagemeta.css';
@@ -33,6 +34,8 @@ export function PageMeta({ page }: PageMetaProps) {
           <code className="pagemeta__path">{page.path}</code>
         </dd>
       </dl>
+
+      <DatabaseToggle page={page} />
 
       <Section id="backlinks" label="Backlinks" open={openSections['backlinks'] ?? false} onToggle={toggle}>
         <Backlinks pageId={page.id} enabled={openSections['backlinks'] ?? false} />
@@ -67,6 +70,51 @@ function Section({ id, label, open, onToggle, children }: SectionProps) {
       </button>
       {open ? <div className="pagemeta__section-body">{children}</div> : null}
     </section>
+  );
+}
+
+/** Turn the page into a database, or take the database off it. The rows stay either way. */
+function DatabaseToggle({ page }: { page: Page }) {
+  const toast = useToast();
+  const setDatabase = useSetDatabase();
+  const removeDatabase = useRemoveDatabase();
+  const busy = setDatabase.isPending || removeDatabase.isPending;
+
+  if (page.database !== undefined) {
+    return (
+      <div className="pagemeta__section">
+        <button
+          type="button"
+          className="btn"
+          disabled={busy}
+          onClick={() =>
+            removeDatabase.mutate(page.id, {
+              onError: (error) => toast.pushError(error, 'The database could not be removed'),
+            })
+          }
+        >
+          Remove the database
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="pagemeta__section">
+      <button
+        type="button"
+        className="btn"
+        disabled={busy}
+        onClick={() =>
+          setDatabase.mutate(
+            { pageId: page.id },
+            { onError: (error) => toast.pushError(error, 'The database could not be created') },
+          )
+        }
+      >
+        Turn into a database
+      </button>
+    </div>
   );
 }
 

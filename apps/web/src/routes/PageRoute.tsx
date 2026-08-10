@@ -7,6 +7,7 @@ import { usePageDoc } from '../lib/usePageDoc';
 import { CommentsProvider } from '../lib/comments';
 import { CommentsAside } from '../components/Comments/CommentsPanel';
 import { ConflictDialog } from '../components/Conflict/ConflictDialog';
+import { DatabaseView } from '../components/Database/DatabaseView';
 import { PageMeta } from '../components/PageMeta/PageMeta';
 import { NotFoundRoute } from './NotFoundRoute';
 
@@ -68,6 +69,7 @@ export function PageRoute({ metaOpen }: PageRouteProps) {
             onTitleChange={doc.queueTitle}
             onIconChange={doc.queueIcon}
           />
+          {page.database ? <DatabaseView page={page} /> : null}
         </div>
       </div>
 

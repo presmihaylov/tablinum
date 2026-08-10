@@ -84,7 +84,7 @@ describe('bearer tokens', () => {
 });
 
 describe('mutation audit', () => {
-  const MUTATIONS: Array<{ method: 'POST' | 'PATCH' | 'DELETE'; url: string }> = [
+  const MUTATIONS: Array<{ method: 'POST' | 'PUT' | 'PATCH' | 'DELETE'; url: string }> = [
     { method: 'POST', url: '/api/v1/pages' },
     { method: 'PATCH', url: '/api/v1/pages/pg_00000000000000000000000000' },
     { method: 'DELETE', url: '/api/v1/pages/pg_00000000000000000000000000' },
@@ -93,6 +93,10 @@ describe('mutation audit', () => {
     { method: 'PATCH', url: '/api/v1/comment-threads/ct_00000000000000000000000000' },
     { method: 'PATCH', url: '/api/v1/comments/cm_00000000000000000000000000' },
     { method: 'DELETE', url: '/api/v1/comments/cm_00000000000000000000000000' },
+    { method: 'PUT', url: '/api/v1/pages/pg_00000000000000000000000000/database' },
+    { method: 'DELETE', url: '/api/v1/pages/pg_00000000000000000000000000/database' },
+    { method: 'POST', url: '/api/v1/pages/pg_00000000000000000000000000/database/rows' },
+    { method: 'PATCH', url: '/api/v1/pages/pg_00000000000000000000000000/row' },
     { method: 'POST', url: '/api/v1/spaces' },
     { method: 'PATCH', url: '/api/v1/spaces/eng' },
     { method: 'POST', url: '/api/v1/assets' },

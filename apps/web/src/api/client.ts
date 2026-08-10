@@ -13,10 +13,13 @@ import type {
   ConflictInfo,
   ConnectSlackBody,
   CreatePageBody,
+  CreateRowBody,
   CreateSpaceBody,
   CreateThreadBody,
   CustomEmojiListResponse,
   CustomEmojiResponse,
+  Database,
+  DatabaseResponse,
   DeleteCommentResponse,
   DeletePageResponse,
   ErrorBody,
@@ -49,6 +52,7 @@ import type {
   ReplyBody,
   ResolveThreadBody,
   RevisionContentResponse,
+  RowResponse,
   SearchQuery,
   SearchResponse,
   SetupBody,
@@ -60,6 +64,7 @@ import type {
   UpdateCommentBody,
   UpdateMeBody,
   UpdatePageBody,
+  UpdateRowBody,
   UpdateSpaceBody,
   UpdateUserBody,
   UserResponse,
@@ -131,7 +136,7 @@ type QueryValue = string | number | boolean | undefined | null;
 type QueryInput = Record<string, QueryValue>;
 
 interface RequestOptions {
-  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: unknown;
   form?: FormData;
   query?: QueryInput;
@@ -381,6 +386,25 @@ export const api = {
 
   deleteComment: (commentId: string): Promise<DeleteCommentResponse> =>
     request(`/comments/${encodeURIComponent(commentId)}`, { method: 'DELETE' }),
+
+  getDatabase: (id: PageId, signal?: AbortSignal): Promise<DatabaseResponse> =>
+    request(`/pages/${encodeURIComponent(id)}/database`, { signal }),
+
+  /** No `database` turns a plain page into one with the starter schema. */
+  setDatabase: (id: PageId, database?: Database): Promise<PageResponse> =>
+    request(`/pages/${encodeURIComponent(id)}/database`, {
+      method: 'PUT',
+      body: database === undefined ? {} : { database },
+    }),
+
+  removeDatabase: (id: PageId): Promise<PageResponse> =>
+    request(`/pages/${encodeURIComponent(id)}/database`, { method: 'DELETE' }),
+
+  createRow: (id: PageId, body: CreateRowBody = {}): Promise<RowResponse> =>
+    request(`/pages/${encodeURIComponent(id)}/database/rows`, { method: 'POST', body }),
+
+  updateRow: (rowId: PageId, body: UpdateRowBody): Promise<RowResponse> =>
+    request(`/pages/${encodeURIComponent(rowId)}/row`, { method: 'PATCH', body }),
 
 
   gitStatus: (signal?: AbortSignal): Promise<GitStatusResponse> => request('/git/status', { signal }),

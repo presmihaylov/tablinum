@@ -131,17 +131,16 @@ describe('round trip', () => {
     expect(out).toContain('title: Renamed');
   });
 
-  /** tags and props were dropped from the contract. A file that still carries them is left
-      alone until something else about the page changes, and loses them on that save. */
+  /** tags was dropped from the contract. A file that still carries it is left alone until
+      something else about the page changes, and loses it on that save. */
   it('keeps a retired key on disk until the page changes, then drops it', () => {
-    const raw = `---\nid: ${ID}\ntitle: T\ntags: [ops]\ncreated: ${CREATED}\nupdated: ${UPDATED}\nprops:\n  status: live\n---\n\nbody\n`;
+    const raw = `---\nid: ${ID}\ntitle: T\ntags: [ops]\ncreated: ${CREATED}\nupdated: ${UPDATED}\n---\n\nbody\n`;
     const parsed = parse(raw);
     expect(parsed.repaired).toBe(false);
     expect(serializePreserving(parsed, parsed.frontmatter, parsed.body)).toBe(raw);
 
     const out = serializePreserving(parsed, { ...parsed.frontmatter, title: 'U' }, parsed.body);
     expect(out).not.toContain('tags:');
-    expect(out).not.toContain('props:');
   });
 
   it('never preserves the bytes of a repaired file', () => {

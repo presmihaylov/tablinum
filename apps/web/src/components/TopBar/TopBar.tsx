@@ -71,9 +71,35 @@ export function TopBar({ sidebarOpen, panels, onToggleSidebar, onTogglePanel, on
           {resolved === 'dark' ? <Sun /> : <Moon />}
         </button>
 
+        <FavoriteButton />
+
         <PageMenu panels={panels} onTogglePanel={onTogglePanel} />
       </div>
     </header>
+  );
+}
+
+/** The star beside the page menu. The same pin the bucket and the menu offer, one click away. */
+function FavoriteButton() {
+  const { spaces, currentPath, isFavorite, toggleFavorite } = useContent();
+  const node = useMemo(() => (currentPath ? findNode(spaces, currentPath) : null), [spaces, currentPath]);
+
+  if (node === null) return null;
+
+  const pinned = isFavorite(node.id);
+  const label = pinned ? 'Remove from your favorites' : 'Add to your favorites';
+
+  return (
+    <button
+      type="button"
+      className={pinned ? 'btn btn--icon btn--on' : 'btn btn--icon'}
+      onClick={() => toggleFavorite(node)}
+      title={label}
+      aria-label={label}
+      aria-pressed={pinned}
+    >
+      <Star filled={pinned} />
+    </button>
   );
 }
 

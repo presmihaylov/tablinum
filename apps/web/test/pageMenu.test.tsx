@@ -236,6 +236,45 @@ describe('the page menu', () => {
     expect(await screen.findByRole('menuitem', { name: 'Remove from favorites' })).toBeInTheDocument();
   });
 
+  it('pins the page from the star beside the menu', async () => {
+    const mock = start({
+      [`PUT /api/v1/favorites/${PAGE_ID}`]: {
+        favorite: { pageId: PAGE_ID, created: '2026-01-03T00:00:00.000Z' },
+      },
+    });
+    const user = userEvent.setup();
+    renderApp(<Harness />, { route: '/p/notes/weekly' });
+
+    const star = await screen.findByRole('button', { name: 'Add to your favorites' });
+    expect(star.getAttribute('aria-pressed')).toBe('false');
+    await user.click(star);
+
+    await waitFor(() => {
+      const sent = mock.calls.find((call) => call.method === 'PUT');
+      expect(sent?.url.pathname).toBe(`/api/v1/favorites/${PAGE_ID}`);
+    });
+  });
+
+  it('takes the pin off from the same star', async () => {
+    const mock = start({
+      'GET /api/v1/favorites': {
+        favorites: [{ pageId: PAGE_ID, created: '2026-01-03T00:00:00.000Z' }],
+      },
+      [`DELETE /api/v1/favorites/${PAGE_ID}`]: { ok: true },
+    });
+    const user = userEvent.setup();
+    renderApp(<Harness />, { route: '/p/notes/weekly' });
+
+    const star = await screen.findByRole('button', { name: 'Remove from your favorites' });
+    expect(star.getAttribute('aria-pressed')).toBe('true');
+    await user.click(star);
+
+    await waitFor(() => {
+      const sent = mock.calls.find((call) => call.method === 'DELETE');
+      expect(sent?.url.pathname).toBe(`/api/v1/favorites/${PAGE_ID}`);
+    });
+  });
+
   it('offers the other spaces to move the page to', async () => {
     start();
     const user = userEvent.setup();

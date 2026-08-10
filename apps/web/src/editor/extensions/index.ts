@@ -12,6 +12,7 @@ import TableRow from '@tiptap/extension-table-row';
 import Underline from '@tiptap/extension-underline';
 import { Markdown } from 'tiptap-markdown';
 
+import { BlockSelect } from './blockSelection';
 import { Callout } from './callout';
 import { MarkdownCopy } from './clipboard';
 import { createCodeBlock } from './codeBlock';
@@ -173,9 +174,11 @@ export function buildExtensions(overrides: Partial<EditorExtensionOptions> = {})
     WikilinkSuggestion.configure({ search: options.searchPages }),
     MentionSuggestion.configure({ search: options.searchPeople }),
     EmojiSuggestion,
+    BlockSelect,
   ];
 }
 
+export { BlockSelection } from './blockSelection';
 export { DRAFT_SPAN_ID } from './commentHighlight';
 export type { CommentSpan } from './commentHighlight';
 export { insertEmoji } from './customEmoji';

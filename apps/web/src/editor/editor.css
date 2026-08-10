@@ -329,6 +329,28 @@ button.editor__icon:hover {
 }
 
 /*
+ * A run of whole blocks, picked by dragging beside them or across them. The band reaches into
+ * the gutter so it reads as the block itself, not as the words the block happens to hold.
+ */
+.gd-editor-surface .gd-block-selected {
+  background: var(--bg-selected);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 0 0 4px var(--bg-selected);
+}
+
+/*
+ * ProseMirror hides the native highlight while a block selection is up, which it asks for with
+ * this class. Without the rule the browser would paint its own band over the one above.
+ */
+.gd-editor-surface.ProseMirror-hideselection ::selection {
+  background: transparent;
+}
+
+.gd-editor-surface.ProseMirror-hideselection {
+  caret-color: transparent;
+}
+
+/*
  * ProseMirror keeps a node selected after the box is blurred, so a clicked diagram or image
  * stayed lit up long after the pointer had gone somewhere else. Nothing is lit unless the
  * caret is still in here.

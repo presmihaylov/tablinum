@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Editor } from '@tiptap/core';
 import { NodeSelection } from '@tiptap/pm/state';
 import { CellSelection } from '@tiptap/pm/tables';
+import { BlockSelection } from '../extensions';
 import { FloatingBar } from './FloatingBar';
 
 const MARKS = [
@@ -18,6 +19,8 @@ function hasTextSelection(editor: Editor): boolean {
   // A whole node holds no text to mark, and an insert leaves one picked, so the bar would land
   // over the page. A whole-cell selection belongs to the table toolbar, not to this one.
   if (editor.state.selection instanceof NodeSelection) return false;
+  // A run of whole blocks is a thing to move or to drop, not a phrase to mark.
+  if (editor.state.selection instanceof BlockSelection) return false;
   return !(editor.state.selection instanceof CellSelection);
 }
 

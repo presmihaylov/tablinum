@@ -244,7 +244,7 @@ export type DbSort = z.infer<typeof SortSchema>;
 // views
 // ---------------------------------------------------------------------------
 
-export const VIEW_TYPES = ['table'] as const;
+export const VIEW_TYPES = ['table', 'board'] as const;
 export type ViewType = (typeof VIEW_TYPES)[number];
 
 export const DbViewSchema = z.object({
@@ -255,6 +255,8 @@ export const DbViewSchema = z.object({
   sorts: z.array(SortSchema).max(20),
   /** Properties the view hides. Order follows the schema, so only visibility is stored. */
   hidden: z.array(PropertyIdSchema).max(200),
+  /** The select property a board view stacks its cards by. Only a board reads it. */
+  groupBy: PropertyIdSchema.optional(),
 });
 export type DbView = z.infer<typeof DbViewSchema>;
 
@@ -437,4 +439,62 @@ export function compareValues(property: DbProperty, left: PropValue, right: Prop
   const a = textOf(property, left);
   const b = textOf(property, right);
   return a.localeCompare(b, 'en', { numeric: true, sensitivity: 'base' });
+}
+
+// ---------------------------------------------------------------------------
+// boards
+// ---------------------------------------------------------------------------
+
+export const DEFAULT_BOARD_NAME = 'Board';
+
+/** One stack of cards on a board. `option` is null for the cards that hold no value. */
+export interface BoardGroup {
+  id: string | null;
+  name: string;
+  color: OptionColor;
+  rows: DbRow[];
+}
+
+/**
+ * The property a board stacks its cards by: the one the view names, or the first select column
+ * when the view names none or names one that is gone. Null when the database has no select column.
+ */
+export function boardProperty(database: Database, view: DbView): DbProperty | null {
+  const named = database.properties.find((entry) => entry.id === view.groupBy);
+  if (named !== undefined && named.type === 'select') return named;
+  return database.properties.find((entry) => entry.type === 'select') ?? null;
+}
+
+/**
+ * The stacks of a board, left to right: the empty one first, then one for each option in the
+ * order the author arranged them. Filters and sorts apply first, exactly as on a table.
+ */
+export function boardGroups(
+  database: Database,
+  view: DbView,
+  rows: readonly DbRow[],
+): BoardGroup[] {
+  const property = boardProperty(database, view);
+  const shown = applyView(database, view, rows);
+  if (property === null) return [{ id: null, name: 'All', color: 'gray', rows: shown }];
+
+  const empty: BoardGroup = { id: null, name: `No ${property.name}`, color: 'gray', rows: [] };
+  const groups: BoardGroup[] = [
+    empty,
+    ...property.options.map((option) => ({
+      id: option.id,
+      name: option.name,
+      color: option.color,
+      rows: [] as DbRow[],
+    })),
+  ];
+  const byId = new Map(groups.map((group) => [group.id, group]));
+
+  for (const row of shown) {
+    const value = row.props[property.id] ?? null;
+    // A value naming an option nobody kept lands with the cards that hold no value at all.
+    const group = typeof value === 'string' ? byId.get(value) : undefined;
+    (group ?? empty).rows.push(row);
+  }
+  return groups;
 }

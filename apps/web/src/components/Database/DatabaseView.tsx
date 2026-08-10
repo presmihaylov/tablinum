@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  DEFAULT_BOARD_NAME,
   DEFAULT_VIEW_NAME,
   OPS_FOR_TYPE,
   applyView,
+  boardProperty,
   newPropertyId,
   newOptionId,
   newViewId,
@@ -15,7 +17,9 @@ import {
   type FilterOp,
   type Page,
   type PropValue,
+  type RowProps,
   type SelectOption,
+  type ViewType,
 } from '@tablinum/shared';
 import {
   useCreateRow,
@@ -28,6 +32,8 @@ import {
 import { useToast } from '../../lib/toast';
 import { Plus } from '../ui/Icon';
 import { nextOptionColor } from './Cell';
+import { BoardView } from './BoardView';
+import { Pop } from './Pop';
 import { TableView } from './TableView';
 import { TYPE_LABEL } from './PropertyHead';
 import './database.css';
@@ -114,16 +120,19 @@ export function DatabaseView({ page }: DatabaseViewProps) {
     save({ ...database, properties: [...database.properties, property] });
   };
 
-  const addView = (): void => {
-    const name = `${DEFAULT_VIEW_NAME} ${database.views.length + 1}`;
+  const addView = (type: ViewType): void => {
+    const base = type === 'board' ? DEFAULT_BOARD_NAME : DEFAULT_VIEW_NAME;
     const next: DbView = {
       id: newViewId(),
-      name,
-      type: 'table',
+      name: `${base} ${database.views.length + 1}`,
+      type,
       filters: [],
       sorts: [],
       hidden: [],
     };
+    // A board needs a column to stack by, and the first select one is the obvious guess.
+    const group = database.properties.find((entry) => entry.type === 'select');
+    if (type === 'board' && group !== undefined) next.groupBy = group.id;
     setViewId(next.id);
     save({ ...database, views: [...database.views, next] });
   };
@@ -168,11 +177,19 @@ export function DatabaseView({ page }: DatabaseViewProps) {
     );
   };
 
-  const addRow = (): void => {
+  const addRow = (props: RowProps = {}): void => {
+    const body = Object.keys(props).length === 0 ? {} : { props };
     createRow.mutate(
-      { pageId: page.id, body: {} },
+      { pageId: page.id, body },
       { onError: (error) => toast.pushError(error, 'The row could not be created') },
     );
+  };
+
+  const removeView = (): void => {
+    // The last view is what draws the database at all, so it stays.
+    if (database.views.length < 2) return;
+    setViewId(null);
+    save({ ...database, views: database.views.filter((entry) => entry.id !== view.id) });
   };
 
   const removeRow = (row: DbRow): void => {
@@ -189,21 +206,29 @@ export function DatabaseView({ page }: DatabaseViewProps) {
     <section className="db" aria-label="Database">
       <div className="db__bar">
         <div className="db__views" role="tablist" aria-label="Database views">
-          {database.views.map((entry) => (
-            <button
-              key={entry.id}
-              type="button"
-              role="tab"
-              className="db__view"
-              aria-selected={entry.id === view.id}
-              onClick={() => setViewId(entry.id)}
-            >
-              {entry.name}
-            </button>
-          ))}
-          <button type="button" className="db__view" aria-label="Add a view" onClick={addView}>
-            <Plus size={12} />
-          </button>
+          {database.views.map((entry) =>
+            entry.id === view.id ? (
+              <ViewTab
+                key={entry.id}
+                database={database}
+                view={view}
+                onChange={patchView}
+                onDelete={database.views.length > 1 ? removeView : null}
+              />
+            ) : (
+              <button
+                key={entry.id}
+                type="button"
+                role="tab"
+                className="db__view"
+                aria-selected={false}
+                onClick={() => setViewId(entry.id)}
+              >
+                {entry.name}
+              </button>
+            ),
+          )}
+          <AddView onAdd={addView} />
         </div>
 
         <div className="db__tools">
@@ -231,7 +256,7 @@ export function DatabaseView({ page }: DatabaseViewProps) {
           >
             Properties
           </button>
-          <button type="button" className="btn btn--primary" onClick={addRow}>
+          <button type="button" className="btn btn--primary" onClick={() => addRow()}>
             New
           </button>
         </div>
@@ -250,22 +275,190 @@ export function DatabaseView({ page }: DatabaseViewProps) {
         />
       ) : null}
 
-      <TableView
-        database={database}
-        view={view}
-        rows={shown}
-        people={people}
-        onDatabaseChange={save}
-        onAddProperty={addProperty}
-        onCellChange={changeCell}
-        onTitleChange={changeTitle}
-        onCreateRow={addRow}
-        onDeleteRow={removeRow}
-        onCreateOption={createOption}
-      />
+      {view.type === 'board' ? (
+        <BoardView
+          database={database}
+          view={view}
+          rows={rows}
+          people={people}
+          onCellChange={changeCell}
+          onCreateRow={addRow}
+          onDeleteRow={removeRow}
+        />
+      ) : (
+        <TableView
+          database={database}
+          view={view}
+          rows={shown}
+          people={people}
+          onDatabaseChange={save}
+          onAddProperty={addProperty}
+          onCellChange={changeCell}
+          onTitleChange={changeTitle}
+          onCreateRow={() => addRow()}
+          onDeleteRow={removeRow}
+          onCreateOption={createOption}
+        />
+      )}
 
       {rows.length === 0 ? <p className="db__empty">This database has no rows yet.</p> : null}
     </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// views
+// ---------------------------------------------------------------------------
+
+interface ViewTabProps {
+  database: Database;
+  view: DbView;
+  onChange: (patch: Partial<DbView>) => void;
+  /** Null for the last view, which the database cannot be drawn without. */
+  onDelete: (() => void) | null;
+}
+
+/** The open view. Clicking it again opens the menu that renames it or changes its layout. */
+function ViewTab({ database, view, onChange, onDelete }: ViewTabProps) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState(view.name);
+
+  useEffect(() => setName(view.name), [view.name]);
+
+  const commitName = (): void => {
+    const next = name.trim();
+    if (next.length === 0 || next === view.name) {
+      setName(view.name);
+      return;
+    }
+    onChange({ name: next });
+  };
+
+  const selects = database.properties.filter((entry) => entry.type === 'select');
+  const group = boardProperty(database, view);
+
+  const changeType = (type: ViewType): void => {
+    if (type !== 'board') {
+      onChange({ type });
+      return;
+    }
+    // A board without a column to stack by would draw nothing, so it takes the first select one.
+    onChange(group === null ? { type } : { type, groupBy: group.id });
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        role="tab"
+        className="db__view db__view--on"
+        aria-selected={true}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((prev) => !prev)}
+      >
+        {view.name}
+      </button>
+      {open ? (
+        <Pop label="View menu" onClose={() => setOpen(false)}>
+          <input
+            className="input"
+            autoFocus
+            aria-label="View name"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            onBlur={commitName}
+            onKeyDown={(event) => {
+              if (event.key !== 'Enter') return;
+              event.preventDefault();
+              commitName();
+              setOpen(false);
+            }}
+          />
+          <div className="db-pop__label">Layout</div>
+          <select
+            className="db__select"
+            aria-label="View layout"
+            value={view.type}
+            onChange={(event) => changeType(event.target.value as ViewType)}
+          >
+            <option value="table">Table</option>
+            <option value="board">Board</option>
+          </select>
+          {view.type === 'board' ? (
+            <>
+              <div className="db-pop__label">Group by</div>
+              <select
+                className="db__select"
+                aria-label="Group by"
+                value={group?.id ?? ''}
+                onChange={(event) => onChange({ groupBy: event.target.value })}
+              >
+                {selects.length === 0 ? <option value="">No select column yet</option> : null}
+                {selects.map((entry) => (
+                  <option key={entry.id} value={entry.id}>
+                    {entry.name}
+                  </option>
+                ))}
+              </select>
+            </>
+          ) : null}
+          {onDelete === null ? null : (
+            <>
+              <div className="db-pop__sep" />
+              <button
+                type="button"
+                role="menuitem"
+                className="db-pop__item db-pop__item--danger"
+                onClick={() => {
+                  setOpen(false);
+                  onDelete();
+                }}
+              >
+                Delete view
+              </button>
+            </>
+          )}
+        </Pop>
+      ) : null}
+    </>
+  );
+}
+
+function AddView({ onAdd }: { onAdd: (type: ViewType) => void }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <>
+      <button
+        type="button"
+        className="db__view"
+        aria-label="Add a view"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((prev) => !prev)}
+      >
+        <Plus size={12} />
+      </button>
+      {open ? (
+        <Pop label="New view" onClose={() => setOpen(false)}>
+          {(['table', 'board'] as const).map((type) => (
+            <button
+              key={type}
+              type="button"
+              role="menuitem"
+              className="db-pop__item"
+              onClick={() => {
+                setOpen(false);
+                onAdd(type);
+              }}
+            >
+              {type === 'board' ? 'Board' : 'Table'}
+            </button>
+          ))}
+        </Pop>
+      ) : null}
+    </>
   );
 }
 

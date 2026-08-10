@@ -420,3 +420,86 @@ describe('a database page under ordinary page edits', () => {
     expect(body.rows).toEqual([]);
   });
 });
+
+describe('a board view over the wire', () => {
+  function boardDatabase(): Database {
+    const database = sampleDatabase();
+    const view = database.views[0];
+    if (view === undefined) throw new Error('the sample lost its view');
+    view.name = 'Board';
+    view.type = 'board';
+    view.groupBy = SELECT;
+    return database;
+  }
+
+  it('saves the layout and the column it stacks by', async () => {
+    await seed(harness);
+    const id = await makePage();
+
+    const response = await setDatabase(id, boardDatabase());
+    expect(response.statusCode).toBe(200);
+    const view = bodyOf(response, PageResponseSchema).page.database?.views[0];
+    expect(view?.type).toBe('board');
+    expect(view?.groupBy).toBe(SELECT);
+  });
+
+  it('writes both into the page file', async () => {
+    await seed(harness);
+    const id = await makePage();
+    await setDatabase(id, boardDatabase());
+
+    const raw = await readFile(join(harness.contentDir, 'eng/tasks.md'), 'utf8');
+    expect(raw).toContain('type: board');
+    expect(raw).toContain(`groupBy: ${SELECT}`);
+  });
+
+  it('gives the view back on the next read', async () => {
+    await seed(harness);
+    const id = await makePage();
+    await setDatabase(id, boardDatabase());
+
+    const response = await readDatabase(id);
+    const view = bodyOf(response, DatabaseResponseSchema).database.views[0];
+    expect(view?.type).toBe('board');
+    expect(view?.groupBy).toBe(SELECT);
+  });
+
+  it('refuses a layout nobody knows', async () => {
+    await seed(harness);
+    const id = await makePage();
+    const database = sampleDatabase();
+
+    const response = await harness.app.inject({
+      method: 'PUT',
+      url: `/api/v1/pages/${id}/database`,
+      headers: headers(),
+      payload: { database: { ...database, views: [{ ...database.views[0], type: 'gallery' }] } },
+    });
+    expect(response.statusCode).toBe(400);
+    expect(bodyOf(response, ErrorBodySchema).error.code).toBe('VALIDATION');
+  });
+
+  it('refuses a group that is not a property id', async () => {
+    await seed(harness);
+    const id = await makePage();
+    const database = sampleDatabase();
+
+    const response = await harness.app.inject({
+      method: 'PUT',
+      url: `/api/v1/pages/${id}/database`,
+      headers: headers(),
+      payload: { database: { ...database, views: [{ ...database.views[0], groupBy: 'Status' }] } },
+    });
+    expect(response.statusCode).toBe(400);
+  });
+
+  it('creates a row that already holds the option of its stack', async () => {
+    await seed(harness);
+    const id = await makePage();
+    await setDatabase(id, boardDatabase());
+
+    const response = await createRow(id, { title: 'Ship it', props: { [SELECT]: OPTION } });
+    expect(response.statusCode).toBe(201);
+    expect(bodyOf(response, RowResponseSchema).row.props[SELECT]).toBe(OPTION);
+  });
+});

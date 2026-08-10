@@ -202,10 +202,16 @@ interface PageRowProps {
 
 /** One flat page row, as the Favorites and Recents buckets both draw it. */
 function PageRow({ node, currentPath, onOpen, children }: PageRowProps) {
-  const className = node.path === currentPath ? 'sidebar__row sidebar__row--current' : 'sidebar__row';
+  const current = node.path === currentPath;
+  const className = current ? 'sidebar__row sidebar__row--current' : 'sidebar__row';
   return (
     <div className="sidebar-list__item">
-      <button type="button" className={className} onClick={() => onOpen(node.path)}>
+      <button
+        type="button"
+        className={className}
+        aria-current={current ? 'page' : undefined}
+        onClick={() => onOpen(node.path)}
+      >
         <span className="sidebar__row-icon">
           {node.icon ? <EmojiGlyph value={node.icon} /> : <DocIcon size={13} />}
         </span>

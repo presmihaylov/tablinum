@@ -39,26 +39,8 @@
 .pagemeta__section-head {
   display: flex;
   align-items: center;
-  gap: var(--space-1);
-  width: 100%;
   height: 1.6rem;
   padding: 0 var(--space-1);
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: none;
-}
-
-.pagemeta__section-head:hover {
-  background: var(--bg-hover);
-}
-
-.pagemeta__caret {
-  color: var(--text-faint);
-  transition: transform var(--transition-fast);
-}
-
-.pagemeta__caret--open {
-  transform: rotate(90deg);
 }
 
 .pagemeta__section-body {

@@ -1,27 +1,20 @@
-import { useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import type { Page } from '@tablinum/shared';
-import { useBacklinks, useRemoveDatabase, useSetDatabase } from '../../api/hooks';
+import { useBacklinks } from '../../api/hooks';
 import { absoluteTime, relativeTime } from '../../lib/format';
 import { pageHref } from '../../lib/href';
-import { useToast } from '../../lib/toast';
-import { ChevronRight } from '../ui/Icon';
+import type { PanelState } from '../../lib/panels';
 import { HistoryPanel } from './HistoryPanel';
 import './pagemeta.css';
 
 interface PageMetaProps {
   page: Page;
+  panels: PanelState;
 }
 
-export function PageMeta({ page }: PageMetaProps) {
-  const [openSections, setOpenSections] = useState<Record<string, boolean>>({
-    backlinks: true,
-    history: false,
-  });
-
-  const toggle = (id: string): void =>
-    setOpenSections((prev) => ({ ...prev, [id]: !prev[id] }));
-
+/** The rail beside the page. The page menu decides which parts of it are on. */
+export function PageMeta({ page, panels }: PageMetaProps) {
   return (
     <aside className="pagemeta" aria-label="Page details">
       <dl className="pagemeta__facts">
@@ -35,93 +28,33 @@ export function PageMeta({ page }: PageMetaProps) {
         </dd>
       </dl>
 
-      <DatabaseToggle page={page} />
+      {panels.backlinks ? (
+        <Section label="Backlinks">
+          <Backlinks pageId={page.id} />
+        </Section>
+      ) : null}
 
-      <Section id="backlinks" label="Backlinks" open={openSections['backlinks'] ?? false} onToggle={toggle}>
-        <Backlinks pageId={page.id} enabled={openSections['backlinks'] ?? false} />
-      </Section>
-
-      <Section id="history" label="History" open={openSections['history'] ?? false} onToggle={toggle}>
-        <HistoryPanel pageId={page.id} enabled={openSections['history'] ?? false} />
-      </Section>
+      {panels.history ? (
+        <Section label="History">
+          <HistoryPanel pageId={page.id} enabled />
+        </Section>
+      ) : null}
     </aside>
   );
 }
 
-interface SectionProps {
-  id: string;
-  label: string;
-  open: boolean;
-  onToggle: (id: string) => void;
-  children: ReactNode;
-}
-
-function Section({ id, label, open, onToggle, children }: SectionProps) {
+function Section({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <section className="pagemeta__section">
-      <button
-        type="button"
-        className="pagemeta__section-head"
-        onClick={() => onToggle(id)}
-        aria-expanded={open}
-      >
-        <ChevronRight size={11} className={open ? 'pagemeta__caret pagemeta__caret--open' : 'pagemeta__caret'} />
-        <span className="section-label">{label}</span>
-      </button>
-      {open ? <div className="pagemeta__section-body">{children}</div> : null}
+    <section className="pagemeta__section" aria-label={label}>
+      <h2 className="pagemeta__section-head section-label">{label}</h2>
+      <div className="pagemeta__section-body">{children}</div>
     </section>
   );
 }
 
-/** Turn the page into a database, or take the database off it. The rows stay either way. */
-function DatabaseToggle({ page }: { page: Page }) {
-  const toast = useToast();
-  const setDatabase = useSetDatabase();
-  const removeDatabase = useRemoveDatabase();
-  const busy = setDatabase.isPending || removeDatabase.isPending;
+function Backlinks({ pageId }: { pageId: string }) {
+  const backlinks = useBacklinks(pageId);
 
-  if (page.database !== undefined) {
-    return (
-      <div className="pagemeta__section">
-        <button
-          type="button"
-          className="btn"
-          disabled={busy}
-          onClick={() =>
-            removeDatabase.mutate(page.id, {
-              onError: (error) => toast.pushError(error, 'The database could not be removed'),
-            })
-          }
-        >
-          Remove the database
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="pagemeta__section">
-      <button
-        type="button"
-        className="btn"
-        disabled={busy}
-        onClick={() =>
-          setDatabase.mutate(
-            { pageId: page.id },
-            { onError: (error) => toast.pushError(error, 'The database could not be created') },
-          )
-        }
-      >
-        Turn into a database
-      </button>
-    </div>
-  );
-}
-
-function Backlinks({ pageId, enabled }: { pageId: string; enabled: boolean }) {
-  const backlinks = useBacklinks(enabled ? pageId : undefined);
-
-  if (!enabled) return null;
   if (backlinks.isLoading) return <p className="empty-note">Loading…</p>;
   if (backlinks.isError) return <p className="empty-note">Backlinks are unavailable.</p>;
 

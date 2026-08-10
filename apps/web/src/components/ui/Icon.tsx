@@ -152,6 +152,13 @@ export const Check = (props: IconProps) => (
   </Svg>
 );
 
+export const Table = (props: IconProps) => (
+  <Svg {...props}>
+    <rect x="2.5" y="3" width="11" height="10" rx="1.5" />
+    <path d="M2.5 6.5h11M6.5 6.5V13" />
+  </Svg>
+);
+
 export const Branch = (props: IconProps) => (
   <Svg {...props}>
     <circle cx="4.5" cy="3.5" r="1.6" />

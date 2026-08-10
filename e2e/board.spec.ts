@@ -1,6 +1,7 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from './fixtures';
 import type { ContentRepo } from './helpers/content';
+import { pageMenu } from './menus';
 
 /**
  * The file of one row. Every row is born "Untitled", and a rename never moves a file, so the
@@ -35,7 +36,7 @@ function card(page: Page, title: string): Locator {
 
 /** Turn the open page into a database and wait for the grid. */
 async function turnIntoDatabase(page: Page): Promise<void> {
-  await page.getByRole('button', { name: 'Turn into a database' }).click();
+  await pageMenu(page, 'Turn into a database');
   await expect(page.getByTestId('db-table')).toBeVisible();
 }
 

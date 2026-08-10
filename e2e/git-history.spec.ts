@@ -1,5 +1,6 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect, test, type ApiClient, type ContentRepo } from './fixtures';
+import { pageMenu } from './menus';
 
 /** The three states the seeded page walks through, one commit each. */
 const FIRST = 'Version one.';
@@ -60,13 +61,13 @@ async function commitEdit(
 }
 
 /**
- * The history list of the details panel. Backlinks are collapsed first, so the history
- * entries are the only list items left in the panel.
+ * The history list of the details rail. The page menu is what brings the rail out, and only
+ * the history is asked for, so its entries are the only list items in the rail.
  */
 async function openHistory(page: Page): Promise<Locator> {
+  await pageMenu(page, 'History');
   const details = page.getByRole('complementary', { name: 'Page details' });
-  await details.getByRole('button', { name: 'Backlinks' }).click();
-  await details.getByRole('button', { name: 'History' }).click();
+  await expect(details).toBeVisible();
   return details.getByRole('listitem');
 }
 

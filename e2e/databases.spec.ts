@@ -1,5 +1,6 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from './fixtures';
+import { pageMenu } from './menus';
 
 /** The database on the open page: its tools and its grid. */
 function db(page: Page): Locator {
@@ -30,7 +31,7 @@ async function titles(page: Page): Promise<string[]> {
 
 /** Turn the open page into a database and wait for the grid. */
 async function turnIntoDatabase(page: Page): Promise<void> {
-  await page.getByRole('button', { name: 'Turn into a database' }).click();
+  await pageMenu(page, 'Turn into a database');
   await expect(grid(page)).toBeVisible();
 }
 
@@ -102,11 +103,14 @@ test.describe('databases', () => {
     await turnIntoDatabase(page);
     await addRow(page, 'Ship it');
 
-    await (await rowOf(page, 'Ship it')).getByLabel('Status').click();
+    // The button of the cell, not the row and not the label: the option list sits inside the
+    // row too, and it carries both the name "Status" and the name of the new option.
+    const cell = (await rowOf(page, 'Ship it')).getByRole('button', { name: 'Status', exact: true });
+    await cell.click();
     await page.getByLabel('Search Status options').fill('Doing');
     await page.getByRole('menuitem', { name: /Create/ }).click();
 
-    await expect((await rowOf(page, 'Ship it')).getByText('Doing')).toBeVisible();
+    await expect(cell).toContainText('Doing');
 
     const file = await content.waitForPageFile(path);
     await expect.poll(async () => (await content.read(file)) ?? '').toContain('name: Doing');
@@ -202,7 +206,7 @@ test.describe('databases', () => {
     await addRow(page, 'Ship it');
     const rowFile = await content.waitForPageFile(`${path}/untitled`);
 
-    await page.getByRole('button', { name: 'Remove the database' }).click();
+    await pageMenu(page, 'Remove the database');
     await expect(grid(page)).toHaveCount(0);
 
     await expect

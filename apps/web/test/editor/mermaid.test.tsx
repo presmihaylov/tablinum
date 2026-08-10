@@ -267,6 +267,22 @@ describe('the diagram node view', () => {
     expect(figure().className).toContain('is-stale');
   });
 
+  it('takes the error down again as soon as the next key lands', async () => {
+    const editor = await mountEditor({ content: PAGE });
+    await waitFor(() => expect(drawing()).not.toBeNull(), SLOW);
+    mermaid.render.mockRejectedValue(new Error('Parse error on line 2:'));
+    await settle(() => {
+      editor.commands.setTextSelection(fencePos(editor) + 1);
+      typeText(editor, '{');
+    });
+    await waitFor(() => expect(errorLine()).not.toBeNull(), SLOW);
+
+    // The person is still writing, so the line must not name a mistake in unfinished text.
+    await settle(() => typeText(editor, 'x'));
+
+    expect(errorLine()).toBeNull();
+  });
+
   it('clears the error once the source parses again', async () => {
     const editor = await mountEditor({ content: PAGE });
     await waitFor(() => expect(drawing()).not.toBeNull(), SLOW);

@@ -384,6 +384,41 @@ describe('GitEngine auto pull', () => {
     expect(await readFileIn(dir, 'eng/index.md')).not.toContain('never arrives');
   });
 
+  it('sits out a round while a page is still being written', async () => {
+    const { remote, peer } = await seededRemote();
+    const dir = await tempDir();
+    const engine = makeEngine({
+      contentDir: dir,
+      remote,
+      branch: 'main',
+      autopullMs: 25,
+      autocommitMs: 60000,
+    });
+    await engine.init();
+
+    // A write nobody has finished. A pull now would commit it half-typed to clean the tree.
+    await writeFileIn(dir, 'eng/draft.md', page('pg_9', 'Draft', 'half a sentence'));
+    engine.scheduleCommit();
+
+    await peerPush(peer, 'waits for the quiet', 'docs: peer edit');
+    expect(engine.startAutoPull()).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 120));
+
+    expect(await readFileIn(dir, 'eng/index.md')).not.toContain('waits for the quiet');
+    expect(await gitLines(dir, 'log', '--format=%s', 'HEAD')).not.toContain(
+      'docs: save local edits before pull',
+    );
+
+    // The writer stops. The next round pulls, with their edit already one commit of its own.
+    await engine.flushPendingCommit();
+    await waitFor(
+      async () => (await readFileIn(dir, 'eng/index.md')).includes('waits for the quiet'),
+      'the pull once the writing stopped',
+    );
+    engine.stop();
+    await engine.whenIdle();
+  });
+
   it('logs a failing pull instead of throwing', async () => {
     const dir = await tempDir();
     const missing = join(await tempDir(), 'missing-remote.git');

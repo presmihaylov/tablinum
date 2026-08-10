@@ -170,7 +170,10 @@ export interface Config {
   gitBranch: string;
   gitAuthorName: string;
   gitAuthorEmail: string;
+  /** Quiet period after the last write before the edits are committed. */
   autocommitMs: number;
+  /** Cap on how long writes wait, so a page nobody stops editing still reaches git. */
+  commitMaxHoldMs: number;
   autopullMs: number;
   /** Quiet period after a commit before the branch is pushed. 0 disables the auto push. */
   autopushMs: number;

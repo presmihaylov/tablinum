@@ -186,6 +186,43 @@ describe('GitEngine.scheduleCommit', () => {
     expect(await commitCount(dir)).toBe(before);
   });
 
+  it('keeps waiting while the writes keep coming, then commits once they stop', async () => {
+    const dir = await tempDir();
+    const engine = makeEngine({ contentDir: dir, autocommitMs: 120, commitMaxHoldMs: 60000 });
+    await engine.init();
+    const before = await commitCount(dir);
+
+    // Six writes, each well inside the quiet window. None of them may reach git.
+    for (let i = 0; i < 6; i += 1) {
+      await writeFileIn(dir, 'eng/live.md', page('pg_1', 'Live', `draft ${i}`));
+      engine.scheduleCommit();
+      expect(engine.busy()).toBe(true);
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    }
+    expect(await commitCount(dir)).toBe(before);
+
+    await waitFor(async () => (await commitCount(dir)) === before + 1, 'the commit after the quiet');
+    await engine.whenIdle();
+    expect(engine.busy()).toBe(false);
+  });
+
+  it('commits anyway once the hold cap passes, however busy the page stays', async () => {
+    const dir = await tempDir();
+    const engine = makeEngine({ contentDir: dir, autocommitMs: 60000, commitMaxHoldMs: 60 });
+    await engine.init();
+    const before = await commitCount(dir);
+
+    await writeFileIn(dir, 'eng/busy.md', page('pg_1', 'Busy', 'first'));
+    engine.scheduleCommit();
+    // A second write inside the cap must not push the commit out past it.
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    await writeFileIn(dir, 'eng/busy.md', page('pg_1', 'Busy', 'second'));
+    engine.scheduleCommit();
+
+    await waitFor(async () => (await commitCount(dir)) === before + 1, 'the capped commit');
+    await engine.whenIdle();
+  });
+
   it('close commits whatever was still pending', async () => {
     const dir = await tempDir();
     const engine = makeEngine({ contentDir: dir, autocommitMs: 60000 });

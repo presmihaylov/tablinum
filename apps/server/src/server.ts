@@ -275,6 +275,7 @@ function openRealWorkspace(config: Config): (record: WorkspaceRecord) => Promise
       authorName: config.gitAuthorName,
       authorEmail: config.gitAuthorEmail,
       autocommitMs: config.autocommitMs,
+      commitMaxHoldMs: config.commitMaxHoldMs,
     });
     // Named after the directory, not after the slug: a rename must not orphan the index.
     const search = new CoreSearchIndex({ dbPath: `${record.dir}.search.db` });

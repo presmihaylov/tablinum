@@ -10,6 +10,7 @@ export type {
   CreateAgentInput,
   CreateCustomEmojiInput,
   CreateInviteInput,
+  CreateThreadInput,
   CreateUserInput,
   CreateWorkspaceInput,
   CustomEmojiActor,

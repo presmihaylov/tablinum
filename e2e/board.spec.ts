@@ -1,0 +1,277 @@
+import type { Locator, Page } from '@playwright/test';
+import { expect, test } from './fixtures';
+import type { ContentRepo } from './helpers/content';
+
+/**
+ * The file of one row. Every row is born "Untitled", and a rename never moves a file, so the
+ * name on disk says nothing about the title: the file is found by the title it holds.
+ */
+async function rowFile(content: ContentRepo, dir: string, title: string): Promise<string> {
+  for (const file of await content.list(dir)) {
+    const text = await content.read(file);
+    if (text?.includes(`title: ${title}`) === true) return file;
+  }
+  throw new Error(`No row file holding ${title}`);
+}
+
+/** The database on the open page: its tools and its body. */
+function db(page: Page): Locator {
+  return page.getByRole('region', { name: 'Database' });
+}
+
+function board(page: Page): Locator {
+  return page.getByTestId('db-board');
+}
+
+/** One stack of the board, by the name in its header. */
+function column(page: Page, name: string): Locator {
+  return board(page).locator('.db-board__col', { has: page.getByText(name, { exact: true }) });
+}
+
+/** The card of one row. */
+function card(page: Page, title: string): Locator {
+  return board(page).locator('.db-card').filter({ hasText: title });
+}
+
+/** Turn the open page into a database and wait for the grid. */
+async function turnIntoDatabase(page: Page): Promise<void> {
+  await page.getByRole('button', { name: 'Turn into a database' }).click();
+  await expect(page.getByTestId('db-table')).toBeVisible();
+}
+
+/** Add a row from the table and wait for it to arrive under the title it was given. */
+async function addRow(page: Page, title: string): Promise<void> {
+  const titles = page.getByTestId('db-table').getByLabel('Row title');
+  const before = await titles.count();
+  await db(page).getByRole('button', { name: 'New', exact: true }).first().click();
+  await expect(titles).toHaveCount(before + 1);
+
+  const untitled = titles.nth(before);
+  await untitled.fill(title);
+  await untitled.press('Enter');
+  await expect(untitled).toHaveValue(title);
+}
+
+/** Add an option to the Status column through the cell of one row. */
+async function addStatus(page: Page, rowIndex: number, name: string): Promise<void> {
+  const row = page.getByTestId('db-table').locator('tbody tr').nth(rowIndex);
+  await row.getByLabel('Status').click();
+  await page.getByLabel('Search Status options').fill(name);
+  await page.getByRole('menuitem', { name: /Create/ }).click();
+  await expect(row.getByText(name)).toBeVisible();
+}
+
+/** Switch the open view to a board. */
+async function turnIntoBoard(page: Page): Promise<void> {
+  await page.getByRole('tab', { selected: true }).click();
+  await page.getByLabel('View layout').selectOption('board');
+  await expect(board(page)).toBeVisible();
+  // The view menu stays open, and the next click on the tab would only close it again.
+  await page.keyboard.press('Escape');
+  await expect(page.getByLabel('View layout')).toHaveCount(0);
+}
+
+/**
+ * Drag one element onto another. `dragTo` moves the mouse once, and Chromium needs several
+ * moves before it raises a native drag at all.
+ */
+async function drag(from: Locator, to: Locator): Promise<void> {
+  const page = from.page();
+  const start = await from.boundingBox();
+  const end = await to.boundingBox();
+  if (start === null || end === null) throw new Error('A dragged element has no box');
+
+  await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2);
+  await page.mouse.down();
+  const target = { x: end.x + end.width / 2, y: end.y + end.height / 2 };
+  for (let step = 1; step <= 6; step += 1) {
+    const ratio = step / 6;
+    await page.mouse.move(
+      start.x + start.width / 2 + (target.x - start.x - start.width / 2) * ratio,
+      start.y + start.height / 2 + (target.y - start.y - start.height / 2) * ratio,
+    );
+  }
+  await page.mouse.up();
+}
+
+test.describe('kanban boards', () => {
+  let slug = '';
+  let path = '';
+
+  test.beforeEach(async ({ api }) => {
+    slug = (await api.createUniqueSpace('kb')).slug;
+    path = `${slug}/tasks`;
+    await api.createPage({ path, title: 'Tasks', markdown: 'The plan lives below.\n' });
+  });
+
+  test('turns a table view into a board and writes the layout to the page file', async ({
+    page,
+    content,
+  }) => {
+    await page.goto(`/p/${path}`);
+    await turnIntoDatabase(page);
+    await turnIntoBoard(page);
+
+    const file = await content.waitForPageFile(path);
+    await expect.poll(async () => (await content.read(file)) ?? '').toContain('type: board');
+    expect((await content.read(file)) ?? '').toContain('groupBy: pr_');
+  });
+
+  test('stacks the cards by the option each row holds', async ({ page }) => {
+    await page.goto(`/p/${path}`);
+    await turnIntoDatabase(page);
+    await addRow(page, 'Ship it');
+    await addRow(page, 'Write it');
+    await addStatus(page, 0, 'Doing');
+    await turnIntoBoard(page);
+
+    await expect(column(page, 'Doing').locator('.db-card')).toHaveCount(1);
+    await expect(column(page, 'Doing')).toContainText('Ship it');
+    await expect(column(page, 'No Status')).toContainText('Write it');
+  });
+
+  test('moves a card to another stack by dragging it', async ({ page, content }) => {
+    await page.goto(`/p/${path}`);
+    await turnIntoDatabase(page);
+    await addRow(page, 'Ship it');
+    await addStatus(page, 0, 'Doing');
+    await addRow(page, 'Write it');
+    await turnIntoBoard(page);
+
+    await drag(card(page, 'Write it'), column(page, 'Doing'));
+
+    await expect(column(page, 'Doing').locator('.db-card')).toHaveCount(2);
+    await expect(column(page, 'No Status').locator('.db-card')).toHaveCount(0);
+
+    await expect
+      .poll(async () => content.read(await rowFile(content, path, 'Write it')), {
+        message: 'the move never reached the row file',
+      })
+      .toContain('props:');
+  });
+
+  test('moves a card from its own menu', async ({ page }) => {
+    await page.goto(`/p/${path}`);
+    await turnIntoDatabase(page);
+    await addRow(page, 'Ship it');
+    await addStatus(page, 0, 'Doing');
+    await addRow(page, 'Write it');
+    await turnIntoBoard(page);
+
+    await card(page, 'Write it').getByLabel('Card menu for Write it').click();
+    await page.getByRole('menuitem', { name: 'Doing' }).click();
+
+    await expect(column(page, 'Doing')).toContainText('Write it');
+  });
+
+  test('sends a card back to the stack that holds no option', async ({ page }) => {
+    await page.goto(`/p/${path}`);
+    await turnIntoDatabase(page);
+    await addRow(page, 'Ship it');
+    await addStatus(page, 0, 'Doing');
+    await turnIntoBoard(page);
+
+    await card(page, 'Ship it').getByLabel('Card menu for Ship it').click();
+    await page.getByRole('menuitem', { name: 'No Status' }).click();
+
+    await expect(column(page, 'No Status')).toContainText('Ship it');
+    await expect(column(page, 'Doing').locator('.db-card')).toHaveCount(0);
+  });
+
+  test('creates a card that already holds the option of its stack', async ({ page, content }) => {
+    await page.goto(`/p/${path}`);
+    await turnIntoDatabase(page);
+    await addRow(page, 'Ship it');
+    await addStatus(page, 0, 'Doing');
+    await turnIntoBoard(page);
+
+    await column(page, 'Doing').getByRole('button', { name: 'New card in Doing' }).click();
+
+    await expect(column(page, 'Doing').locator('.db-card')).toHaveCount(2);
+    await expect
+      .poll(async () => content.read(await rowFile(content, path, 'Untitled')))
+      .toContain('props:');
+  });
+
+  test('opens the page a card lives on', async ({ page }) => {
+    await page.goto(`/p/${path}`);
+    await turnIntoDatabase(page);
+    await addRow(page, 'Ship it');
+    await turnIntoBoard(page);
+
+    await card(page, 'Ship it').getByRole('link', { name: 'Ship it' }).click();
+
+    await expect(page).toHaveURL(`/p/${path}/untitled`);
+    await expect(page.getByLabel('Page title')).toHaveValue('Ship it');
+  });
+
+  test('deletes a row from the card menu', async ({ page, content }) => {
+    await page.goto(`/p/${path}`);
+    await turnIntoDatabase(page);
+    await addRow(page, 'Ship it');
+    await content.waitForPageFile(`${path}/untitled`);
+    await turnIntoBoard(page);
+
+    await card(page, 'Ship it').getByLabel('Card menu for Ship it').click();
+    await page.getByRole('menuitem', { name: 'Delete row' }).click();
+
+    await expect(board(page).locator('.db-card')).toHaveCount(0);
+    await content.waitForFileGone(`${path}/untitled.md`);
+  });
+
+  test('keeps a table view beside the board', async ({ page }) => {
+    await page.goto(`/p/${path}`);
+    await turnIntoDatabase(page);
+    await addRow(page, 'Ship it');
+
+    await page.getByLabel('Add a view').click();
+    await page.getByRole('menuitem', { name: 'Board' }).click();
+    await expect(board(page)).toBeVisible();
+
+    await page.getByRole('tab', { name: 'Table' }).click();
+    await expect(page.getByTestId('db-table')).toBeVisible();
+    await expect(board(page)).toHaveCount(0);
+  });
+
+  test('renames the board and keeps the name over a reload', async ({ page }) => {
+    await page.goto(`/p/${path}`);
+    await turnIntoDatabase(page);
+    await turnIntoBoard(page);
+
+    await page.getByRole('tab', { selected: true }).click();
+    await page.getByLabel('View name').fill('Pipeline');
+    await page.getByLabel('View name').press('Enter');
+
+    await expect(page.getByRole('tab', { name: 'Pipeline' })).toBeVisible();
+    await page.reload();
+    await expect(page.getByRole('tab', { name: 'Pipeline' })).toBeVisible();
+  });
+
+  test('survives a reload with its stacks and its cards intact', async ({ page }) => {
+    await page.goto(`/p/${path}`);
+    await turnIntoDatabase(page);
+    await addRow(page, 'Ship it');
+    await addStatus(page, 0, 'Doing');
+    await turnIntoBoard(page);
+
+    await page.reload();
+
+    await expect(board(page)).toBeVisible();
+    await expect(column(page, 'Doing')).toContainText('Ship it');
+  });
+
+  test('asks for a select column when the database has none', async ({ page }) => {
+    await page.goto(`/p/${path}`);
+    await turnIntoDatabase(page);
+
+    const table = page.getByTestId('db-table');
+    await table.getByRole('button', { name: /^Status/ }).click();
+    await page.getByRole('menuitem', { name: 'Delete property' }).click();
+    await expect(table.getByRole('button', { name: /^Status/ })).toHaveCount(0);
+
+    await page.getByRole('tab', { selected: true }).click();
+    await page.getByLabel('View layout').selectOption('board');
+
+    await expect(db(page).getByText(/A board stacks its cards by a select column/)).toBeVisible();
+  });
+});

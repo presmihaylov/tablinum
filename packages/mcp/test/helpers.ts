@@ -1,6 +1,8 @@
 import {
   contentRev,
   newPageId,
+  type Account,
+  type CommentThread,
   type GitStatus,
   type Page,
   type PageSummary,
@@ -189,6 +191,47 @@ export function makeRevision(overrides: Partial<Revision> = {}): Revision {
     email: 'ana@example.com',
     date: '2026-08-08T10:00:00.000Z',
     message: 'Update the deploy runbook',
+    ...overrides,
+  };
+}
+
+export function makeAccount(overrides: Partial<Account> = {}): Account {
+  return {
+    id: 'us_01J8XYZABCDEFGHJKMNPQRSTVW',
+    email: 'ana@example.com',
+    name: 'Ana Ruiz',
+    handle: 'ana.ruiz',
+    role: 'member',
+    color: '#3b82f6',
+    avatarRev: null,
+    disabled: false,
+    created: '2026-08-01T09:00:00.000Z',
+    updated: '2026-08-01T09:00:00.000Z',
+    ...overrides,
+  };
+}
+
+export function makeThread(overrides: Partial<CommentThread> = {}): CommentThread {
+  const id = overrides.id ?? 'ct_01J8XYZABCDEFGHJKMNPQRSTVW';
+  return {
+    id,
+    pageId: newPageId(),
+    anchor: { quote: 'the deploy runbook', prefix: 'The ', suffix: ' body.', start: 4 },
+    resolved: false,
+    resolvedBy: null,
+    resolvedAt: null,
+    created: '2026-08-08T10:00:00.000Z',
+    updated: '2026-08-08T10:00:00.000Z',
+    comments: [
+      {
+        id: 'cm_01J8XYZABCDEFGHJKMNPQRSTVW',
+        threadId: id,
+        author: 'us_01J8XYZABCDEFGHJKMNPQRSTVW',
+        body: 'Is this still the right order?',
+        created: '2026-08-08T10:00:00.000Z',
+        updated: '2026-08-08T10:00:00.000Z',
+      },
+    ],
     ...overrides,
   };
 }

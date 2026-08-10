@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  formatComments,
   formatGitStatus,
   formatHistory,
   formatPage,
@@ -15,6 +16,7 @@ import {
   makeSpaceTree,
   makeStatus,
   makeSummary,
+  makeThread,
 } from './helpers.js';
 
 describe('formatTreeOutline', () => {
@@ -93,6 +95,54 @@ describe('formatPage', () => {
     const line = formatPageLine(page);
     expect(line).toContain(`path=${page.path}`);
     expect(line).toContain('order=3');
+  });
+});
+
+describe('formatComments', () => {
+  const nameOf = (id: string): string => (id === 'us_01J8XYZABCDEFGHJKMNPQRSTVW' ? 'Ana Ruiz' : id);
+
+  it('shows the quoted text, the state and every remark', () => {
+    const page = makePage({ markdown: 'The deploy runbook body.\n' });
+    const text = formatComments([makeThread()], page, nameOf);
+
+    expect(text).toContain('1 comment thread on eng/deploy');
+    expect(text).toContain('[open] thread ct_01J8XYZABCDEFGHJKMNPQRSTVW');
+    expect(text).toContain('about: "the deploy runbook"');
+    expect(text).toContain('Ana Ruiz  2026-08-08T10:00:00.000Z');
+    expect(text).toContain('    Is this still the right order?');
+    expect(text).toContain('Comments are not part of the page.');
+  });
+
+  it('marks a quote the page no longer holds, and never guesses a new place for it', () => {
+    const page = makePage({ markdown: 'The rollout notes body.\n' });
+    const text = formatComments([makeThread()], page, nameOf);
+
+    expect(text).toContain('(this text is no longer in the page)');
+  });
+
+  it('names a resolved thread and an edited remark', () => {
+    const thread = makeThread({
+      resolved: true,
+      resolvedBy: 'us_01J8XYZABCDEFGHJKMNPQRSTVW',
+      resolvedAt: '2026-08-09T10:00:00.000Z',
+    });
+    const first = thread.comments[0];
+    if (first === undefined) throw new Error('the fixture lost its comment');
+    const edited = { ...thread, comments: [{ ...first, updated: '2026-08-09T09:00:00.000Z' }] };
+
+    const text = formatComments([edited], makePage(), nameOf);
+
+    expect(text).toContain('[resolved] thread');
+    expect(text).toContain('(edited)');
+  });
+
+  it('falls back to the user id when the roster does not know the author', () => {
+    const text = formatComments([makeThread()], makePage(), (id) => id);
+    expect(text).toContain('us_01J8XYZABCDEFGHJKMNPQRSTVW');
+  });
+
+  it('explains an empty conversation', () => {
+    expect(formatComments([], makePage(), nameOf)).toContain('Nobody has commented on eng/deploy yet.');
   });
 });
 

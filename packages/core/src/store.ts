@@ -2,6 +2,7 @@ import { promises as fsp } from 'node:fs';
 import path from 'node:path';
 import {
   CreatePageBodySchema,
+  DatabaseSchema,
   INDEX_BASENAME,
   PAGE_EXT,
   NewSpaceSlugSchema,
@@ -13,11 +14,14 @@ import {
   assetRelPath,
   assetUrl,
   baseName,
+  coerceProps,
+  coerceValue,
   conflict,
   contentRev,
   depth,
   isDescendantOf,
   isPageId,
+  mergeText,
   newPageId,
   notFound,
   pagePathToRelFile,
@@ -25,15 +29,19 @@ import {
   parseOrThrow,
   saveConflict,
   segments,
+  slugify,
   spaceFileRelPath,
   spaceOf,
   validation,
   type Backlink,
+  type Database,
+  type DbRow,
   type Frontmatter,
   type Page,
   type PageId,
   type PagePath,
   type PageSummary,
+  type RowProps,
   type Space,
   type TreeNode,
   type UpdateSpaceBody,
@@ -65,6 +73,7 @@ import { IndexMap, type IndexedPage } from './index-map.js';
 import { buildBacklinkIndex, createPageResolver, resolveWikilinks, type LinkedPage } from './links.js';
 import { consoleLogger, type Logger } from './logger.js';
 import { Mutex } from './mutex.js';
+import { RevHistory } from './rev-history.js';
 import { listSpaceSlugs } from './scan.js';
 import { parseSpaceFile, serializeSpaceFile } from './space-file.js';
 
@@ -130,6 +139,21 @@ interface NewPageFields {
   icon?: string;
   order?: number;
 }
+
+export interface CreateRowInput {
+  title?: string;
+  props?: Record<string, unknown>;
+}
+
+export interface UpdateRowInput {
+  props?: Record<string, unknown>;
+  title?: string;
+}
+
+const UNTITLED_ROW = 'Untitled';
+
+/** How many `-2`, `-3` suffixes a duplicate row title is given before the id is used instead. */
+const MAX_SLUG_ATTEMPTS = 50;
 
 /** Overrides for the home page a new space is created with. */
 interface SpaceHome {
@@ -231,6 +255,7 @@ export class ContentStore {
   // Fastify serves requests concurrently and every write below is a chain of awaits, so two
   // requests would otherwise interleave between the "is this free" check and the write.
   readonly #writes = new Mutex();
+  readonly #history = new RevHistory();
 
   constructor(options: ContentStoreOptions) {
     const dir = options.contentDir;
@@ -454,11 +479,17 @@ export class ContentStore {
 
   async #readPage(record: IndexedPage): Promise<Page> {
     const parsed = await this.#readParsed(record);
-    return {
+    const rev = contentRev(parsed.body);
+    // Every rev a caller can hold came through here, so this is where the merge base is learnt.
+    this.#history.record(record.id, rev, parsed.body);
+    const page: Page = {
       ...toSummary({ ...record, frontmatter: parsed.frontmatter }),
       markdown: parsed.body,
-      rev: contentRev(parsed.body),
+      rev,
     };
+    if (parsed.frontmatter.db !== undefined) page.database = parsed.frontmatter.db;
+    if (parsed.frontmatter.props !== undefined) page.props = parsed.frontmatter.props;
+    return page;
   }
 
   async #pageById(id: PageId): Promise<Page> {
@@ -593,7 +624,7 @@ export class ContentStore {
     const record = this.#index.byId(id);
     if (record === undefined) throw notFound(`No page with id ${id}`);
     const current = await this.#readParsed(record);
-    this.#assertBaseRev(body, current);
+    const reconciled = this.#reconcileBody(id, body, current);
 
     const next: Frontmatter = { ...current.frontmatter };
     if (body.title !== undefined) next.title = body.title;
@@ -606,7 +637,7 @@ export class ContentStore {
     if (body.order === null) delete next.order;
     if (typeof body.order === 'number') next.order = body.order;
 
-    const nextBody = body.markdown === undefined ? current.body : normalizeBody(body.markdown);
+    const nextBody = reconciled ?? current.body;
     const wantsMove = body.path !== undefined && body.path !== record.path;
     const fieldsChanged = !frontmatterEqual(current.frontmatter, next);
     const changed = fieldsChanged || nextBody !== current.body || wantsMove;
@@ -620,17 +651,39 @@ export class ContentStore {
       await writeText(filePath, content);
     }
     await this.#index.rebuild();
-    return this.#pageById(id);
+    const saved = await this.#pageById(id);
+    this.#history.record(id, saved.rev, saved.markdown);
+    return saved;
   }
 
   /**
-   * Reject a body edit written against a stale copy. The caller gets the current text back so
-   * it can merge and retry. Edits that do not touch the body never conflict.
+   * Settle a body edit against whatever is on disk now. Returns the text to write, or null when
+   * the edit does not touch the body.
+   *
+   * A stale `baseRev` used to be refused outright. That is what made ten people typing into a
+   * storm of 409s: every writer but one was rejected on every keystroke, and the retry produced
+   * another write, which stole the next writer's base in turn. When the server still holds the
+   * text that `baseRev` named it can merge the two edits itself, which is what the browser was
+   * being asked to do anyway. Only a genuine overlap is refused.
    */
-  #assertBaseRev(body: UpdatePageInput, current: ParsedFile): void {
-    if (body.baseRev === undefined || body.markdown === undefined) return;
+  #reconcileBody(id: PageId, body: UpdatePageInput, current: ParsedFile): string | null {
+    if (body.markdown === undefined) return null;
+    const incoming = normalizeBody(body.markdown);
+    if (body.baseRev === undefined) return incoming;
+
     const rev = contentRev(current.body);
-    if (body.baseRev === rev) return;
+    // Remember the state we are about to compare against, and the one a refusal hands back.
+    // Without this a client that retries on the rev from its own 409 can never be merged, so
+    // the retry conflicts again, which is the loop that produced the storm.
+    this.#history.record(id, rev, current.body);
+    if (body.baseRev === rev) return incoming;
+
+    const base = this.#history.find(id, body.baseRev);
+    if (base !== null) {
+      const merged = mergeText(base, incoming, current.body);
+      if (merged.clean) return normalizeBody(merged.text);
+    }
+
     throw saveConflict('The page changed since this edit started', {
       markdown: current.body,
       rev,
@@ -703,6 +756,163 @@ export class ContentStore {
     await this.#demoteIfEmpty(parentPath(record.path));
     await this.#index.rebuild();
     return targets.map((target) => target.path).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  }
+
+  // -------------------------------------------------------------------------
+  // databases
+  //
+  // A database is a page whose frontmatter carries a `db` block, and every row is one of its
+  // child pages. Nothing else holds the data, so a row keeps its history, its comments and its
+  // body, and a database survives being cloned and edited by hand.
+  // -------------------------------------------------------------------------
+
+  /** The schema and the rows of a database page. */
+  async getDatabase(id: PageId): Promise<{ page: Page; database: Database; rows: DbRow[] }> {
+    await this.#index.ensureBuilt();
+    const record = this.#index.byId(id);
+    if (record === undefined) throw notFound(`No page with id ${id}`);
+    const page = await this.#readPage(record);
+    const database = page.database;
+    if (database === undefined) throw validation(`Page ${record.path} is not a database`);
+    return { page, database, rows: await this.#rowsOf(record.path, database) };
+  }
+
+  async #rowsOf(pagePath: PagePath, database: Database): Promise<DbRow[]> {
+    const children = this.#index.childrenOf(pagePath);
+    const rows: DbRow[] = [];
+    for (const child of children) {
+      const parsed = await this.#readParsed(child);
+      const row: DbRow = {
+        id: child.id,
+        path: child.path,
+        title: parsed.frontmatter.title,
+        created: parsed.frontmatter.created,
+        updated: parsed.frontmatter.updated,
+        props: coerceProps(database.properties, parsed.frontmatter.props ?? {}),
+      };
+      if (parsed.frontmatter.icon !== undefined) row.icon = parsed.frontmatter.icon;
+      rows.push(row);
+    }
+    // Oldest first, which is the order rows were added. A view's sort replaces it.
+    rows.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    return rows;
+  }
+
+  /** Give the page a `db` block, or replace the one it has. */
+  async setDatabase(id: PageId, database: Database): Promise<Page> {
+    return this.#writes.runExclusive(() => this.#writeFrontmatter(id, (next) => {
+      next.db = parseOrThrow(DatabaseSchema, database, 'database');
+    }));
+  }
+
+  /** Take the `db` block away. The rows stay: they are ordinary pages and always were. */
+  async removeDatabase(id: PageId): Promise<Page> {
+    return this.#writes.runExclusive(() => this.#writeFrontmatter(id, (next) => {
+      delete next.db;
+    }));
+  }
+
+  /** Add a row: a child page of the database, carrying the cells it was created with. */
+  async createRow(id: PageId, input: CreateRowInput = {}): Promise<DbRow> {
+    return this.#writes.runExclusive(async () => {
+      await this.#index.ensureBuilt();
+      const record = this.#index.byId(id);
+      if (record === undefined) throw notFound(`No page with id ${id}`);
+      const parsed = await this.#readParsed(record);
+      const database = parsed.frontmatter.db;
+      if (database === undefined) throw validation(`Page ${record.path} is not a database`);
+
+      const title = (input.title ?? '').trim().length > 0 ? (input.title as string).trim() : UNTITLED_ROW;
+      const target = await this.#freeChildPath(record.path, title);
+      const props = coerceProps(database.properties, input.props ?? {});
+      const created = await this.#createPageUnlocked({ path: target, title });
+
+      if (Object.keys(props).length === 0) return this.#rowOf(created.id, database);
+      await this.#writeFrontmatter(created.id, (next) => {
+        next.props = props;
+      });
+      return this.#rowOf(created.id, database);
+    });
+  }
+
+  /** Change a row's cells, its title, or both. An absent cell keeps its value; null clears it. */
+  async updateRow(id: PageId, patch: UpdateRowInput): Promise<DbRow> {
+    return this.#writes.runExclusive(async () => {
+      await this.#index.ensureBuilt();
+      const record = this.#index.byId(id);
+      if (record === undefined) throw notFound(`No page with id ${id}`);
+      const parent = parentPath(record.path);
+      const parentRecord = parent === null ? undefined : this.#index.byPath(parent);
+      if (parentRecord === undefined) throw validation(`Page ${record.path} is not a database row`);
+      const parentParsed = await this.#readParsed(parentRecord);
+      const database = parentParsed.frontmatter.db;
+      if (database === undefined) throw validation(`Page ${record.path} is not a database row`);
+
+      const known = new Map(database.properties.map((property) => [property.id, property]));
+      await this.#writeFrontmatter(id, (next) => {
+        const props: RowProps = { ...(next.props ?? {}) };
+        for (const [key, raw] of Object.entries(patch.props ?? {})) {
+          const property = known.get(key);
+          if (property === undefined) throw validation(`No property ${key} on this database`);
+          const value = coerceValue(property, raw);
+          if (value === null) delete props[key];
+          if (value !== null) props[key] = value;
+        }
+        if (Object.keys(props).length > 0) next.props = props;
+        if (Object.keys(props).length === 0) delete next.props;
+        if (patch.title !== undefined && patch.title.trim().length > 0) next.title = patch.title.trim();
+      });
+      return this.#rowOf(id, database);
+    });
+  }
+
+  async #rowOf(id: PageId, database: Database): Promise<DbRow> {
+    const record = this.#index.byId(id);
+    if (record === undefined) throw notFound(`No page with id ${id}`);
+    const parsed = await this.#readParsed(record);
+    const row: DbRow = {
+      id: record.id,
+      path: record.path,
+      title: parsed.frontmatter.title,
+      created: parsed.frontmatter.created,
+      updated: parsed.frontmatter.updated,
+      props: coerceProps(database.properties, parsed.frontmatter.props ?? {}),
+    };
+    if (parsed.frontmatter.icon !== undefined) row.icon = parsed.frontmatter.icon;
+    return row;
+  }
+
+  /** A child path under `parent` that nothing occupies yet. Two rows may share a title. */
+  async #freeChildPath(parent: PagePath, title: string): Promise<PagePath> {
+    const slug = slugify(title);
+    const base = slug.length > 0 ? slug : 'row';
+    for (let attempt = 0; attempt < MAX_SLUG_ATTEMPTS; attempt += 1) {
+      const suffix = attempt === 0 ? '' : `-${attempt + 1}`;
+      const candidate = assertValidPagePath(`${parent}/${base}${suffix}`);
+      if (!this.#index.has(candidate) && !(await this.#pageFileExists(candidate))) return candidate;
+    }
+    // Falling back to the id keeps "add a row" working however many rows share a title.
+    return assertValidPagePath(`${parent}/${base}-${newPageId().toLowerCase()}`);
+  }
+
+  /**
+   * Rewrite one page's frontmatter and nothing else. The body is passed through untouched, so
+   * an edit in the browser and a change to a row's cells never overwrite each other's work.
+   */
+  async #writeFrontmatter(id: PageId, edit: (next: Frontmatter) => void): Promise<Page> {
+    await this.#index.ensureBuilt();
+    const record = this.#index.byId(id);
+    if (record === undefined) throw notFound(`No page with id ${id}`);
+    const current = await this.#readParsed(record);
+
+    const next: Frontmatter = { ...current.frontmatter };
+    edit(next);
+    if (!frontmatterEqual(current.frontmatter, next)) next.updated = this.#nowIso();
+
+    const content = serializePreserving(current, next, current.body);
+    if (content !== current.raw) await writeText(record.filePath, content);
+    await this.#index.rebuild();
+    return this.#pageById(id);
   }
 
   // -------------------------------------------------------------------------

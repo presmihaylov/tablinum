@@ -16,11 +16,18 @@ import type {
   AuthStateResponse,
   AvatarResponse,
   BacklinksResponse,
+  CommentThreadResponse,
+  CommentThreadsResponse,
   ConnectSlackBody,
   CreatePageBody,
+  CreateRowBody,
   CreateSpaceBody,
+  CreateThreadBody,
   CustomEmojiListResponse,
   CustomEmojiResponse,
+  Database,
+  DatabaseResponse,
+  DeleteCommentResponse,
   DeletePageResponse,
   GitCommitBody,
   GitCommitResponse,
@@ -41,8 +48,10 @@ import type {
   PageListResponse,
   PagePath,
   PageResponse,
+  ReplyBody,
   RevisionContentResponse,
   RegisterBody,
+  RowResponse,
   SearchQuery,
   SearchResponse,
   SetupBody,
@@ -51,8 +60,10 @@ import type {
   SpacesResponse,
   TreeResponse,
   UpdateAgentBody,
+  UpdateCommentBody,
   UpdateMeBody,
   UpdatePageBody,
+  UpdateRowBody,
   UpdateSpaceBody,
   UpdateUserBody,
   UserResponse,
@@ -299,6 +310,206 @@ export function useLogin(): UseMutationResult<AuthResponse, ApiError, LoginBody>
 
 export function useLogout(): UseMutationResult<OkResponse, ApiError, void> {
   return useMutation({ mutationFn: () => api.logout() });
+}
+
+// ---------------------------------------------------------------------------
+// comments
+// ---------------------------------------------------------------------------
+
+/** Every thread on a page, resolved ones included: the panel decides what to show. */
+export function useCommentThreads(
+  id: PageId | undefined,
+): UseQueryResult<CommentThreadsResponse, ApiError> {
+  return useQuery({
+    queryKey: qk.comments(id ?? ''),
+    queryFn: ({ signal }) => {
+      if (!id) throw new ApiError(400, 'VALIDATION', 'Missing page id');
+      return api.comments(id, signal);
+    },
+    enabled: Boolean(id),
+  });
+}
+
+export interface CreateThreadVars {
+  pageId: PageId;
+  body: CreateThreadBody;
+}
+
+export function useCreateThread(): UseMutationResult<CommentThreadResponse, ApiError, CreateThreadVars> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ pageId, body }: CreateThreadVars) => api.createThread(pageId, body),
+    onSuccess: (_data, vars) => void client.invalidateQueries({ queryKey: qk.comments(vars.pageId) }),
+  });
+}
+
+export interface ReplyVars {
+  pageId: PageId;
+  threadId: string;
+  body: ReplyBody;
+}
+
+export function useReplyToThread(): UseMutationResult<CommentThreadResponse, ApiError, ReplyVars> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ threadId, body }: ReplyVars) => api.replyToThread(threadId, body),
+    onSuccess: (_data, vars) => void client.invalidateQueries({ queryKey: qk.comments(vars.pageId) }),
+  });
+}
+
+export interface ResolveThreadVars {
+  pageId: PageId;
+  threadId: string;
+  resolved: boolean;
+}
+
+export function useResolveThread(): UseMutationResult<CommentThreadResponse, ApiError, ResolveThreadVars> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ threadId, resolved }: ResolveThreadVars) =>
+      api.resolveThread(threadId, { resolved }),
+    onSuccess: (_data, vars) => void client.invalidateQueries({ queryKey: qk.comments(vars.pageId) }),
+  });
+}
+
+export interface UpdateCommentVars {
+  pageId: PageId;
+  commentId: string;
+  body: UpdateCommentBody;
+}
+
+export function useUpdateComment(): UseMutationResult<CommentThreadResponse, ApiError, UpdateCommentVars> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ commentId, body }: UpdateCommentVars) => api.updateComment(commentId, body),
+    onSuccess: (_data, vars) => void client.invalidateQueries({ queryKey: qk.comments(vars.pageId) }),
+  });
+}
+
+export interface DeleteCommentVars {
+  pageId: PageId;
+  commentId: string;
+}
+
+export function useDeleteComment(): UseMutationResult<DeleteCommentResponse, ApiError, DeleteCommentVars> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ commentId }: DeleteCommentVars) => api.deleteComment(commentId),
+    onSuccess: (_data, vars) => void client.invalidateQueries({ queryKey: qk.comments(vars.pageId) }),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// databases
+// ---------------------------------------------------------------------------
+
+/** The schema and every row of a database page. */
+export function useDatabase(id: PageId | undefined): UseQueryResult<DatabaseResponse, ApiError> {
+  return useQuery({
+    queryKey: qk.database(id ?? ''),
+    queryFn: ({ signal }) => {
+      if (!id) throw new ApiError(400, 'VALIDATION', 'Missing page id');
+      return api.getDatabase(id, signal);
+    },
+    enabled: Boolean(id),
+  });
+}
+
+export interface SetDatabaseVars {
+  pageId: PageId;
+  database?: Database;
+}
+
+export function useSetDatabase(): UseMutationResult<PageResponse, ApiError, SetDatabaseVars> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ pageId, database }: SetDatabaseVars) => api.setDatabase(pageId, database),
+    onSuccess: (data, vars) => {
+      // Seed the schema from the response so a renamed column does not flash its old name.
+      const saved = data.page.database;
+      const key = qk.database(vars.pageId);
+      const previous = client.getQueryData<DatabaseResponse>(key);
+      if (saved !== undefined && previous !== undefined) {
+        client.setQueryData<DatabaseResponse>(key, { ...previous, database: saved });
+      }
+      void client.invalidateQueries({ queryKey: key });
+      invalidateContent(client);
+    },
+  });
+}
+
+export function useRemoveDatabase(): UseMutationResult<PageResponse, ApiError, PageId> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (pageId: PageId) => api.removeDatabase(pageId),
+    onSuccess: (_data, pageId) => {
+      void client.invalidateQueries({ queryKey: qk.database(pageId) });
+      invalidateContent(client);
+    },
+  });
+}
+
+export interface CreateRowVars {
+  pageId: PageId;
+  body?: CreateRowBody;
+}
+
+export function useCreateRow(): UseMutationResult<RowResponse, ApiError, CreateRowVars> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ pageId, body }: CreateRowVars) => api.createRow(pageId, body ?? {}),
+    onSuccess: (_data, vars) => {
+      void client.invalidateQueries({ queryKey: qk.database(vars.pageId) });
+      invalidateContent(client);
+    },
+  });
+}
+
+export interface UpdateRowVars {
+  /** The database page the row belongs to, so the right cached view is patched. */
+  pageId: PageId;
+  rowId: PageId;
+  body: UpdateRowBody;
+}
+
+/**
+ * Cell edits are applied to the cache before the request lands: a table where every keystroke
+ * waits for a git commit feels broken.
+ */
+export function useUpdateRow(): UseMutationResult<RowResponse, ApiError, UpdateRowVars> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ rowId, body }: UpdateRowVars) => api.updateRow(rowId, body),
+    onMutate: async (vars) => {
+      const key = qk.database(vars.pageId);
+      await client.cancelQueries({ queryKey: key });
+      const previous = client.getQueryData<DatabaseResponse>(key);
+      if (previous !== undefined) {
+        client.setQueryData<DatabaseResponse>(key, {
+          ...previous,
+          rows: previous.rows.map((row) =>
+            row.id === vars.rowId
+              ? {
+                  ...row,
+                  title: vars.body.title ?? row.title,
+                  props: { ...row.props, ...vars.body.props },
+                }
+              : row,
+          ),
+        });
+      }
+      return { previous };
+    },
+    onError: (_err, vars, context) => {
+      if (context?.previous !== undefined) {
+        client.setQueryData(qk.database(vars.pageId), context.previous);
+      }
+    },
+    onSettled: (_data, _err, vars) => {
+      void client.invalidateQueries({ queryKey: qk.database(vars.pageId) });
+      invalidateContent(client);
+    },
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -646,8 +857,13 @@ export function useRemoveWorkspaceMember(): UseMutationResult<OkResponse, ApiErr
 export interface UploadAssetVars {
   file: File;
   pageId?: PageId;
+  /** Write over the attachment of the same name rather than taking a free one beside it. */
+  replace?: boolean;
 }
 
 export function useUploadAsset(): UseMutationResult<AssetResponse, ApiError, UploadAssetVars> {
-  return useMutation({ mutationFn: ({ file, pageId }: UploadAssetVars) => api.uploadAsset(file, pageId) });
+  return useMutation({
+    mutationFn: ({ file, pageId, replace }: UploadAssetVars) =>
+      api.uploadAsset(file, pageId, replace),
+  });
 }

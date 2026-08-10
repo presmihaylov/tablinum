@@ -5,6 +5,7 @@ import Suggestion from '@tiptap/suggestion';
 import { PluginKey } from '@tiptap/pm/state';
 import { SlashMenu } from '../ui/SlashMenu';
 import { createSuggestionRenderer } from '../ui/suggestionRenderer';
+import { MERMAID_LANGUAGE, MERMAID_STARTER } from '../mermaid';
 
 export interface SlashMenuOptions {
   /** Opens the file picker for the "Image" command. */
@@ -15,6 +16,8 @@ export interface SlashMenuOptions {
   onPickVideo: () => void;
   /** Opens the page picker for the "Page" command. */
   onPickPage: () => void;
+  /** Opens a blank drawing canvas for the "Diagram" command. */
+  onPickDiagram: () => void;
 }
 
 export interface SlashCommandItem {
@@ -124,6 +127,23 @@ export const SLASH_COMMANDS: readonly SlashCommandItem[] = [
     run: (editor, range) => editor.chain().focus().deleteRange(range).setCodeBlock().run(),
   },
   {
+    id: 'mermaid',
+    title: 'Diagram',
+    hint: 'A mermaid diagram, drawn as you type',
+    glyph: 'FLOW',
+    keywords: ['mermaid', 'diagram', 'chart', 'graph', 'flowchart', 'sequence', 'uml'],
+    available: outsideTableCell,
+    // A starter diagram, not an empty block: an example to edit beats a blank canvas.
+    run: (editor, range) =>
+      editor
+        .chain()
+        .focus()
+        .deleteRange(range)
+        .setCodeBlock({ language: MERMAID_LANGUAGE })
+        .insertContent({ type: 'text', text: MERMAID_STARTER })
+        .run(),
+  },
+  {
     id: 'blockquote',
     title: 'Quote',
     hint: 'Capture a quotation',
@@ -198,6 +218,18 @@ export const SLASH_COMMANDS: readonly SlashCommandItem[] = [
     },
   },
   {
+    id: 'diagram',
+    title: 'Diagram',
+    hint: 'Draw a diagram or a sketch',
+    glyph: 'DRAW',
+    keywords: ['diagram', 'draw', 'drawing', 'sketch', 'excalidraw', 'whiteboard', 'canvas'],
+    available: outsideTableCell,
+    run: (editor, range, options) => {
+      editor.chain().focus().deleteRange(range).run();
+      options.onPickDiagram();
+    },
+  },
+  {
     id: 'video',
     title: 'Video',
     hint: 'Embed a YouTube, Vimeo or Loom link',
@@ -262,6 +294,7 @@ export const SlashMenuExtension = Extension.create<SlashMenuOptions>({
       onPickEmoji: () => undefined,
       onPickVideo: () => undefined,
       onPickPage: () => undefined,
+      onPickDiagram: () => undefined,
     };
   },
 

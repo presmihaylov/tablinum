@@ -6,8 +6,10 @@ export {
   WELCOME_TITLE,
   type ContentStoreOptions,
   type CreatePageInput,
+  type CreateRowInput,
   type SpaceTree,
   type UpdatePageInput,
+  type UpdateRowInput,
 } from './store.js';
 
 export {
@@ -25,6 +27,8 @@ export {
 } from './frontmatter.js';
 
 export { IndexMap, type IndexMapOptions, type IndexedPage } from './index-map.js';
+export { RevHistory, DEFAULT_HISTORY_DEPTH, DEFAULT_HISTORY_BYTES } from './rev-history.js';
+export { Mutex } from './mutex.js';
 
 export {
   buildBacklinkIndex,
@@ -67,3 +71,13 @@ export { consoleLogger, silentLogger, type Logger } from './logger.js';
 export { resolveInside } from './fs-utils.js';
 
 export { emitNumber, emitString, needsQuotes, quoteString } from './yaml-emit.js';
+
+export {
+  databaseEqual,
+  readDatabase,
+  readPropValue,
+  readRowProps,
+  rowPropsEqual,
+  stringifyDatabase,
+  stringifyRowProps,
+} from './db-frontmatter.js';

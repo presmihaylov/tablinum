@@ -4,26 +4,37 @@ import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { EditorContent, useEditor } from '@tiptap/react';
 import type { Editor } from '@tiptap/core';
-import type { Page } from '@tablinum/shared';
+import type { Transaction } from '@tiptap/pm/state';
+import { DIAGRAM_EXT, parseAssetUrl, type Page } from '@tablinum/shared';
 import { api } from '../api/client';
 import { useCreatePage, useTree, useUploadAsset, useUsers } from '../api/hooks';
 import { qk } from '../api/keys';
+import { useComments } from '../lib/comments';
 import { pageHref } from '../lib/href';
 import { useToast } from '../lib/toast';
 import { childPathFor } from '../lib/treeMove';
 import type { SaveState } from '../lib/autosave';
 import type { DocRoom } from '../lib/docRoom';
 import type { IncomingContent } from '../lib/usePageDoc';
+import { Bubble } from '../components/ui/Icon';
 import { PromptDialog } from '../components/ui/PromptDialog';
 import type { PromptRequest } from '../components/ui/PromptDialog';
 import { SaveIndicator } from '../components/ui/SaveIndicator';
+import { anchorFor, locateAnchor } from './anchors';
 import { EMBED_PROVIDERS, embedHtml, resolveEmbed } from './embeds';
-import { buildExtensions, insertEmoji } from './extensions';
-import type { EmbeddedPage, MentionItem, WikilinkItem } from './extensions';
+import { buildExtensions, insertEmoji, DRAFT_SPAN_ID } from './extensions';
+import type {
+  CommentSpan,
+  DiagramRequest,
+  EmbeddedPage,
+  MentionItem,
+  WikilinkItem,
+} from './extensions';
 import { DEFAULT_FRAME, PARSE_OPTIONS, readMarkdown, writeMarkdown } from './markdown';
 import type { MarkdownFrame } from './markdown';
 import { useDocStream } from './useStream';
 import { BlockHandles } from './ui/BlockHandles';
+import { DiagramDialog } from './ui/DiagramDialog';
 import { EmojiPicker } from './ui/EmojiPicker';
 import type { EmojiAnchor } from './ui/EmojiPicker';
 import { MarkMenu } from './ui/MarkMenu';
@@ -71,15 +82,21 @@ interface Handlers {
   pickEmoji: () => void;
   pickVideo: () => void;
   pickPage: () => void;
+  pickDiagram: () => void;
+  editDiagram: (request: DiagramRequest) => void;
   insertVideo: (url: string) => void;
   upload: (file: File) => Promise<string | null>;
   search: (query: string) => Promise<WikilinkItem[]>;
   people: (query: string) => Promise<MentionItem[]>;
   load: (path: string) => Promise<EmbeddedPage | null>;
   open: (path: string) => void;
+  comment: (threadId: string) => void;
 }
 
 const SEARCH_LIMIT = 8;
+
+/** How long the text sits still before every anchor is looked up again. */
+const REANCHOR_MS = 400;
 
 export function PageEditor({
   page,
@@ -95,6 +112,9 @@ export function PageEditor({
   const [emojiAt, setEmojiAt] = useState<EmojiAnchor | null>(null);
   const [videoOpen, setVideoOpen] = useState(false);
   const [pageOpen, setPageOpen] = useState(false);
+  const [diagram, setDiagram] = useState<DiagramRequest | null>(null);
+  const [diagramSaving, setDiagramSaving] = useState(false);
+  const [docTick, setDocTick] = useState(0);
 
   const canvasRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -109,6 +129,7 @@ export function PageEditor({
   const navigate = useNavigate();
   const toast = useToast();
   const client = useQueryClient();
+  const comments = useComments();
   const uploadAsset = useUploadAsset();
   const createPage = useCreatePage();
   const tree = useTree();
@@ -249,24 +270,34 @@ export function PageEditor({
     pickEmoji: () => undefined,
     pickVideo: () => undefined,
     pickPage: () => undefined,
+    pickDiagram: () => undefined,
+    editDiagram: () => undefined,
     insertVideo: () => undefined,
     upload: () => Promise.resolve(null),
     search: () => Promise.resolve([]),
     people: () => Promise.resolve([]),
     load: () => Promise.resolve(null),
     open: () => undefined,
+    comment: () => undefined,
   });
   handlers.current = {
     pickImage: () => fileRef.current?.click(),
     pickEmoji: openEmoji,
     pickVideo: () => setVideoOpen(true),
     pickPage: () => setPageOpen(true),
+    pickDiagram: () =>
+      setDiagram({
+        src: null,
+        onSave: (url) => editorRef.current?.chain().focus().insertDiagram(url).run(),
+      }),
+    editDiagram: setDiagram,
     insertVideo,
     upload: uploadImage,
     search: searchPages,
     people: searchPeople,
     load: loadPage,
     open: openPage,
+    comment: comments.focus,
   };
 
   // Built once: rebuilding the extension list would recreate the whole schema.
@@ -277,11 +308,14 @@ export function PageEditor({
         onPickEmoji: () => handlers.current.pickEmoji(),
         onPickVideo: () => handlers.current.pickVideo(),
         onPickPage: () => handlers.current.pickPage(),
+        onPickDiagram: () => handlers.current.pickDiagram(),
+        editDiagram: (request) => handlers.current.editDiagram(request),
         uploadImage: (file) => handlers.current.upload(file),
         searchPages: (query) => handlers.current.search(query),
         searchPeople: (query) => handlers.current.people(query),
         loadPage: (path) => handlers.current.load(path),
         openPage: (path) => handlers.current.open(path),
+        openComment: (threadId) => handlers.current.comment(threadId),
       }),
     [],
   );
@@ -314,6 +348,7 @@ export function PageEditor({
     setEmojiAt(null);
     setVideoOpen(false);
     setPageOpen(false);
+    setDiagram(null);
     editor?.commands.setContent(readMarkdown(page.markdown).body, false, PARSE_OPTIONS);
   }, [page.id, page.title, page.icon, page.markdown, editor]);
 
@@ -335,6 +370,62 @@ export function PageEditor({
   // Keystroke streaming. It owns the document while a room is joined: it replaces content,
   // keeps the frame, and draws the other carets. Without a room nothing here runs.
   useDocStream({ editor, room: room ?? null, frame: frameRef, page, onTitle: setTitle });
+
+  // Between two of these the highlights ride along with the text through every edit, so the
+  // anchors only have to be looked up again once the typing stops.
+  useEffect(() => {
+    if (!editor) return undefined;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    // Every doc change counts, not only a typed one. The room replaces the whole document when
+    // its first frame lands, and that emits no `update`, so the highlights would stay wiped.
+    const bump = ({ transaction }: { transaction: Transaction }): void => {
+      if (!transaction.docChanged) return;
+      if (timer !== null) clearTimeout(timer);
+      timer = setTimeout(() => setDocTick((tick) => tick + 1), REANCHOR_MS);
+    };
+    editor.on('transaction', bump);
+    return () => {
+      if (timer !== null) clearTimeout(timer);
+      editor.off('transaction', bump);
+    };
+  }, [editor]);
+
+  const { threads, activeId, draft, showResolved, reportLocated } = comments;
+
+  // Every anchor is looked up in the document as it stands. A thread whose quote is gone gets
+  // no highlight and is reported as missing, which is what the panel calls orphaned.
+  useEffect(() => {
+    if (!editor) return;
+    const doc = editor.state.doc;
+    const spans: CommentSpan[] = [];
+    const located: string[] = [];
+
+    for (const thread of threads) {
+      if (thread.anchor === null) continue;
+      const range = locateAnchor(doc, thread.anchor);
+      if (range === null) continue;
+      located.push(thread.id);
+      if (thread.resolved && !showResolved && thread.id !== activeId) continue;
+      spans.push({ id: thread.id, from: range.from, to: range.to, resolved: thread.resolved });
+    }
+
+    if (draft !== null) {
+      const range = locateAnchor(doc, draft);
+      if (range !== null) {
+        spans.push({ id: DRAFT_SPAN_ID, from: range.from, to: range.to, resolved: false });
+      }
+    }
+
+    editor.commands.setCommentSpans(spans, activeId);
+    reportLocated(located);
+  }, [editor, threads, activeId, draft, showResolved, reportLocated, docTick, page.id, incoming]);
+
+  const startComment = useCallback((): void => {
+    const instance = editorRef.current;
+    if (!instance) return;
+    const { from, to } = instance.state.selection;
+    comments.startDraft(anchorFor(instance.state.doc, from, to));
+  }, [comments]);
 
   // Held steady while the dialog is open: a new object resets the field the user types in.
   const videoRequest = useMemo<PromptRequest | null>(
@@ -369,6 +460,29 @@ export function PageEditor({
     });
   };
 
+  /**
+   * The drawing goes back over its own attachment, so the markdown never changes on a
+   * re-save and two people editing the same diagram are last write wins.
+   */
+  const saveDiagram = (svg: string): void => {
+    if (!diagram) return;
+    const existing = diagram.src === null ? null : parseAssetUrl(diagram.src);
+    const file = new File([svg], existing?.filename ?? `diagram${DIAGRAM_EXT}`, {
+      type: 'image/svg+xml',
+    });
+    setDiagramSaving(true);
+    void uploadRef
+      .current({ file, pageId: existing?.pageId ?? page.id, replace: existing !== null })
+      .then(
+        (asset) => {
+          diagram.onSave(asset.url);
+          setDiagram(null);
+        },
+        (error: unknown) => toast.pushError(error, 'The diagram could not be saved'),
+      )
+      .finally(() => setDiagramSaving(false));
+  };
+
   return (
     <article className="editor">
       <header className="editor__head">
@@ -380,13 +494,33 @@ export function PageEditor({
           {...(onIconChange ? { onIconChange: changeIcon } : {})}
         />
         <SaveIndicator state={saveState} />
+        {comments.pageId === null ? null : (
+          <button
+            type="button"
+            className={comments.open ? 'btn editor__comments btn--on' : 'btn editor__comments'}
+            aria-pressed={comments.open}
+            aria-label={`Comments, ${comments.unresolved} open`}
+            title="Comments"
+            onClick={() => comments.setOpen(!comments.open)}
+          >
+            <Bubble />
+            {comments.unresolved > 0 ? (
+              <span className="editor__comments-count">{comments.unresolved}</span>
+            ) : null}
+          </button>
+        )}
       </header>
 
       <div className="editor__canvas" ref={canvasRef} onClickCapture={followLink(navigate)}>
         {editor ? <BlockHandles editor={editor} canvas={canvasRef} /> : null}
         <EditorContent editor={editor} className="editor__body" />
         {editor ? <TableControls editor={editor} canvas={canvasRef} /> : null}
-        {editor ? <MarkMenu editor={editor} /> : null}
+        {editor ? (
+          <MarkMenu
+            editor={editor}
+            {...(comments.pageId === null ? {} : { onComment: startComment })}
+          />
+        ) : null}
         {editor ? <TableMenu editor={editor} /> : null}
       </div>
 
@@ -402,6 +536,13 @@ export function PageEditor({
       ) : null}
 
       <PromptDialog request={videoRequest} onClose={() => setVideoOpen(false)} />
+
+      <DiagramDialog
+        scene={diagram}
+        saving={diagramSaving}
+        onCancel={() => setDiagram(null)}
+        onSave={saveDiagram}
+      />
 
       <PagePicker
         open={pageOpen}

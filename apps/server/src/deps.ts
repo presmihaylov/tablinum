@@ -5,7 +5,10 @@ import type {
   Backlink,
   Config,
   CreatePageBody,
+  CreateRowBody,
   CreateSpaceBody,
+  Database,
+  DbRow,
   Frontmatter,
   GitStatus,
   Page,
@@ -17,6 +20,7 @@ import type {
   Space,
   TreeNode,
   UpdatePageBody,
+  UpdateRowBody,
   UpdateSpaceBody,
 } from '@tablinum/shared';
 
@@ -105,6 +109,21 @@ export interface ContentStore {
 
   /** Split a raw page file into frontmatter and body. Used to read old revisions. */
   parsePageFile(raw: string): ParsedPageFile;
+
+  /** The schema and every row of a database page. A page without a `db` block is a 400. */
+  getDatabase(id: PageId): Promise<{ page: Page; database: Database; rows: DbRow[] }>;
+
+  /** Give the page a `db` block, or replace the one it has. */
+  setDatabase(id: PageId, database: Database): Promise<Page>;
+
+  /** Take the `db` block away. The rows stay: they are ordinary child pages. */
+  removeDatabase(id: PageId): Promise<Page>;
+
+  /** Add a row, which is a child page of the database. */
+  createRow(id: PageId, input: CreateRowBody): Promise<DbRow>;
+
+  /** Change one row's cells or its title. An absent cell keeps its value; null clears it. */
+  updateRow(id: PageId, patch: UpdateRowBody): Promise<DbRow>;
 }
 
 /** The git engine: the content directory is a git repo. Implemented by @tablinum/git-sync. */

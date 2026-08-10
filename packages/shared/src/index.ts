@@ -1,6 +1,7 @@
 export * from './types.js';
 export * from './errors.js';
 export * from './ids.js';
+export * from './databases.js';
 export * from './paths.js';
 export * from './schemas.js';
 export * from './config.js';
@@ -9,6 +10,7 @@ export * from './live.js';
 export * from './accounts.js';
 export * from './emoji.js';
 export * from './agents.js';
+export * from './comments.js';
 export * from './workspaces.js';
 export * from './mentions.js';
 export * from './slack.js';

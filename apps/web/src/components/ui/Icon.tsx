@@ -140,6 +140,18 @@ export const Close = (props: IconProps) => (
   </Svg>
 );
 
+export const Bubble = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="M13.5 9.2a1.8 1.8 0 0 1-1.8 1.8H6.2L3 13.4V4.3a1.8 1.8 0 0 1 1.8-1.8h6.9a1.8 1.8 0 0 1 1.8 1.8Z" />
+  </Svg>
+);
+
+export const Check = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="m3.4 8.4 3 3 6.2-6.8" />
+  </Svg>
+);
+
 export const Branch = (props: IconProps) => (
   <Svg {...props}>
     <circle cx="4.5" cy="3.5" r="1.6" />

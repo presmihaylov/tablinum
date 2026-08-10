@@ -43,6 +43,10 @@ export function useDocStream({ editor, room, frame, page, onTitle }: StreamOptio
   /** The baseline this tab is working from, which is the base of the merge after a reset. */
   const baseRef = useRef<string | null>(null);
 
+  // The collab plugin only goes on once the room's first frame arrives, so between a page
+  // switch and that frame there is no collab state. Every read of it throws in that window.
+  const seededRef = useRef(false);
+
   useEffect(() => {
     if (editor === null || room === null) return;
 
@@ -70,7 +74,7 @@ export function useDocStream({ editor, room, frame, page, onTitle }: StreamOptio
 
     const flushSteps = (): void => {
       stepTimer = null;
-      if (!live) return;
+      if (!live || !seededRef.current) return;
       const sendable = sendableSteps(editor.state);
       if (sendable === null) return;
       room.sendSteps(
@@ -101,6 +105,7 @@ export function useDocStream({ editor, room, frame, page, onTitle }: StreamOptio
       frame.current = read.frame;
       editor.commands.setContent(read.body, emit, PARSE_OPTIONS);
       editor.registerPlugin(collab({ version, clientID: clientId }));
+      seededRef.current = true;
       clearCarets(editor.view);
     };
 
@@ -142,6 +147,7 @@ export function useDocStream({ editor, room, frame, page, onTitle }: StreamOptio
     const off = room.listen({
       onInit,
       onSteps: (steps) => {
+        if (!seededRef.current) return;
         const parsed = parse(steps);
         if (parsed.steps.length === 0) return;
         editor.view.dispatch(receiveTransaction(editor.state, parsed.steps, parsed.ids));
@@ -161,6 +167,10 @@ export function useDocStream({ editor, room, frame, page, onTitle }: StreamOptio
     };
     editor.on('transaction', onTransaction);
 
+    // The room is opened a render before this effect attaches, so its first frame can land
+    // while nothing here is listening. Ask for another one, or this tab never streams.
+    if (room.joined) room.rejoin();
+
     return () => {
       live = false;
       editor.off('transaction', onTransaction);
@@ -168,6 +178,7 @@ export function useDocStream({ editor, room, frame, page, onTitle }: StreamOptio
       if (caretTimer !== null) clearTimeout(caretTimer);
       off();
       baseRef.current = null;
+      seededRef.current = false;
       if (editor.isDestroyed) return;
       editor.unregisterPlugin(caretsKey);
       editor.unregisterPlugin('collab');
@@ -177,10 +188,11 @@ export function useDocStream({ editor, room, frame, page, onTitle }: StreamOptio
   /**
    * Compact the room once a save lands. It is only truthful while the document on screen is
    * exactly the text the server confirmed, so a tab that has typed on since simply waits for
-   * the next quiet moment.
+   * the next quiet moment. A room that has not seeded yet has nothing to compact.
    */
   useEffect(() => {
     if (editor === null || room === null || !room.joined || !room.isWriter) return;
+    if (!seededRef.current) return;
     if (writeMarkdown(editor.state.doc, frame.current) !== page.markdown) return;
     room.sendBaseline(getVersion(editor.state), {
       markdown: page.markdown,

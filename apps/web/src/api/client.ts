@@ -8,12 +8,19 @@ import type {
   AuthStateResponse,
   AvatarResponse,
   BacklinksResponse,
+  CommentThreadResponse,
+  CommentThreadsResponse,
   ConflictInfo,
   ConnectSlackBody,
   CreatePageBody,
+  CreateRowBody,
   CreateSpaceBody,
+  CreateThreadBody,
   CustomEmojiListResponse,
   CustomEmojiResponse,
+  Database,
+  DatabaseResponse,
+  DeleteCommentResponse,
   DeletePageResponse,
   ErrorBody,
   ErrorCode,
@@ -42,7 +49,10 @@ import type {
   PagePath,
   PageResponse,
   RegisterBody,
+  ReplyBody,
+  ResolveThreadBody,
   RevisionContentResponse,
+  RowResponse,
   SearchQuery,
   SearchResponse,
   SetupBody,
@@ -51,8 +61,10 @@ import type {
   SpacesResponse,
   TreeResponse,
   UpdateAgentBody,
+  UpdateCommentBody,
   UpdateMeBody,
   UpdatePageBody,
+  UpdateRowBody,
   UpdateSpaceBody,
   UpdateUserBody,
   UserResponse,
@@ -124,7 +136,7 @@ type QueryValue = string | number | boolean | undefined | null;
 type QueryInput = Record<string, QueryValue>;
 
 interface RequestOptions {
-  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: unknown;
   form?: FormData;
   query?: QueryInput;
@@ -357,6 +369,43 @@ export const api = {
   revision: (id: PageId, sha: string, signal?: AbortSignal): Promise<RevisionContentResponse> =>
     request(`/pages/${encodeURIComponent(id)}/revisions/${encodeURIComponent(sha)}`, { signal }),
 
+  comments: (id: PageId, signal?: AbortSignal): Promise<CommentThreadsResponse> =>
+    request(`/pages/${encodeURIComponent(id)}/comments`, { signal }),
+
+  createThread: (id: PageId, body: CreateThreadBody): Promise<CommentThreadResponse> =>
+    request(`/pages/${encodeURIComponent(id)}/comments`, { method: 'POST', body }),
+
+  replyToThread: (threadId: string, body: ReplyBody): Promise<CommentThreadResponse> =>
+    request(`/comment-threads/${encodeURIComponent(threadId)}/replies`, { method: 'POST', body }),
+
+  resolveThread: (threadId: string, body: ResolveThreadBody): Promise<CommentThreadResponse> =>
+    request(`/comment-threads/${encodeURIComponent(threadId)}`, { method: 'PATCH', body }),
+
+  updateComment: (commentId: string, body: UpdateCommentBody): Promise<CommentThreadResponse> =>
+    request(`/comments/${encodeURIComponent(commentId)}`, { method: 'PATCH', body }),
+
+  deleteComment: (commentId: string): Promise<DeleteCommentResponse> =>
+    request(`/comments/${encodeURIComponent(commentId)}`, { method: 'DELETE' }),
+
+  getDatabase: (id: PageId, signal?: AbortSignal): Promise<DatabaseResponse> =>
+    request(`/pages/${encodeURIComponent(id)}/database`, { signal }),
+
+  /** No `database` turns a plain page into one with the starter schema. */
+  setDatabase: (id: PageId, database?: Database): Promise<PageResponse> =>
+    request(`/pages/${encodeURIComponent(id)}/database`, {
+      method: 'PUT',
+      body: database === undefined ? {} : { database },
+    }),
+
+  removeDatabase: (id: PageId): Promise<PageResponse> =>
+    request(`/pages/${encodeURIComponent(id)}/database`, { method: 'DELETE' }),
+
+  createRow: (id: PageId, body: CreateRowBody = {}): Promise<RowResponse> =>
+    request(`/pages/${encodeURIComponent(id)}/database/rows`, { method: 'POST', body }),
+
+  updateRow: (rowId: PageId, body: UpdateRowBody): Promise<RowResponse> =>
+    request(`/pages/${encodeURIComponent(rowId)}/row`, { method: 'PATCH', body }),
+
 
   gitStatus: (signal?: AbortSignal): Promise<GitStatusResponse> => request('/git/status', { signal }),
 
@@ -417,10 +466,12 @@ export const api = {
     return request('/workspaces/import', { method: 'POST', form });
   },
 
-  uploadAsset: (file: File, pageId?: PageId): Promise<AssetResponse> => {
+  // `replace` writes over the file of the same name instead of taking a free one beside it.
+  uploadAsset: (file: File, pageId?: PageId, replace = false): Promise<AssetResponse> => {
     const form = new FormData();
     form.append('file', file, file.name);
     if (pageId) form.append('pageId', pageId);
+    if (replace) form.append('replace', 'true');
     return request('/assets', { method: 'POST', form });
   },
 } as const;

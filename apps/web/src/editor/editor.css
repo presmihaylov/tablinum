@@ -529,6 +529,107 @@ button.editor__icon:hover {
 }
 
 /* ------------------------------------------------------------------ */
+/* mermaid diagrams                                                    */
+/* ------------------------------------------------------------------ */
+
+.gd-editor-mermaid {
+  position: relative;
+  margin: var(--space-3) 0;
+}
+
+.gd-editor-mermaid__bar {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  z-index: 2;
+  display: flex;
+  gap: var(--space-1);
+  align-items: center;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.gd-editor-mermaid:hover .gd-editor-mermaid__bar,
+.gd-editor-mermaid__bar:focus-within {
+  opacity: 1;
+}
+
+.gd-editor-mermaid__lang,
+.gd-editor-mermaid__button {
+  max-width: 9rem;
+  padding: 2px var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-raised);
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: var(--text-2xs);
+}
+
+.gd-editor-mermaid__button {
+  cursor: pointer;
+}
+
+.gd-editor-mermaid__button:hover {
+  color: var(--text-strong);
+}
+
+.gd-editor-mermaid__source {
+  margin: 0 0 var(--space-2);
+  padding: var(--space-4);
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-inset);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  tab-size: 2;
+}
+
+.gd-editor-mermaid__source[hidden] {
+  display: none;
+}
+
+.gd-editor-mermaid__preview {
+  display: flex;
+  justify-content: center;
+  padding: var(--space-4);
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-subtle);
+}
+
+.gd-editor-mermaid__figure svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* The picture no longer matches the source, so it is dimmed rather than removed. */
+.gd-editor-mermaid__figure.is-stale {
+  opacity: 0.45;
+}
+
+.gd-editor-mermaid__note {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: var(--text-sm);
+}
+
+.gd-editor-mermaid__error {
+  margin: var(--space-2) 0 0;
+  padding: var(--space-2) var(--space-3);
+  overflow-wrap: anywhere;
+  border-radius: var(--radius-sm);
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+/* ------------------------------------------------------------------ */
 /* tables                                                              */
 /* ------------------------------------------------------------------ */
 
@@ -1146,6 +1247,43 @@ button.editor__icon:hover {
 }
 
 /* ------------------------------------------------------------------ */
+/* comment highlights                                                  */
+/* ------------------------------------------------------------------ */
+
+.editor__comments {
+  flex: none;
+  margin-top: var(--space-1);
+  padding: 0 var(--space-2);
+  color: var(--text-muted);
+}
+
+.editor__comments-count {
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Decorations, never marks: nothing here can reach the markdown file. */
+.gd-comment {
+  border-bottom: 2px solid var(--warning);
+  background: color-mix(in srgb, var(--warning) 14%, transparent);
+  cursor: pointer;
+}
+
+.gd-comment--active {
+  background: color-mix(in srgb, var(--warning) 32%, transparent);
+}
+
+.gd-comment--resolved {
+  border-bottom-color: var(--border-strong);
+  background: none;
+}
+
+.gd-comment--draft {
+  border-bottom-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+/* ------------------------------------------------------------------ */
 /* Remote carets                                                       */
 /* ------------------------------------------------------------------ */
 
@@ -1201,4 +1339,120 @@ button.editor__icon:hover {
 .gd-caret__range {
   border-radius: 2px;
   background: color-mix(in srgb, var(--gd-caret-color, var(--accent)) 22%, transparent);
+}
+
+/* ------------------------------------------------------------------ */
+/* diagrams                                                            */
+/* ------------------------------------------------------------------ */
+
+.gd-editor-diagram {
+  margin: var(--space-1) 0;
+}
+
+/* Without a node view the node is still a block of markdown source. */
+.gd-editor-diagram--flat {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.gd-editor-diagram__frame {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+}
+
+/* The stored SVG carries its own size, so the drawing keeps its aspect and shrinks to fit. */
+.gd-editor-diagram__image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-md);
+}
+
+.gd-editor-diagram__edit {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  padding: 2px var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-raised);
+  color: var(--text);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.gd-editor-diagram__frame:hover .gd-editor-diagram__edit,
+.gd-editor-diagram__edit:focus-visible {
+  opacity: 1;
+}
+
+/*
+ * The scene is stored once, drawn for a light page. Excalidraw's own dark mode is this
+ * same filter, so the drawing follows the app theme without a second copy of the file.
+ */
+:root[data-theme='dark'] .gd-editor-diagram__image {
+  filter: invert(93%) hue-rotate(180deg);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .gd-editor-diagram__image {
+    filter: invert(93%) hue-rotate(180deg);
+  }
+}
+
+/* The overlay reserves 8vh above the modal, so the height stays well under the viewport. */
+.gd-editor-diagram-modal {
+  width: min(96vw, 78rem);
+  height: 78vh;
+}
+
+.gd-editor-diagram-modal__body {
+  display: flex;
+  min-height: 0;
+  padding: 0;
+}
+
+.gd-editor-board {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* Excalidraw measures its container, so the canvas needs a box it can fill. */
+.gd-editor-board__canvas {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.gd-editor-board__note {
+  padding: var(--space-4);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.gd-editor-board__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--border);
+  background: var(--bg-inset);
+}
+
+.gd-editor-board__error {
+  margin-right: auto;
+  color: var(--danger);
+  font-size: var(--text-xs);
 }

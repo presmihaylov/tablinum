@@ -3,12 +3,14 @@ import { describe, expect, it } from 'vitest';
 import { TablinumClient } from '../src/client.js';
 import { TOOL_SPECS, getToolSpec } from '../src/tools.js';
 import {
+  makeAccount,
   makeHit,
   makeNode,
   makePage,
   makeRevision,
   makeSpaceTree,
   makeStatus,
+  makeThread,
   mockFetch,
   reply,
   type Routes,
@@ -46,6 +48,7 @@ describe('tool catalogue', () => {
       'tablinum_append_page',
       'tablinum_move_page',
       'tablinum_delete_page',
+      'tablinum_list_comments',
       'tablinum_page_history',
       'tablinum_git_sync',
     ]);
@@ -365,6 +368,64 @@ describe('tablinum_delete_page', () => {
     expect(mock.last().query).toEqual({ recursive: 'true' });
     expect(text).toContain('Deleted 2 pages:');
     expect(text).toContain('- eng/runbooks/deploy');
+  });
+});
+
+describe('tablinum_list_comments', () => {
+  it('resolves the page, reads its threads and names the authors', async () => {
+    const page = makePage();
+    const ana = makeAccount();
+    const { run, mock } = harness({
+      'GET /api/v1/pages': { page },
+      'GET /api/v1/users': { users: [ana] },
+      [`GET /api/v1/pages/${page.id}/comments`]: {
+        threads: [makeThread({ pageId: page.id, anchor: null })],
+      },
+    });
+
+    const text = await run('tablinum_list_comments', { path: page.path });
+
+    expect(mock.matching(`GET /api/v1/pages/${page.id}/comments`)[0]?.query).toEqual({});
+    expect(text).toContain('1 comment thread on eng/deploy');
+    expect(text).toContain('[open] thread ct_01J8XYZABCDEFGHJKMNPQRSTVW');
+    expect(text).toContain('about: the whole page');
+    expect(text).toContain('Ana Ruiz');
+    expect(text).toContain('Is this still the right order?');
+  });
+
+  it('asks for the open threads only when it is told to', async () => {
+    const page = makePage();
+    const { run, mock } = harness({
+      [`GET /api/v1/pages/${page.id}`]: { page },
+      'GET /api/v1/users': { users: [makeAccount()] },
+      [`GET /api/v1/pages/${page.id}/comments`]: { threads: [makeThread({ pageId: page.id })] },
+    });
+
+    await run('tablinum_list_comments', { id: page.id, open: true });
+
+    expect(mock.matching(`GET /api/v1/pages/${page.id}/comments`)[0]?.query).toEqual({
+      resolved: 'false',
+    });
+  });
+
+  it('says so when nobody has commented, without asking for the roster', async () => {
+    const page = makePage();
+    const { run, mock } = harness({
+      'GET /api/v1/pages': { page },
+      [`GET /api/v1/pages/${page.id}/comments`]: { threads: [] },
+    });
+
+    const text = await run('tablinum_list_comments', { path: page.path });
+
+    expect(text).toContain('Nobody has commented on eng/deploy yet.');
+    expect(mock.matching('GET /api/v1/users')).toHaveLength(0);
+  });
+
+  it('offers no way to write a comment', () => {
+    const writers = TOOL_SPECS.filter((spec) => spec.name.includes('comment')).filter(
+      (spec) => spec.annotations?.readOnlyHint !== true,
+    );
+    expect(writers).toEqual([]);
   });
 });
 

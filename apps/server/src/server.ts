@@ -13,7 +13,10 @@ import {
   type Backlink,
   type Config,
   type CreatePageBody,
+  type CreateRowBody,
   type CreateSpaceBody,
+  type Database,
+  type DbRow,
   type GitStatus,
   type Page,
   type PageId,
@@ -23,6 +26,7 @@ import {
   type SearchHit,
   type Space,
   type UpdatePageBody,
+  type UpdateRowBody,
   type UpdateSpaceBody,
 } from '@tablinum/shared';
 import { buildApp } from './app.js';
@@ -111,6 +115,26 @@ class CoreStoreAdapter implements ContentStore {
 
   getBacklinks(id: PageId): Promise<Backlink[]> {
     return this.core.getBacklinks(id);
+  }
+
+  getDatabase(id: PageId): Promise<{ page: Page; database: Database; rows: DbRow[] }> {
+    return this.core.getDatabase(id);
+  }
+
+  setDatabase(id: PageId, database: Database): Promise<Page> {
+    return this.core.setDatabase(id, database);
+  }
+
+  removeDatabase(id: PageId): Promise<Page> {
+    return this.core.removeDatabase(id);
+  }
+
+  createRow(id: PageId, input: CreateRowBody): Promise<DbRow> {
+    return this.core.createRow(id, input);
+  }
+
+  updateRow(id: PageId, patch: UpdateRowBody): Promise<DbRow> {
+    return this.core.updateRow(id, patch);
   }
 
   async reloadFile(relFile: string): Promise<Page | null> {
@@ -271,12 +295,19 @@ export async function commitOrphanedWrites(
   }
 }
 
+/** The real content, git and search parts, plus the engines behind them. */
+export interface RealDeps {
+  deps: ServerDeps;
+  git: CoreGitEngine;
+  search: CoreSearchIndex;
+  accounts: AccountStore;
+}
+
 /**
- * Build every real dependency, wire them together and listen.
- * Order matters: the store must exist before git initializes the repo around it, the index
- * is built from the store, and the watcher only starts once the index is consistent.
+ * Every real dependency, unstarted. `start()` uses it, and so does the load test, which needs
+ * the same stack a deployment runs rather than the doubles the unit suite injects.
  */
-export async function start(config: Config = loadConfig()): Promise<RunningServer> {
+export function buildRealDeps(config: Config): RealDeps {
   const coreStore = new CoreContentStore({ contentDir: config.contentDir });
   const coreGit = CoreGitEngine.fromConfig(config);
   const coreSearch = new CoreSearchIndex({ dbPath: defaultDbPath(config.contentDir) });
@@ -295,6 +326,16 @@ export async function start(config: Config = loadConfig()): Promise<RunningServe
     version: VERSION,
     trustProxy: config.trustProxy,
   };
+  return { deps, git: coreGit, search: coreSearch, accounts };
+}
+
+/**
+ * Build every real dependency, wire them together and listen.
+ * Order matters: the store must exist before git initializes the repo around it, the index
+ * is built from the store, and the watcher only starts once the index is consistent.
+ */
+export async function start(config: Config = loadConfig()): Promise<RunningServer> {
+  const { deps, git: coreGit, accounts } = buildRealDeps(config);
 
   await deps.store.init();
   await deps.git.init();

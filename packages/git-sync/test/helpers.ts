@@ -146,9 +146,11 @@ export function makeEngine(options: GitEngineOptions): GitEngine {
 /** Stop every engine and wait for its queued git commands, so the temp dirs can be removed. */
 export async function disposeEngines(): Promise<void> {
   const pending = engines.splice(0, engines.length);
+  // dispose() only stops the timers. A git process already running keeps writing into .git,
+  // so removing the temp dir straight after it fails with ENOTEMPTY.
   for (const engine of pending) {
     engine.dispose();
-    await engine.whenIdle();
+    await engine.whenIdle().catch(() => undefined);
   }
 }
 
@@ -158,9 +160,20 @@ export async function waitFor(
   timeoutMs = 5000,
 ): Promise<void> {
   const deadline = Date.now() + timeoutMs;
+  let last: unknown = null;
   for (;;) {
-    if (await predicate()) return;
-    if (Date.now() > deadline) throw new Error(`Timed out waiting for ${message}`);
+    // A predicate that reads a file the engine has not written yet throws ENOENT. That means
+    // "not yet", not "give up", so it keeps polling and only reports the error on timeout.
+    try {
+      if (await predicate()) return;
+      last = null;
+    } catch (err) {
+      last = err;
+    }
+    if (Date.now() > deadline) {
+      const detail = last === null ? '' : `: ${String(last)}`;
+      throw new Error(`Timed out waiting for ${message}${detail}`);
+    }
     await sleep(10);
   }
 }

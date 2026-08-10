@@ -119,6 +119,7 @@ const GAP_TYPES = [
   'table',
   'htmlBlock',
   'pageEmbed',
+  'diagram',
   'listItem',
   'taskItem',
 ];

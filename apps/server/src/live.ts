@@ -16,6 +16,7 @@ import {
   type LivePresence,
   type LiveUser,
   type Page,
+  type PageId,
   type PagePath,
   type ServerMessage,
 } from '@tablinum/shared';
@@ -251,6 +252,14 @@ export class LiveHub {
     if (room === null) return;
     if (source === 'api' && by !== null && by === writerOf(room)) return;
     this.#resetRoom(page.path, 'disk');
+  }
+
+  /**
+   * Tell every tab that the comments on a page moved. Only the page is named, because a tab
+   * that is not on that page ignores it and a tab that is refetches the threads anyway.
+   */
+  commentsChanged(pageId: PageId, by: string | null): void {
+    this.#broadcast({ type: 'comments', pageId, by });
   }
 
   pagesRemoved(paths: PagePath[]): void {

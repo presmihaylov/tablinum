@@ -12,6 +12,7 @@ import type { ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { TablinumClient } from './client.js';
 import {
+  formatComments,
   formatGitStatus,
   formatHistory,
   formatPage,
@@ -366,6 +367,36 @@ const pageHistoryTool = defineTool({
   },
 });
 
+const listCommentsTool = defineTool({
+  name: 'tablinum_list_comments',
+  title: 'Read the comments on a page',
+  description: [
+    'List the comment threads people left on one page. Identify the page with "id" or "path".',
+    'Comments are review feedback and they are NOT part of the page: they live beside the file and',
+    'never appear in the markdown. Read them before you rewrite a page, so you answer what people',
+    'actually asked for. Each thread shows the text it is about, whether it is open or resolved, and',
+    'every remark with its author and date. A thread marked as no longer in the page was written',
+    'about text somebody has since changed; find the new wording before you act on it.',
+    'This tool only reads. Reply to a thread in the web UI, not here.',
+  ].join(' '),
+  annotations: { readOnlyHint: true, openWorldHint: false, title: 'Read the comments on a page' },
+  inputShape: {
+    ...pageRefShape,
+    open: z
+      .boolean()
+      .optional()
+      .describe('Set true for the unanswered threads only. Omit for open and resolved together.'),
+  },
+  run: async (client, args) => {
+    const page = await resolvePage(client, args);
+    const threads = await client.comments(page.id, args.open === true ? false : undefined);
+    if (threads.length === 0) return formatComments(threads, page, (id) => id);
+
+    const people = new Map((await client.listUsers()).map((user) => [user.id, user.name]));
+    return formatComments(threads, page, (id) => people.get(id) ?? 'a former member');
+  },
+});
+
 const gitSyncTool = defineTool({
   name: 'tablinum_git_sync',
   title: 'Sync with the git remote',
@@ -419,6 +450,7 @@ export const TOOL_SPECS: readonly ToolSpec[] = [
   appendPageTool,
   movePageTool,
   deletePageTool,
+  listCommentsTool,
   pageHistoryTool,
   gitSyncTool,
 ];

@@ -18,8 +18,14 @@ function hasTextSelection(editor: Editor): boolean {
   return !(editor.state.selection instanceof CellSelection);
 }
 
-/** The selection toolbar: the inline marks markdown can express. */
-export function MarkMenu({ editor }: { editor: Editor }) {
+interface MarkMenuProps {
+  editor: Editor;
+  /** Starts a comment on the selected text. Absent when the page has no comment panel. */
+  onComment?: () => void;
+}
+
+/** The selection toolbar: the inline marks markdown can express, plus comments. */
+export function MarkMenu({ editor, onComment }: MarkMenuProps) {
   const [linkOpen, setLinkOpen] = useState(false);
   const [href, setHref] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -100,6 +106,18 @@ export function MarkMenu({ editor }: { editor: Editor }) {
           >
             Link
           </button>
+          {onComment === undefined ? null : (
+            <button
+              type="button"
+              title="Comment"
+              aria-label="Comment"
+              className="gd-editor-bar__btn"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={onComment}
+            >
+              Comment
+            </button>
+          )}
         </>
       )}
     </FloatingBar>

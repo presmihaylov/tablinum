@@ -25,6 +25,7 @@ function pick(instance: Editor, id: string): void {
       onPickEmoji: () => undefined,
       onPickVideo: () => undefined,
       onPickPage: () => undefined,
+      onPickDiagram: () => undefined,
     },
   );
 }

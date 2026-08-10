@@ -42,5 +42,7 @@ export function page(overrides: Partial<Page> = {}): Page {
     hasChildren: overrides.hasChildren ?? false,
     ...(overrides.icon === undefined ? {} : { icon: overrides.icon }),
     ...(overrides.order === undefined ? {} : { order: overrides.order }),
+    ...(overrides.database === undefined ? {} : { database: overrides.database }),
+    ...(overrides.props === undefined ? {} : { props: overrides.props }),
   };
 }

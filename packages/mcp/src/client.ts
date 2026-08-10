@@ -1,6 +1,7 @@
 import {
   AppError,
   BacklinksResponseSchema,
+  CommentThreadsResponseSchema,
   DeletePageResponseSchema,
   ErrorBodySchema,
   GitCommitResponseSchema,
@@ -15,7 +16,10 @@ import {
   SearchResponseSchema,
   SpacesResponseSchema,
   TreeResponseSchema,
+  UsersResponseSchema,
+  type Account,
   type Backlink,
+  type CommentThread,
   type CreatePageBody,
   type ErrorCode,
   type GitPullResponse,
@@ -284,6 +288,22 @@ export class TablinumClient {
       HistoryResponseSchema,
     );
     return body.revisions;
+  }
+
+  async comments(id: PageId, resolved?: boolean): Promise<CommentThread[]> {
+    const query = buildQuery({ resolved: resolved === undefined ? undefined : String(resolved) });
+    const body = await this.request(
+      'GET',
+      `/api/v1/pages/${encodeURIComponent(id)}/comments${query}`,
+      CommentThreadsResponseSchema,
+    );
+    return body.threads;
+  }
+
+  /** The roster, so a comment can be reported with a name instead of a user id. */
+  async listUsers(): Promise<Account[]> {
+    const body = await this.request('GET', '/api/v1/users', UsersResponseSchema);
+    return body.users;
   }
 
   async revision(id: PageId, sha: string): Promise<RevisionContentResponse> {

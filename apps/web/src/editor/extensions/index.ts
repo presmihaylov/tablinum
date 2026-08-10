@@ -15,7 +15,10 @@ import { Markdown } from 'tiptap-markdown';
 import { Callout } from './callout';
 import { MarkdownCopy } from './clipboard';
 import { createCodeBlock } from './codeBlock';
+import { CommentHighlight } from './commentHighlight';
 import { CustomEmoji } from './customEmoji';
+import { createDiagram } from './diagram';
+import type { DiagramRequest } from './diagram';
 import { MarkdownDialect } from './dialect';
 import { EmojiSuggestion } from './emojiSuggestion';
 import { createHtmlBlock, HtmlInline } from './htmlNodes';
@@ -43,6 +46,10 @@ export interface EditorExtensionOptions {
   onPickVideo: () => void;
   /** Opens the page picker for the slash menu's page command. */
   onPickPage: () => void;
+  /** Opens a blank drawing canvas for the slash menu's diagram command. */
+  onPickDiagram: () => void;
+  /** Opens the drawing canvas on an existing diagram. */
+  editDiagram: (request: DiagramRequest) => void;
   uploadImage: (file: File) => Promise<string | null>;
   searchPages: (query: string) => Promise<WikilinkItem[]>;
   /** Resolves people for the `@` menu. */
@@ -51,6 +58,8 @@ export interface EditorExtensionOptions {
   loadPage: (path: string) => Promise<EmbeddedPage | null>;
   /** Opens a page in the shell, from an embed's header. */
   openPage: (path: string) => void;
+  /** Focuses a comment thread, because its highlighted text was clicked. */
+  openComment: (threadId: string) => void;
   /** React node views and menus are skipped when the editor runs without a UI. */
   interactive: boolean;
 }
@@ -61,11 +70,14 @@ export const DEFAULT_EXTENSION_OPTIONS: EditorExtensionOptions = {
   onPickEmoji: () => undefined,
   onPickVideo: () => undefined,
   onPickPage: () => undefined,
+  onPickDiagram: () => undefined,
+  editDiagram: () => undefined,
   uploadImage: () => Promise.resolve(null),
   searchPages: () => Promise.resolve([]),
   searchPeople: () => Promise.resolve([]),
   loadPage: () => Promise.resolve(null),
   openPage: () => undefined,
+  openComment: () => undefined,
   interactive: true,
 };
 
@@ -118,6 +130,8 @@ export function buildExtensions(overrides: Partial<EditorExtensionOptions> = {})
     createHtmlBlock(options.interactive),
     HtmlInline,
     createPageEmbed(options.interactive, { load: options.loadPage, open: options.openPage }),
+    createDiagram(options.interactive, { edit: options.editDiagram }),
+    CommentHighlight.configure({ onActivate: options.openComment }),
     MdEscape,
     Markdown.configure({
       html: true,
@@ -149,6 +163,7 @@ export function buildExtensions(overrides: Partial<EditorExtensionOptions> = {})
       onPickEmoji: options.onPickEmoji,
       onPickVideo: options.onPickVideo,
       onPickPage: options.onPickPage,
+      onPickDiagram: options.onPickDiagram,
     }),
     WikilinkSuggestion.configure({ search: options.searchPages }),
     MentionSuggestion.configure({ search: options.searchPeople }),
@@ -156,9 +171,12 @@ export function buildExtensions(overrides: Partial<EditorExtensionOptions> = {})
   ];
 }
 
+export { DRAFT_SPAN_ID } from './commentHighlight';
+export type { CommentSpan } from './commentHighlight';
 export { insertEmoji } from './customEmoji';
 export type { WikilinkItem } from './wikilinkSuggestion';
 export type { MentionItem } from './mentionSuggestion';
 export type { EmbeddedPage } from './pageEmbed';
+export type { DiagramRequest } from './diagram';
 export { SLASH_COMMANDS, filterSlashCommands } from './slashMenu';
 export type { SlashCommandItem } from './slashMenu';

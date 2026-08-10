@@ -4,7 +4,10 @@ import { usePage } from '../api/hooks';
 import { PageEditor } from '../editor';
 import { pathFromSplat } from '../lib/href';
 import { usePageDoc } from '../lib/usePageDoc';
+import { CommentsProvider } from '../lib/comments';
+import { CommentsAside } from '../components/Comments/CommentsPanel';
 import { ConflictDialog } from '../components/Conflict/ConflictDialog';
+import { DatabaseView } from '../components/Database/DatabaseView';
 import { PageMeta } from '../components/PageMeta/PageMeta';
 import { NotFoundRoute } from './NotFoundRoute';
 
@@ -53,7 +56,8 @@ export function PageRoute({ metaOpen }: PageRouteProps) {
   }
 
   return (
-    <>
+    // Keyed on the page: a thread in focus, a draft and a panel state all belong to one page.
+    <CommentsProvider key={page.id} pageId={page.id}>
       <div className="app-content">
         <div className="page-shell">
           <PageEditor
@@ -65,12 +69,15 @@ export function PageRoute({ metaOpen }: PageRouteProps) {
             onTitleChange={doc.queueTitle}
             onIconChange={doc.queueIcon}
           />
+          {page.database ? <DatabaseView page={page} /> : null}
         </div>
       </div>
+
+      <CommentsAside />
 
       {metaOpen ? <PageMeta page={page} /> : null}
 
       <ConflictDialog conflict={doc.conflict} onResolve={doc.resolveConflict} />
-    </>
+    </CommentsProvider>
   );
 }

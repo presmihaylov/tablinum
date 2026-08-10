@@ -1,14 +1,11 @@
-import { FrontmatterSchema, parseOrThrow, validation } from '@tablinum/shared';
+import { validation } from '@tablinum/shared';
+import { parse, stringifyFrontmatter } from '@tablinum/core';
 import type { Frontmatter } from '@tablinum/shared';
 
 /** Every value this codec can write. `_space.yml` needs no more than these. */
 export type Scalar = string | number | boolean | null | string[];
 
-/**
- * A small YAML codec covering exactly the frontmatter shape the contract defines.
- * It exists so the server test suite owns a real on-disk format without depending on
- * the content store package.
- */
+/** A small YAML codec for the flat `key: value` documents `_space.yml` is written in. */
 
 const DELIMITER = '---';
 
@@ -20,16 +17,12 @@ function encodeScalar(value: Scalar): string {
   return JSON.stringify(value);
 }
 
+/**
+ * The block a page file opens with. A database carries nested YAML that this file's flat codec
+ * cannot write, so the real emitter does the work and the codec below stays for `_space.yml`.
+ */
 export function serializeFrontmatter(frontmatter: Frontmatter): string {
-  const lines: string[] = [DELIMITER];
-  lines.push(`id: ${frontmatter.id}`);
-  lines.push(`title: ${encodeScalar(frontmatter.title)}`);
-  if (frontmatter.icon !== undefined) lines.push(`icon: ${encodeScalar(frontmatter.icon)}`);
-  if (frontmatter.order !== undefined) lines.push(`order: ${encodeScalar(frontmatter.order)}`);
-  lines.push(`created: ${encodeScalar(frontmatter.created)}`);
-  lines.push(`updated: ${encodeScalar(frontmatter.updated)}`);
-  lines.push(DELIMITER, '');
-  return lines.join('\n');
+  return `${DELIMITER}\n${stringifyFrontmatter(frontmatter)}\n${DELIMITER}\n`;
 }
 
 function decodeScalar(raw: string): Scalar {
@@ -78,27 +71,10 @@ export function serializeFlatYaml(record: Record<string, Scalar>): string {
 
 /** Split a page file into its validated frontmatter and its body. */
 export function parsePageFile(raw: string): { frontmatter: Frontmatter; markdown: string } {
-  const normalized = raw.replace(/\r\n/g, '\n');
-  const lines = normalized.split('\n');
-  if (lines[0]?.trim() !== DELIMITER) throw validation('Page file has no frontmatter block');
-
-  const record: Record<string, unknown> = {};
-  let end = -1;
-
-  for (let i = 1; i < lines.length; i += 1) {
-    const line = lines[i] ?? '';
-    if (line.trim() === DELIMITER) {
-      end = i;
-      break;
-    }
-    if (line.trim().length === 0) continue;
-
-    const [key, value] = splitKeyValue(line);
-    record[key] = decodeScalar(value);
+  const parsed = parse(raw);
+  if (parsed.blockBroken) throw validation('Page file frontmatter is not terminated');
+  if (!raw.replace(/\r\n/g, '\n').startsWith(DELIMITER)) {
+    throw validation('Page file has no frontmatter block');
   }
-
-  if (end === -1) throw validation('Page file frontmatter is not terminated');
-
-  const frontmatter = parseOrThrow(FrontmatterSchema, record, 'frontmatter');
-  return { frontmatter, markdown: lines.slice(end + 1).join('\n') };
+  return { frontmatter: parsed.frontmatter, markdown: parsed.body };
 }

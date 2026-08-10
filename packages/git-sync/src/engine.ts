@@ -89,6 +89,8 @@ const GITATTRIBUTES_CONTENT = [
 const INITIAL_COMMIT_MESSAGE = 'chore: initialize tablinum content repo';
 const GITATTRIBUTES_COMMIT_MESSAGE = 'chore: normalize page line endings';
 const PRE_PULL_COMMIT_MESSAGE = 'docs: save local edits before pull';
+/** How many times a pull re-commits a tree that a concurrent page save dirtied again. */
+const PRE_PULL_COMMIT_ATTEMPTS = 3;
 const RESOLVE_COMMIT_MESSAGE = 'docs: resolve conflicts with the remote';
 
 // NUL ends a record: git accepts every other byte in a commit message, so nothing else is
@@ -732,14 +734,19 @@ export class GitEngine {
     if (this.remote === null) return { pulled: 0, files: [], reason: 'no-remote' };
     const git = await this.git();
 
-    // A rebase refuses to run over a dirty tree, so local edits become a commit first.
-    const saved = await this.commitAllUnlocked(PRE_PULL_COMMIT_MESSAGE);
-    if (saved !== null) this.logger.info('committed local edits before pull', { sha: saved });
-
     try {
       await git.raw(['fetch', '--prune', 'origin']);
     } catch (err) {
       throw gitError(`Fetch failed: ${describeGitError(err)}`, err);
+    }
+
+    // A rebase refuses to run over a dirty tree, so local edits become a commit first. Page saves
+    // write to disk without holding the git mutex, so one can land right after the commit and
+    // dirty the tree again. Commit and re-check a few times instead of failing the whole pull.
+    for (let attempt = 0; attempt < PRE_PULL_COMMIT_ATTEMPTS; attempt += 1) {
+      const saved = await this.commitAllUnlocked(PRE_PULL_COMMIT_MESSAGE);
+      if (saved !== null) this.logger.info('committed local edits before pull', { sha: saved });
+      if ((await this.dirtyFiles()).length === 0) break;
     }
 
     const upstream = await this.upstreamRef();

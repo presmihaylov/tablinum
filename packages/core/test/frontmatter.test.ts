@@ -85,6 +85,37 @@ describe('round trip', () => {
     });
   }
 
+  /**
+   * A diagram is a plain fenced block, so the store must carry it the way it carries any
+   * other fence: untouched. Backticks and ragged whitespace inside it are diagram source.
+   */
+  const fences: [string, string][] = [
+    [
+      'a mermaid fence',
+      '```mermaid\ngraph TD\n  A[Start] --> B{Is it good?}\n  B -->|yes| C[Ship it]\n  B -->|no| A\n```',
+    ],
+    ['a mermaid fence holding a bare triple backtick', '```mermaid\ngraph TD\n  A["a ``` b"] --> B\n```'],
+    [
+      'a mermaid fence with awkward whitespace',
+      '```mermaid  \n\ngraph LR\n  A -->|"  yes  "| B  \n\t\n  B --> C\n\n```',
+    ],
+    [
+      'a mermaid fence beside prose',
+      '# Flow\n\nBefore.\n\n```mermaid\nflowchart LR\n  A --> B\n```\n\nAfter.',
+    ],
+  ];
+
+  for (const [label, body] of fences) {
+    it(`keeps ${label} byte identical`, () => {
+      const original = serialize(base(), body);
+      const parsed = parse(original);
+      expect(parsed.body).toBe(body);
+      expect(parsed.repaired).toBe(false);
+      expect(serialize(parsed.frontmatter, parsed.body)).toBe(original);
+      expect(serializePreserving(parsed, parsed.frontmatter, parsed.body)).toBe(original);
+    });
+  }
+
   it('hands back the original bytes when nothing changed', () => {
     const original = serialize(base({ icon: 'X', order: 1 }), 'Hello\n\nWorld');
     const parsed = parse(original);
@@ -100,17 +131,16 @@ describe('round trip', () => {
     expect(out).toContain('title: Renamed');
   });
 
-  /** tags and props were dropped from the contract. A file that still carries them is left
-      alone until something else about the page changes, and loses them on that save. */
+  /** tags was dropped from the contract. A file that still carries it is left alone until
+      something else about the page changes, and loses it on that save. */
   it('keeps a retired key on disk until the page changes, then drops it', () => {
-    const raw = `---\nid: ${ID}\ntitle: T\ntags: [ops]\ncreated: ${CREATED}\nupdated: ${UPDATED}\nprops:\n  status: live\n---\n\nbody\n`;
+    const raw = `---\nid: ${ID}\ntitle: T\ntags: [ops]\ncreated: ${CREATED}\nupdated: ${UPDATED}\n---\n\nbody\n`;
     const parsed = parse(raw);
     expect(parsed.repaired).toBe(false);
     expect(serializePreserving(parsed, parsed.frontmatter, parsed.body)).toBe(raw);
 
     const out = serializePreserving(parsed, { ...parsed.frontmatter, title: 'U' }, parsed.body);
     expect(out).not.toContain('tags:');
-    expect(out).not.toContain('props:');
   });
 
   it('never preserves the bytes of a repaired file', () => {

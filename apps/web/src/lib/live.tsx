@@ -81,6 +81,12 @@ export function LiveProvider({ children }: { children: ReactNode }) {
         invalidateContent(client);
         return;
       }
+      if (message.type === 'comments') {
+        // The tab that wrote it already refetched, and its own panel must not flicker.
+        if (message.by === myClientId()) return;
+        void client.invalidateQueries({ queryKey: qk.comments(message.pageId) });
+        return;
+      }
       if (message.type !== 'page') return;
       // Our own write comes back to us too; the tab that made it already has the bytes.
       if (message.by === myClientId()) return;

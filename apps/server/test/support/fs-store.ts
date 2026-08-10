@@ -10,28 +10,38 @@ import {
   depth,
   internal,
   isDescendantOf,
+  mergeText,
   newPageId,
   notFound,
   pagePathToRelFile,
   parentPath,
   relFileToPagePath,
   saveConflict,
+  slugify,
   spaceFileRelPath,
   spaceOf,
   validation,
+  coerceProps,
+  coerceValue,
 } from '@tablinum/shared';
+import { Mutex, RevHistory } from '@tablinum/core';
 import type {
   Backlink,
   CreatePageBody,
+  CreateRowBody,
   CreateSpaceBody,
+  Database,
+  DbRow,
   Frontmatter,
   Page,
   PageId,
   PagePath,
   PageSummary,
+  RowProps,
   Space,
   TreeNode,
   UpdatePageBody,
+  UpdateRowBody,
   UpdateSpaceBody,
 } from '@tablinum/shared';
 import type { ContentStore, ParsedPageFile, SpaceTree } from '../../src/deps.js';
@@ -111,6 +121,8 @@ function buildTree(pages: PageSummary[], space: string): TreeNode[] {
  */
 export class FsContentStore implements ContentStore {
   readonly #idByFile = new Map<string, PageId>();
+  readonly #writes = new Mutex();
+  readonly #history = new RevHistory();
 
   constructor(readonly contentDir: string) {}
 
@@ -259,16 +271,15 @@ export class FsContentStore implements ContentStore {
     return page;
   }
 
+  /** Serialised like the real store, so a test can hold this double to the same promises. */
   async updatePage(id: PageId, patch: UpdatePageBody): Promise<Page> {
+    return this.#writes.runExclusive(() => this.#updatePageUnlocked(id, patch));
+  }
+
+  async #updatePageUnlocked(id: PageId, patch: UpdatePageBody): Promise<Page> {
     const current = await this.getPageById(id);
     if (current === null) throw notFound(`No page with id ${id}`);
-    if (patch.baseRev !== undefined && patch.markdown !== undefined && patch.baseRev !== current.rev) {
-      throw saveConflict('The page changed since this edit started', {
-        markdown: current.markdown,
-        rev: current.rev,
-        updated: current.updated,
-      });
-    }
+    const merged = this.#reconcile(id, patch, current);
 
     let rel = this.#fileOf(current.path);
     if (rel === null) throw notFound(`No file for page ${current.path}`);
@@ -279,27 +290,50 @@ export class FsContentStore implements ContentStore {
     const page = await this.#read(rel);
     if (page === null) throw internal(`Failed to read back ${rel}`);
 
+    // Spread what is on disk, or editing a database page's body would drop its `db` block.
     const frontmatter: Frontmatter = {
-      id: page.id,
+      ...parsePageFile(await readFile(page.filePath, 'utf8')).frontmatter,
       title: patch.title ?? page.title,
-      created: page.created,
       updated: new Date().toISOString(),
     };
 
     const icon = patch.icon === null ? undefined : (patch.icon ?? page.icon);
+    if (icon === undefined) delete frontmatter.icon;
     if (icon !== undefined) frontmatter.icon = icon;
 
-
     const order = patch.order === null ? undefined : (patch.order ?? page.order);
+    if (order === undefined) delete frontmatter.order;
     if (order !== undefined) frontmatter.order = order;
 
 
-    const markdown = patch.markdown ?? page.markdown;
+    const markdown = merged ?? page.markdown;
     await writeFile(page.filePath, serializeFrontmatter(frontmatter) + markdown, 'utf8');
 
     const updated = await this.#read(rel);
     if (updated === null) throw internal(`Failed to read back ${rel}`);
+    this.#history.record(id, updated.rev, updated.markdown);
     return updated;
+  }
+
+  /** The real store's rule: merge a stale edit when it can, refuse it when it genuinely clashes. */
+  #reconcile(id: PageId, patch: UpdatePageBody, current: Page): string | null {
+    if (patch.markdown === undefined) return null;
+    if (patch.baseRev === undefined) return patch.markdown;
+
+    this.#history.record(id, current.rev, current.markdown);
+    if (patch.baseRev === current.rev) return patch.markdown;
+
+    const base = this.#history.find(id, patch.baseRev);
+    if (base !== null) {
+      const result = mergeText(base, patch.markdown, current.markdown);
+      if (result.clean) return result.text;
+    }
+
+    throw saveConflict('The page changed since this edit started', {
+      markdown: current.markdown,
+      rev: current.rev,
+      updated: current.updated,
+    });
   }
 
   async deletePage(id: PageId, recursive: boolean): Promise<PagePath[]> {
@@ -350,6 +384,137 @@ export class FsContentStore implements ContentStore {
 
   parsePageFile(raw: string): ParsedPageFile {
     return parsePageFile(raw);
+  }
+
+  // ---------------------------------------------------------------------------
+  // databases
+  // ---------------------------------------------------------------------------
+
+  async getDatabase(id: PageId): Promise<{ page: Page; database: Database; rows: DbRow[] }> {
+    const page = await this.getPageById(id);
+    if (page === null) throw notFound(`No page with id ${id}`);
+    const database = page.database;
+    if (database === undefined) throw validation(`Page ${page.path} is not a database`);
+    return { page, database, rows: await this.#rowsOf(page.path, database) };
+  }
+
+  async setDatabase(id: PageId, database: Database): Promise<Page> {
+    return this.#writes.runExclusive(() =>
+      this.#writeFrontmatter(id, (next) => {
+        next.db = database;
+      }),
+    );
+  }
+
+  async removeDatabase(id: PageId): Promise<Page> {
+    return this.#writes.runExclusive(() =>
+      this.#writeFrontmatter(id, (next) => {
+        delete next.db;
+      }),
+    );
+  }
+
+  async createRow(id: PageId, input: CreateRowBody): Promise<DbRow> {
+    const parent = await this.getPageById(id);
+    if (parent === null) throw notFound(`No page with id ${id}`);
+    const database = parent.database;
+    if (database === undefined) throw validation(`Page ${parent.path} is not a database`);
+
+    const title = (input.title ?? '').trim().length > 0 ? (input.title as string).trim() : 'Untitled';
+    const props = coerceProps(database.properties, input.props ?? {});
+    const created = await this.createPage({ path: this.#freeChildPath(parent.path, title), title });
+
+    if (Object.keys(props).length > 0) {
+      await this.#writes.runExclusive(() =>
+        this.#writeFrontmatter(created.id, (next) => {
+          next.props = props;
+        }),
+      );
+    }
+    return this.#rowOf(created.id, database);
+  }
+
+  async updateRow(id: PageId, patch: UpdateRowBody): Promise<DbRow> {
+    const row = await this.getPageById(id);
+    if (row === null) throw notFound(`No page with id ${id}`);
+    const parent = parentPath(row.path);
+    const owner = parent === null ? null : await this.getPageByPath(parent);
+    const database = owner?.database;
+    if (database === undefined) throw validation(`Page ${row.path} is not a database row`);
+
+    const known = new Map(database.properties.map((property) => [property.id, property]));
+    await this.#writes.runExclusive(() =>
+      this.#writeFrontmatter(id, (next) => {
+        const props: RowProps = { ...(next.props ?? {}) };
+        for (const [key, raw] of Object.entries(patch.props ?? {})) {
+          const property = known.get(key);
+          if (property === undefined) throw validation(`No property ${key} on this database`);
+          const value = coerceValue(property, raw);
+          if (value === null) delete props[key];
+          if (value !== null) props[key] = value;
+        }
+        if (Object.keys(props).length > 0) next.props = props;
+        if (Object.keys(props).length === 0) delete next.props;
+        if (patch.title !== undefined && patch.title.trim().length > 0) next.title = patch.title.trim();
+      }),
+    );
+    return this.#rowOf(id, database);
+  }
+
+  async #rowsOf(pagePath: PagePath, database: Database): Promise<DbRow[]> {
+    const rows: DbRow[] = [];
+    for (const page of await this.#allPages()) {
+      if (parentPath(page.path) !== pagePath) continue;
+      rows.push(this.#toRow(page, database));
+    }
+    // Oldest first, which is the order rows were added. A view's sort replaces it.
+    rows.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    return rows;
+  }
+
+  async #rowOf(id: PageId, database: Database): Promise<DbRow> {
+    const page = await this.getPageById(id);
+    if (page === null) throw notFound(`No page with id ${id}`);
+    return this.#toRow(page, database);
+  }
+
+  #toRow(page: Page, database: Database): DbRow {
+    const row: DbRow = {
+      id: page.id,
+      path: page.path,
+      title: page.title,
+      created: page.created,
+      updated: page.updated,
+      props: coerceProps(database.properties, page.props ?? {}),
+    };
+    if (page.icon !== undefined) row.icon = page.icon;
+    return row;
+  }
+
+  /** A child path nothing occupies yet. Two rows may carry the same title. */
+  #freeChildPath(parent: PagePath, title: string): PagePath {
+    const base = slugify(title);
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      const candidate = `${parent}/${base}${attempt === 0 ? '' : `-${attempt + 1}`}`;
+      if (this.#fileOf(candidate) === null) return candidate;
+    }
+    return `${parent}/${base}-${newPageId().toLowerCase()}`;
+  }
+
+  /** Rewrite one page's frontmatter and leave its body byte for byte as it was. */
+  async #writeFrontmatter(id: PageId, edit: (next: Frontmatter) => void): Promise<Page> {
+    const page = await this.getPageById(id);
+    if (page === null) throw notFound(`No page with id ${id}`);
+    const current = parsePageFile(await readFile(page.filePath, 'utf8'));
+
+    const next: Frontmatter = { ...current.frontmatter };
+    edit(next);
+    next.updated = new Date().toISOString();
+    await writeFile(page.filePath, serializeFrontmatter(next) + current.markdown, 'utf8');
+
+    const saved = await this.getPageById(id);
+    if (saved === null) throw internal(`Failed to read back ${page.path}`);
+    return saved;
   }
 
   // ---------------------------------------------------------------------------
@@ -437,6 +602,11 @@ export class FsContentStore implements ContentStore {
     };
     if (frontmatter.icon !== undefined) page.icon = frontmatter.icon;
     if (frontmatter.order !== undefined) page.order = frontmatter.order;
+    if (frontmatter.db !== undefined) page.database = frontmatter.db;
+    if (frontmatter.props !== undefined) page.props = frontmatter.props;
+    // Like the real store: every rev a caller can hold was read here, so this is where the
+    // merge base is learnt.
+    this.#history.record(page.id, page.rev, page.markdown);
     return page;
   }
 

@@ -235,6 +235,22 @@ describe('LiveHub', () => {
     expect(a.socket.count('removed')).toBe(1);
   });
 
+  it('broadcasts a comment change to every tab and names the one that caused it', () => {
+    const hub = new LiveHub(LOG);
+    const a = join(hub, 'tab-a');
+    const b = join(hub, 'tab-b');
+    hub.commentsChanged(PAGE.id, 'tab-a');
+
+    for (const socket of [a.socket, b.socket]) {
+      expect(socket.last('comments')).toEqual({ type: 'comments', pageId: PAGE.id, by: 'tab-a' });
+    }
+
+    // A write with no tab behind it, such as an MCP call, still reaches every tab.
+    hub.commentsChanged(PAGE.id, null);
+    expect(a.socket.last('comments')).toEqual({ type: 'comments', pageId: PAGE.id, by: null });
+    expect(a.socket.count('comments')).toBe(2);
+  });
+
   it('broadcasts the git status', () => {
     const hub = new LiveHub(LOG);
     const a = join(hub, 'tab-a');

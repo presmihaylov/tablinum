@@ -3,7 +3,7 @@ import type Token from 'markdown-it/lib/token.mjs';
 import type StateBlock from 'markdown-it/lib/rules_block/state_block.mjs';
 import type StateCore from 'markdown-it/lib/rules_core/state_core.mjs';
 import type StateInline from 'markdown-it/lib/rules_inline/state_inline.mjs';
-import { HANDLE_PATTERN, SHORTCODE_PATTERN } from '@tablinum/shared';
+import { HANDLE_PATTERN, SHORTCODE_PATTERN, isDiagramPath } from '@tablinum/shared';
 import { isCustomEmoji } from '../../lib/customEmoji';
 import { DATA, isCalloutType } from './dialect';
 import { encodeRaw, escapeHtml } from './html';
@@ -53,6 +53,7 @@ export function configureMarkdownIt(md: MarkdownIt): MarkdownIt {
   // No `alt` list, so the rule never interrupts an open paragraph. `Intro:\n![[a]]`
   // stays one paragraph, which is what every other markdown reader sees.
   md.block.ruler.before('paragraph', 'gd_pageembed', pageEmbedRule);
+  md.block.ruler.before('paragraph', 'gd_diagram', diagramRule);
 
   // Escapes have to be claimed before `text_join` folds them into plain text.
   md.core.ruler.before('text_join', 'gd_escape', escapeRule);
@@ -223,6 +224,36 @@ function pageEmbedRule(
   token.map = [startLine, startLine + 1];
   token.markup = '![[';
   token.attrSet(DATA.embed, match[1] ?? '');
+  state.line = startLine + 1;
+  return true;
+}
+
+/**
+ * An image line whose destination is a `.excalidraw.svg` attachment: a drawing this editor
+ * can reopen. Only the plain `![label](dest)` shape is claimed, with no title and nothing
+ * else on the line, so whatever is written back is the same bytes the file already held.
+ * Anything richer stays an ordinary image and travels the ordinary way.
+ */
+const DIAGRAM_RE = /^!\[([^[\]\r\n]*)\]\(([^()\s]+)\)$/;
+
+function diagramRule(
+  state: StateBlock,
+  startLine: number,
+  _endLine: number,
+  silent: boolean,
+): boolean {
+  if ((state.sCount[startLine] ?? 0) - state.blkIndent >= 4) return false;
+
+  const from = (state.bMarks[startLine] ?? 0) + (state.tShift[startLine] ?? 0);
+  const match = DIAGRAM_RE.exec(state.src.slice(from, state.eMarks[startLine] ?? from));
+  if (!match || !isDiagramPath(match[2] ?? '')) return false;
+  if (silent) return true;
+
+  const token = state.push('gd_diagram', 'div', 0);
+  token.map = [startLine, startLine + 1];
+  token.markup = '![';
+  token.attrSet(DATA.diagram, match[2] ?? '');
+  token.attrSet(DATA.label, encodeRaw(match[1] ?? ''));
   state.line = startLine + 1;
   return true;
 }
@@ -678,6 +709,14 @@ function installRenderers(md: MarkdownIt): void {
     const token = tokens[idx];
     const target = token?.attrGet(DATA.embed) ?? '';
     return `<div ${DATA.embed}="${escapeHtml(target)}"${gapAttr(token)}></div>`;
+  };
+
+  rules['gd_diagram'] = (tokens, idx) => {
+    const token = tokens[idx];
+    const src = token?.attrGet(DATA.diagram) ?? '';
+    const label = token?.attrGet(DATA.label) ?? '';
+    const attrs = `${DATA.diagram}="${escapeHtml(src)}" ${DATA.label}="${escapeHtml(label)}"`;
+    return `<div ${attrs}${gapAttr(token)}></div>`;
   };
 
   rules['gd_mention'] = (tokens, idx) => {

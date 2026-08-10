@@ -172,6 +172,11 @@ export const CORPUS: Record<string, string> = {
 
   'fenced code empty': '```\n```\n',
 
+  'mermaid diagram':
+    '```mermaid\ngraph TD\n  A[Start] --> B{Is it good?}\n  B -->|yes| C[Ship it]\n  B -->|no| A\n```\n',
+
+  'mermaid diagram with tildes': '~~~mermaid\nsequenceDiagram\n  A->>B: hi\n~~~\n',
+
   'indented code': '    indented code line\n    second line\n',
 
   'tab-indented code': '\tcode with tab\n',
@@ -248,6 +253,24 @@ export const CORPUS: Record<string, string> = {
   'page embed pair': '![[eng/deploy]]\n![[eng/rollback]]\n',
 
   'page embed above a heading': '![[eng/deploy]]\n\n# Next\n',
+
+  diagram: '![Architecture](/_assets/pg_1/architecture.excalidraw.svg)\n',
+
+  'diagram with no label': '![](/_assets/pg_1/sketch.excalidraw.svg)\n',
+
+  'diagram between paragraphs':
+    'Before.\n\n![Flow](/_assets/pg_1/flow.excalidraw.svg)\n\nAfter.\n',
+
+  'diagram pair': '![a](/_assets/pg_1/a.excalidraw.svg)\n![b](/_assets/pg_1/b.excalidraw.svg)\n',
+
+  'diagram above a heading': '![Flow](/_assets/pg_1/flow.excalidraw.svg)\n\n# Next\n',
+
+  // A diagram path in any shape the block rule does not claim stays an ordinary image.
+  'diagram path with a title': '![Flow](/_assets/pg_1/flow.excalidraw.svg "Figure 1")\n',
+
+  'diagram path inside a sentence': 'See ![Flow](/_assets/pg_1/flow.excalidraw.svg) above.\n',
+
+  'diagram path in a list item': '- ![Flow](/_assets/pg_1/flow.excalidraw.svg)\n',
 
   'html inline tag': 'Press <kbd>Esc</kbd> to close.\n',
 
@@ -449,6 +472,14 @@ export const CORPUS: Record<string, string> = {
   'fenced code with trailing spaces on the fence line': '```js  \nlet a = 1;\n```\n',
 
   'fenced code holding a bare triple backtick': '```\na ``` b\n```\n',
+
+  'mermaid diagram holding a bare triple backtick':
+    '```mermaid\ngraph TD\n  A["a ``` b"] --> B\n```\n',
+
+  // Trailing spaces on the fence line and on a content line, a blank first line, a tab-only
+  // line and a blank line before the close: none of it is the editor's to tidy up.
+  'mermaid diagram with awkward whitespace':
+    '```mermaid  \n\ngraph LR\n  A -->|"  yes  "| B  \n\t\n  B --> C\n\n```\n',
 
   'fenced code ending in a blank line': '```\ncode\n\n```\n',
 

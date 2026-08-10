@@ -5,6 +5,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type KeyboardEvent,
   type ReactNode,
 } from 'react';
 import type { Account, Comment, CommentAnchor, CommentThread } from '@tablinum/shared';
@@ -24,6 +25,14 @@ import { Avatar, type AvatarPerson } from '../Account/Avatar';
 import { Check, Close } from '../ui/Icon';
 import { ConfirmDialog, type ConfirmRequest } from '../ui/ConfirmDialog';
 import { renderCommentBody } from './render';
+import {
+  applyMention,
+  matchPeople,
+  mentionSpot,
+  peopleToMention,
+  type MentionPerson,
+  type MentionSpot,
+} from './mention';
 import { fieldHeight, groupByAnchor, stackGroups, type CardGroup } from './layout';
 import './comments.css';
 
@@ -43,6 +52,8 @@ interface ComposerProps {
   initial?: string;
   autoFocus?: boolean;
   busy: boolean;
+  /** Who can be named with an `@`. */
+  people: MentionPerson[];
   onSubmit: (body: string) => void;
   onCancel: () => void;
 }
@@ -53,44 +64,133 @@ function Composer({
   initial = '',
   autoFocus = false,
   busy,
+  people,
   onSubmit,
   onCancel,
 }: ComposerProps) {
   const [value, setValue] = useState(initial);
+  const [spot, setSpot] = useState<MentionSpot | null>(null);
+  const [active, setActive] = useState(0);
   const ref = useRef<HTMLTextAreaElement>(null);
+  // Set when a pick rewrites the body: the caret has to move after React paints the new value.
+  const caretWanted = useRef<number | null>(null);
 
   useEffect(() => {
     if (autoFocus) ref.current?.focus();
   }, [autoFocus]);
+
+  useLayoutEffect(() => {
+    const at = caretWanted.current;
+    if (at === null) return;
+    caretWanted.current = null;
+    ref.current?.focus();
+    ref.current?.setSelectionRange(at, at);
+  });
+
+  const choices = spot === null ? [] : matchPeople(people, spot.query);
+  const menuOpen = spot !== null && choices.length > 0;
+
+  const look = (text: string, caret: number | null): void => {
+    setSpot(caret === null ? null : mentionSpot(text, caret));
+    setActive(0);
+  };
+
+  const pick = (person: MentionPerson): void => {
+    if (spot === null) return;
+    const next = applyMention(value, spot, person.handle);
+    setValue(next.text);
+    setSpot(null);
+    caretWanted.current = next.caret;
+  };
 
   const submit = (): void => {
     const body = value.trim();
     if (body.length === 0) return;
     onSubmit(body);
     setValue('');
+    setSpot(null);
+  };
+
+  /** The menu owns these keys while it is open, so Escape closes it before the composer. */
+  const menuKey = (event: KeyboardEvent<HTMLTextAreaElement>): boolean => {
+    if (!menuOpen) return false;
+    if (event.key === 'Escape') {
+      setSpot(null);
+      return true;
+    }
+    if (event.key === 'ArrowDown') {
+      setActive((current) => (current + 1) % choices.length);
+      return true;
+    }
+    if (event.key === 'ArrowUp') {
+      setActive((current) => (current + choices.length - 1) % choices.length);
+      return true;
+    }
+    if (event.key === 'Enter' || event.key === 'Tab') {
+      const person = choices[active];
+      if (person !== undefined) pick(person);
+      return true;
+    }
+    return false;
   };
 
   return (
     <div className="comments__composer">
-      <textarea
-        ref={ref}
-        className="input comments__input"
-        rows={3}
-        value={value}
-        placeholder={placeholder}
-        aria-label={placeholder}
-        onChange={(event) => setValue(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === 'Escape') {
-            event.preventDefault();
-            onCancel();
-          }
-          if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
-            event.preventDefault();
-            submit();
-          }
-        }}
-      />
+      <div className="comments__field-box">
+        <textarea
+          ref={ref}
+          className="input comments__input"
+          rows={3}
+          value={value}
+          placeholder={placeholder}
+          aria-label={placeholder}
+          onChange={(event) => {
+            setValue(event.target.value);
+            look(event.target.value, event.target.selectionStart);
+          }}
+          onClick={(event) => look(event.currentTarget.value, event.currentTarget.selectionStart)}
+          onBlur={() => setSpot(null)}
+          onKeyDown={(event) => {
+            if (menuKey(event)) {
+              event.preventDefault();
+              return;
+            }
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              onCancel();
+            }
+            if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+              event.preventDefault();
+              submit();
+            }
+          }}
+        />
+
+        {menuOpen ? (
+          <div className="comments__mentions" role="listbox" aria-label="Mention somebody">
+            {choices.map((person, index) => (
+              <button
+                key={person.id}
+                type="button"
+                role="option"
+                aria-selected={index === active}
+                className={
+                  index === active ? 'comments__mention-row is-active' : 'comments__mention-row'
+                }
+                onMouseEnter={() => setActive(index)}
+                // The field must keep the focus, or the menu closes before the click lands.
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => pick(person)}
+              >
+                <Avatar person={person} size={20} />
+                <span className="comments__mention-name">{person.name}</span>
+                <span className="comments__mention-handle">@{person.handle}</span>
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </div>
+
       <div className="comments__composer-row">
         <button type="button" className="btn" onClick={onCancel}>
           Cancel
@@ -114,6 +214,9 @@ interface CommentRowProps {
   canEdit: boolean;
   canDelete: boolean;
   busy: boolean;
+  people: MentionPerson[];
+  /** The reader's handle, so a mention of them stands out. */
+  me: string | null;
   /** A closed card shows the remark cut short and offers nothing to do with it. */
   preview?: boolean;
   onEdit: (body: string) => void;
@@ -126,6 +229,8 @@ function CommentRow({
   canEdit,
   canDelete,
   busy,
+  people,
+  me,
   preview = false,
   onEdit,
   onDelete,
@@ -152,6 +257,7 @@ function CommentRow({
             initial={comment.body}
             autoFocus
             busy={busy}
+            people={people}
             onCancel={() => setEditing(false)}
             onSubmit={(body) => {
               setEditing(false);
@@ -162,7 +268,7 @@ function CommentRow({
           <div
             className={preview ? 'comment__text comment__text--preview' : 'comment__text'}
             // Rendered by a markdown-it with raw HTML turned off; see render.ts.
-            dangerouslySetInnerHTML={{ __html: renderCommentBody(comment.body) }}
+            dangerouslySetInnerHTML={{ __html: renderCommentBody(comment.body, me) }}
           />
         )}
 
@@ -190,6 +296,8 @@ interface ThreadCardProps {
   active: boolean;
   orphaned: boolean;
   busy: boolean;
+  people: MentionPerson[];
+  me: string | null;
   personFor: (userId: string) => AvatarPerson;
   canEdit: (comment: Comment) => boolean;
   canDelete: (comment: Comment) => boolean;
@@ -205,6 +313,8 @@ function ThreadCard({
   active,
   orphaned,
   busy,
+  people,
+  me,
   personFor,
   canEdit,
   canDelete,
@@ -258,6 +368,8 @@ function ThreadCard({
             canEdit={canEdit(comment)}
             canDelete={canDelete(comment)}
             busy={busy}
+            people={people}
+            me={me}
             preview={!open}
             onEdit={(body) => onEdit(comment, body)}
             onDelete={() => onDelete(comment)}
@@ -273,6 +385,7 @@ function ThreadCard({
           submitLabel="Reply"
           autoFocus
           busy={busy}
+          people={people}
           onCancel={() => setReplying(false)}
           onSubmit={(body) => {
             setReplying(false);
@@ -309,12 +422,13 @@ function replyCount(rest: number): string {
 interface DraftCardProps {
   anchor: CommentAnchor | null;
   busy: boolean;
+  people: MentionPerson[];
   onCancel: () => void;
   onSubmit: (body: string) => void;
 }
 
 /** The card of a thread that is being written. It sits at the selection it is about. */
-function DraftCard({ anchor, busy, onCancel, onSubmit }: DraftCardProps) {
+function DraftCard({ anchor, busy, people, onCancel, onSubmit }: DraftCardProps) {
   return (
     <li className="comments__thread comments__thread--draft">
       <div className="comments__quote">
@@ -329,6 +443,7 @@ function DraftCard({ anchor, busy, onCancel, onSubmit }: DraftCardProps) {
         submitLabel="Comment"
         autoFocus
         busy={busy}
+        people={people}
         onCancel={onCancel}
         onSubmit={onSubmit}
       />
@@ -412,6 +527,7 @@ export function CommentsPanel() {
   const remove = useDeleteComment();
 
   const roster = useMemo(() => peopleById(users.data?.users ?? []), [users.data]);
+  const mentionable = useMemo(() => peopleToMention(users.data?.users ?? []), [users.data]);
   const pageId = comments.pageId;
 
   const busy =
@@ -479,6 +595,8 @@ export function CommentsPanel() {
         active={thread.id === comments.activeId}
         orphaned={orphaned(thread)}
         busy={busy}
+        people={mentionable}
+        me={user?.handle ?? null}
         personFor={personFor}
         canEdit={canEdit}
         canDelete={canDelete}
@@ -568,6 +686,7 @@ export function CommentsPanel() {
           <DraftCard
             anchor={null}
             busy={busy}
+            people={mentionable}
             onCancel={() => comments.cancelDraft()}
             onSubmit={submitDraft}
           />
@@ -603,6 +722,7 @@ export function CommentsPanel() {
                     key={DRAFT_KEY}
                     anchor={comments.draft}
                     busy={busy}
+                    people={mentionable}
                     onCancel={() => comments.cancelDraft()}
                     onSubmit={submitDraft}
                   />

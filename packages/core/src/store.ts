@@ -22,6 +22,7 @@ import {
   isDescendantOf,
   isPageId,
   mergeText,
+  moveRowBefore,
   newPageId,
   newRow,
   notFound,
@@ -150,6 +151,8 @@ export interface CreateRowInput {
 export interface UpdateRowInput {
   props?: Record<string, unknown>;
   title?: string;
+  /** Where the row lands: in front of this row, or at the end when null. Absent leaves it. */
+  before?: string | null;
 }
 
 
@@ -862,7 +865,9 @@ export class ContentStore {
           updated: this.#nowIso(),
         };
         changed = row;
-        next.rows = rows.map((entry) => (entry.id === rowId ? row : entry));
+        const written = rows.map((entry) => (entry.id === rowId ? row : entry));
+        next.rows =
+          patch.before === undefined ? written : moveRowBefore(written, rowId, patch.before);
       });
       if (changed === null) throw notFound(`No row ${rowId} on this database`);
       return changed;

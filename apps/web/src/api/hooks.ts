@@ -7,6 +7,7 @@ import {
   type UseMutationResult,
   type UseQueryResult,
 } from '@tanstack/react-query';
+import { moveRowBefore } from '@tablinum/shared';
 import type {
   AgentResponse,
   AgentsResponse,
@@ -530,17 +531,21 @@ export function useUpdateRow(): UseMutationResult<RowResponse, ApiError, UpdateR
       await client.cancelQueries({ queryKey: key });
       const previous = client.getQueryData<DatabaseResponse>(key);
       if (previous !== undefined) {
+        const edited = previous.rows.map((row) =>
+          row.id === vars.rowId
+            ? {
+                ...row,
+                title: vars.body.title ?? row.title,
+                props: { ...row.props, ...vars.body.props },
+              }
+            : row,
+        );
+        // A card dragged up its own stack has to stay where it was dropped, or it snaps back
+        // to where it came from until the write lands.
+        const before = vars.body.before;
         client.setQueryData<DatabaseResponse>(key, {
           ...previous,
-          rows: previous.rows.map((row) =>
-            row.id === vars.rowId
-              ? {
-                  ...row,
-                  title: vars.body.title ?? row.title,
-                  props: { ...row.props, ...vars.body.props },
-                }
-              : row,
-          ),
+          rows: before === undefined ? edited : moveRowBefore(edited, vars.rowId, before),
         });
       }
       return { previous };

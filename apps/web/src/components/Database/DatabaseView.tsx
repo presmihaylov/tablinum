@@ -32,7 +32,7 @@ import {
 import { useToast } from '../../lib/toast';
 import { Plus } from '../ui/Icon';
 import { nextOptionColor } from './Cell';
-import { BoardView } from './BoardView';
+import { BoardView, type RowMove } from './BoardView';
 import { Pop } from './Pop';
 import { RecordPanel } from './RecordPanel';
 import { TableView } from './TableView';
@@ -178,6 +178,14 @@ export function DatabaseView({ page }: DatabaseViewProps) {
     );
   };
 
+  /** A card dropped on the board: the cell it lands in, where it sits in the file, or both. */
+  const moveRow = (rowId: string, move: RowMove): void => {
+    updateRow.mutate(
+      { pageId: page.id, rowId, body: move },
+      { onError: (error) => toast.pushError(error, 'The card could not be moved') },
+    );
+  };
+
   const changeTitle = (rowId: string, title: string): void => {
     updateRow.mutate(
       { pageId: page.id, rowId, body: { title } },
@@ -289,10 +297,12 @@ export function DatabaseView({ page }: DatabaseViewProps) {
           view={view}
           rows={rows}
           people={people}
-          onCellChange={changeCell}
+          onMoveRow={moveRow}
           onCreateRow={addRow}
           onDeleteRow={removeRow}
           onOpenRow={(row) => setOpenRowId(row.id)}
+          onDatabaseChange={save}
+          onCreateOption={createOption}
         />
       ) : (
         <TableView

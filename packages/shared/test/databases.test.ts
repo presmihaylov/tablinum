@@ -15,6 +15,7 @@ import {
   isOptionId,
   isPropertyId,
   isViewId,
+  moveRowBefore,
   newOptionId,
   newPropertyId,
   newViewId,
@@ -384,33 +385,33 @@ describe('boardGroups', () => {
     row('d', { [status.id]: DOING.id }),
   ];
 
-  it('opens with the empty stack, then one stack for each option in order', () => {
+  it('opens with one stack for each option in order and closes with the empty one', () => {
     const groups = boardGroups(database, board, rows);
-    expect(groups.map((group) => group.name)).toEqual(['No Status', 'Todo', 'Doing', 'Done']);
-    expect(groups[0]?.id).toBeNull();
-    expect(groups[1]?.id).toBe(TODO.id);
+    expect(groups.map((group) => group.name)).toEqual(['Todo', 'Doing', 'Done', 'No Status']);
+    expect(groups[0]?.id).toBe(TODO.id);
+    expect(groups[3]?.id).toBeNull();
   });
 
   it('deals each row to the stack of its option', () => {
     const groups = boardGroups(database, board, rows);
     expect(groups.map((group) => group.rows.map((entry) => entry.id))).toEqual([
-      ['b'],
       ['c'],
       ['a', 'd'],
       [],
+      ['b'],
     ]);
   });
 
   it('carries the colour of the option, and gray for the empty stack', () => {
     const groups = boardGroups(database, board, rows);
-    expect(groups[0]?.color).toBe('gray');
-    expect(groups[2]?.color).toBe('blue');
+    expect(groups[3]?.color).toBe('gray');
+    expect(groups[1]?.color).toBe('blue');
   });
 
   it('puts a card naming an option nobody kept on the empty stack', () => {
     const stray = row('e', { [status.id]: newOptionId() });
     const groups = boardGroups(database, board, [stray]);
-    expect(groups[0]?.rows.map((entry) => entry.id)).toEqual(['e']);
+    expect(groups[3]?.rows.map((entry) => entry.id)).toEqual(['e']);
   });
 
   it('drops the cards the filters of the view drop', () => {
@@ -429,7 +430,7 @@ describe('boardGroups', () => {
     ];
     const sorted: DbView = { ...board, sorts: [{ property: score.id, direction: 'asc' }] };
     const groups = boardGroups(database, sorted, scored);
-    expect(groups[2]?.rows.map((entry) => entry.id)).toEqual(['d', 'a']);
+    expect(groups[1]?.rows.map((entry) => entry.id)).toEqual(['d', 'a']);
   });
 
   it('gives one stack holding everything when no select property exists', () => {
@@ -443,7 +444,42 @@ describe('boardGroups', () => {
   it('names the empty stack after the property it groups by', () => {
     const other: DbProperty = { id: newPropertyId(), name: 'Stage', type: 'select', options: [] };
     const wider: Database = { properties: [other, ...database.properties], views: [board] };
-    expect(boardGroups(wider, board, [])[0]?.name).toBe('No Stage');
+    expect(boardGroups(wider, board, []).at(-1)?.name).toBe('No Stage');
+  });
+});
+
+describe('moveRowBefore', () => {
+  const rows = [row('a', {}), row('b', {}), row('c', {})];
+  const order = (moved: DbRow[]): string[] => moved.map((entry) => entry.id);
+
+  it('puts a row in front of the one it names', () => {
+    expect(order(moveRowBefore(rows, 'c', 'a'))).toEqual(['c', 'a', 'b']);
+  });
+
+  it('puts a row at the end when it names nothing', () => {
+    expect(order(moveRowBefore(rows, 'a', null))).toEqual(['b', 'c', 'a']);
+  });
+
+  it('leaves the order alone when a row lands where it already was', () => {
+    expect(order(moveRowBefore(rows, 'a', 'b'))).toEqual(['a', 'b', 'c']);
+  });
+
+  it('moves a row forwards as well as backwards', () => {
+    expect(order(moveRowBefore(rows, 'a', 'c'))).toEqual(['b', 'a', 'c']);
+  });
+
+  it('treats a row that is gone as the end of the list', () => {
+    expect(order(moveRowBefore(rows, 'a', 'zz'))).toEqual(['b', 'c', 'a']);
+  });
+
+  it('answers with the same order when the row itself is gone', () => {
+    expect(order(moveRowBefore(rows, 'zz', 'a'))).toEqual(['a', 'b', 'c']);
+  });
+
+  it('never touches the list it was given', () => {
+    const before = [...rows];
+    moveRowBefore(rows, 'c', 'a');
+    expect(rows).toEqual(before);
   });
 });
 

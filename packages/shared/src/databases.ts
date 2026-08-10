@@ -500,8 +500,9 @@ export function boardProperty(database: Database, view: DbView): DbProperty | nu
 }
 
 /**
- * The stacks of a board, left to right: the empty one first, then one for each option in the
- * order the author arranged them. Filters and sorts apply first, exactly as on a table.
+ * The stacks of a board, left to right: one for each option in the order the author arranged
+ * them, and last the cards that hold no option at all. Filters and sorts apply first, exactly
+ * as on a table. The work of the board is in the named stacks, so they come first.
  */
 export function boardGroups(
   database: Database,
@@ -514,13 +515,13 @@ export function boardGroups(
 
   const empty: BoardGroup = { id: null, name: `No ${property.name}`, color: 'gray', rows: [] };
   const groups: BoardGroup[] = [
-    empty,
     ...property.options.map((option) => ({
       id: option.id,
       name: option.name,
       color: option.color,
       rows: [] as DbRow[],
     })),
+    empty,
   ];
   const byId = new Map(groups.map((group) => [group.id, group]));
 
@@ -531,4 +532,25 @@ export function boardGroups(
     (group ?? empty).rows.push(row);
   }
   return groups;
+}
+
+/**
+ * Put one row in front of another, or at the end of the list when `before` is null.
+ *
+ * The board keeps no order of its own: a card sits where its row sits in the file, so a card
+ * dragged up its own stack is a move inside this one array. A name nothing answers to means the
+ * end, because the row it named may have been deleted while the card was in the air.
+ */
+export function moveRowBefore(
+  rows: readonly DbRow[],
+  rowId: string,
+  before: string | null,
+): DbRow[] {
+  const moved = rows.find((row) => row.id === rowId);
+  if (moved === undefined) return [...rows];
+
+  const rest = rows.filter((row) => row.id !== rowId);
+  const at = before === null ? -1 : rest.findIndex((row) => row.id === before);
+  if (at < 0) return [...rest, moved];
+  return [...rest.slice(0, at), moved, ...rest.slice(at)];
 }

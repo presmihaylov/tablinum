@@ -351,6 +351,28 @@ button.editor__icon:hover {
 }
 
 /*
+ * The block a link opened. The band fades on its own, so nothing has to take it away again
+ * once the reader has seen which block the link meant.
+ */
+.gd-editor-surface .gd-block-linked {
+  animation: gd-block-flash 2.4s ease-out forwards;
+  border-radius: var(--radius-sm);
+}
+
+@keyframes gd-block-flash {
+  0%,
+  55% {
+    background: var(--bg-selected);
+    box-shadow: 0 0 0 4px var(--bg-selected);
+  }
+
+  100% {
+    background: transparent;
+    box-shadow: 0 0 0 4px transparent;
+  }
+}
+
+/*
  * ProseMirror keeps a node selected after the box is blurred, so a clicked diagram or image
  * stayed lit up long after the pointer had gone somewhere else. Nothing is lit unless the
  * caret is still in here.

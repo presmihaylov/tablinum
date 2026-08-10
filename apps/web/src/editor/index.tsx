@@ -10,7 +10,7 @@ import { api } from '../api/client';
 import { useCreatePage, useSetDatabase, useTree, useUploadAsset, useUsers } from '../api/hooks';
 import { qk } from '../api/keys';
 import { useComments } from '../lib/comments';
-import { pageHref } from '../lib/href';
+import { absolutePageUrl, pageHref } from '../lib/href';
 import { useToast } from '../lib/toast';
 import { childPathFor } from '../lib/treeMove';
 import type { SaveState } from '../lib/autosave';
@@ -21,6 +21,7 @@ import { PromptDialog } from '../components/ui/PromptDialog';
 import type { PromptRequest } from '../components/ui/PromptDialog';
 import { SaveIndicator } from '../components/ui/SaveIndicator';
 import { anchorFor, locateAnchor } from './anchors';
+import { blockHash, blockIdFromHash, findBlockAnchor } from './blockLinks';
 import { EMBED_PROVIDERS, embedHtml, resolveEmbed } from './embeds';
 import { buildExtensions, insertEmoji, DRAFT_SPAN_ID } from './extensions';
 import type {
@@ -463,6 +464,47 @@ export function PageEditor({
     comments.startDraft(anchorFor(instance.state.doc, from, to));
   }, [comments]);
 
+  const copyBlockLink = useCallback(
+    (anchorId: string): void => {
+      const url = `${absolutePageUrl(page.path)}${blockHash(anchorId)}`;
+      // Only a secure origin has a clipboard, so an http deployment gets told rather than
+      // left wondering why the menu item did nothing.
+      if (!navigator.clipboard) {
+        toast.push('This browser does not allow copying here', 'error');
+        return;
+      }
+      void navigator.clipboard.writeText(url).then(
+        () => toast.push('Link to the block copied', 'success'),
+        (error: unknown) => toast.pushError(error, 'The link could not be copied'),
+      );
+    },
+    [page.path, toast],
+  );
+
+  // A link to a block opens the page at that block. The words of the block are its whole
+  // address, so nothing has to be written into the file for the link to work.
+  useEffect(() => {
+    if (!editor) return undefined;
+
+    const open = (): void => {
+      const id = blockIdFromHash(window.location.hash);
+      if (id === null) return;
+      const found = findBlockAnchor(editor.state.doc, id);
+      if (found === null) return;
+      editor.commands.flashBlock({ from: found.from, to: found.to });
+      const element = editor.view.nodeDOM(found.from);
+      if (element instanceof HTMLElement) element.scrollIntoView({ block: 'center' });
+    };
+
+    // The document is laid out one frame after it is put on screen, so it has no box yet.
+    const frame = window.requestAnimationFrame(open);
+    window.addEventListener('hashchange', open);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener('hashchange', open);
+    };
+  }, [editor, page.id]);
+
   // Held steady while the dialog is open: a new object resets the field the user types in.
   const videoRequest = useMemo<PromptRequest | null>(
     () =>
@@ -552,6 +594,7 @@ export function PageEditor({
           <BlockHandles
             editor={editor}
             canvas={canvasRef}
+            onCopyLink={copyBlockLink}
             {...(comments.pageId === null ? {} : { onComment: startComment })}
           />
         ) : null}

@@ -43,6 +43,11 @@ the same pages in a block editor in the browser. Write so that both stay readabl
 - To change only metadata, call tablinum_update_page. It never touches the body.
 - Rename with tablinum_move_page, never by deleting and recreating: that would lose the page id,
   its history and every incoming link.
+- Read tablinum_list_comments before you rewrite a page, so you answer what people asked for.
+  Reply with tablinum_reply once you have done it, and only then tablinum_resolve_comment.
+- Leave your own remark with tablinum_comment when a person has to decide something. Quote the
+  words as a reader sees them, not as the markdown writes them. Do not comment to say you edited
+  a page: the history already says that.
 - Call tablinum_git_sync after a batch of edits so other people and other agents see them.`;
 
 /** The same guide, scoped to one space when the caller names one. */

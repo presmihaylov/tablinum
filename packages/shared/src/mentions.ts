@@ -12,6 +12,15 @@ import { z } from 'zod';
 export const MAX_HANDLE_LENGTH = 32;
 
 /**
+ * Whoever wrote something: a person or an agent. Both author pages and comments, so the parts
+ * that only need a name and an id take this instead of a whole account.
+ */
+export interface Writer {
+  id: string;
+  name: string;
+}
+
+/**
  * The body of a handle, without the leading `@`. Lowercase, starts and ends with a letter or
  * a digit. Exported as a string so the editor can build its own rule from the same source.
  */

@@ -1,13 +1,13 @@
 import { mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import Database from 'better-sqlite3';
-import { internal, validation } from '@tablinum/shared';
+import { escapeHtml, internal, markdownToPlainText, validation } from '@tablinum/shared';
 import type { Page, PageId, SearchHit } from '@tablinum/shared';
-import { escapeHtml, markdownToPlainText } from './plaintext.js';
 import { buildMatchExpressions, isFtsQueryError } from './query.js';
 
-export { escapeHtml, markdownToPlainText } from './plaintext.js';
-export type { PlainTextOptions } from './plaintext.js';
+// The index and its snippets are the oldest readers of this, so it keeps answering here.
+export { escapeHtml, markdownToPlainText } from '@tablinum/shared';
+export type { PlainTextOptions } from '@tablinum/shared';
 export { buildMatchExpressions, parseQuery, toMatchExpression } from './query.js';
 export type { Phrase } from './query.js';
 

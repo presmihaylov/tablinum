@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+  AgentTokenResponseSchema,
   AuthResponseSchema,
   CommentThreadResponseSchema,
   CommentThreadsResponseSchema,
@@ -288,6 +289,108 @@ describe('comment permissions', () => {
       headers: elsewhere,
     });
     expect(removed.statusCode).toBe(404);
+  });
+});
+
+describe('an agent in the conversation', () => {
+  /** An agent credential in the workspace the admin already claimed. */
+  async function addAgent(cookie: string, name = 'Doc Bot'): Promise<string> {
+    const response = await harness.app.inject({
+      method: 'POST',
+      url: '/api/v1/agents',
+      headers: { cookie },
+      payload: { name, identity: 'You keep the runbooks tidy.' },
+    });
+    expect(response.statusCode).toBe(200);
+    return bodyOf(response, AgentTokenResponseSchema).token;
+  }
+
+  it('writes a thread under its own name, and a person reads it', async () => {
+    const { cookie, pageId } = await pageWithAdmin();
+    const token = await addAgent(cookie);
+    const agents = harness.accounts.listAgents(harness.accounts.listWorkspaces()[0]?.id ?? '');
+    const agentId = agents[0]?.id;
+
+    const written = await harness.app.inject({
+      method: 'POST',
+      url: `/api/v1/pages/${pageId}/comments`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { body: 'This runbook still names the old queue.', anchor: ANCHOR },
+    });
+    expect(written.statusCode).toBe(201);
+    const thread = bodyOf(written, CommentThreadResponseSchema).thread;
+    expect(thread.comments[0]?.author).toBe(agentId);
+
+    // The remark is a normal thread: it reaches the panel a person is reading.
+    const seen = await listThreads(cookie, pageId);
+    expect(seen.map((one) => one.id)).toContain(thread.id);
+  });
+
+  it('replies to a thread a person opened, and resolves it', async () => {
+    const { cookie, pageId } = await pageWithAdmin();
+    const token = await addAgent(cookie);
+    const headers = { authorization: `Bearer ${token}` };
+    const thread = await openThread(cookie, pageId, 'Please add the rollback step.', ANCHOR);
+
+    const replied = await harness.app.inject({
+      method: 'POST',
+      url: `/api/v1/comment-threads/${thread.id}/replies`,
+      headers,
+      payload: { body: 'Added it under "Rollback".' },
+    });
+    expect(replied.statusCode).toBe(201);
+    expect(bodyOf(replied, CommentThreadResponseSchema).thread.comments).toHaveLength(2);
+
+    const resolved = await harness.app.inject({
+      method: 'PATCH',
+      url: `/api/v1/comment-threads/${thread.id}`,
+      headers,
+      payload: { resolved: true },
+    });
+    expect(resolved.statusCode).toBe(200);
+    expect(bodyOf(resolved, CommentThreadResponseSchema).thread.resolved).toBe(true);
+  });
+
+  it('rewords and takes back its own remark, and no remark of a person', async () => {
+    const { cookie, pageId } = await pageWithAdmin();
+    const token = await addAgent(cookie);
+    const headers = { authorization: `Bearer ${token}` };
+    const mine = await harness.app.inject({
+      method: 'POST',
+      url: `/api/v1/pages/${pageId}/comments`,
+      headers,
+      payload: { body: 'A first draft of the remark.' },
+    });
+    const written = bodyOf(mine, CommentThreadResponseSchema).thread;
+    const commentId = written.comments[0]?.id;
+
+    const reworded = await harness.app.inject({
+      method: 'PATCH',
+      url: `/api/v1/comments/${commentId}`,
+      headers,
+      payload: { body: 'A clearer second draft.' },
+    });
+    expect(reworded.statusCode).toBe(200);
+    expect(bodyOf(reworded, CommentThreadResponseSchema).thread.comments[0]?.body).toBe(
+      'A clearer second draft.',
+    );
+
+    const theirs = await openThread(cookie, pageId, "A person's remark.");
+    const refused = await harness.app.inject({
+      method: 'PATCH',
+      url: `/api/v1/comments/${theirs.comments[0]?.id}`,
+      headers,
+      payload: { body: 'Not yours to reword.' },
+    });
+    expect(refused.statusCode).toBe(401);
+
+    const removed = await harness.app.inject({
+      method: 'DELETE',
+      url: `/api/v1/comments/${commentId}`,
+      headers,
+    });
+    expect(removed.statusCode).toBe(200);
+    expect(bodyOf(removed, DeleteCommentResponseSchema).thread).toBeNull();
   });
 });
 

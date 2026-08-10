@@ -8,6 +8,7 @@ import {
   type Account,
   type Agent,
   type Config,
+  type Writer,
 } from '@tablinum/shared';
 import type { ServerDeps } from './deps.js';
 
@@ -275,6 +276,17 @@ export function requireAccount(request: FastifyRequest): Account {
   const { account } = request.principal;
   if (account === null) throw unauthorized('Sign in with an account to do that');
   return account;
+}
+
+/**
+ * Whoever is writing under this credential. An agent writes under its own name, so a page it
+ * saves and a comment it leaves both say who did it. An operator token names nobody.
+ */
+export function writerOf(request: FastifyRequest): Writer | null {
+  const { agent, account } = request.principal;
+  if (agent !== null) return { id: agent.id, name: agent.name };
+  if (account !== null) return { id: account.id, name: account.name };
+  return null;
 }
 
 /** An install admin, or an admin of this one workspace. */

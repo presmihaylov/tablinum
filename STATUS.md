@@ -1,6 +1,6 @@
 # tablinum — integration status
 
-Last verified: 2026-08-09, Node 22.22.3, pnpm 10.9.0, macOS (darwin 23.6.0).
+Last verified: 2026-08-11, Node 22.22.3, pnpm 10.9.0, macOS (darwin 23.6.0).
 
 tablinum is a standalone, self-hosted docs app. Every page is a markdown file with YAML
 frontmatter in a git repo. Humans edit through the web block editor; agents edit through the
@@ -14,10 +14,10 @@ REST API, the MCP server (stdio or remote), or the files themselves.
 | --- | --- | --- |
 | Typecheck | `pnpm -r typecheck` | PASS — 8 projects, strict + `noUncheckedIndexedAccess`, 0 errors |
 | Build | `pnpm -r build` | PASS — 8 dist outputs, Vite bundle 1,284 kB (410 kB gzip) |
-| Test | `pnpm -r test` | PASS — **2284 tests**, 0 failures |
+| Test | `pnpm -r test` | PASS — **2311 tests**, 0 failures |
 
-Per-package tests: shared 272, core 260, accounts 106, git-sync 97, search 96, mcp 120, server 369,
-web 964.
+Per-package tests: shared 309, core 260, accounts 106, git-sync 97, search 59, mcp 143, server 372,
+web 965. The end-to-end suite (`pnpm e2e`) is 152 Playwright tests, all passing.
 
 `packages/git-sync` cleans a temp repo at the end of every case and occasionally loses a race with
 git's own file handles (`ENOTEMPTY ... rmdir .git`). It passes on a re-run. It is a test-teardown
@@ -313,11 +313,11 @@ page is drawn, so the content repo stays a tree of markdown.
 ### MCP server
 
 `packages/mcp/dist/cli.js` was spawned over stdio by a real MCP `Client` against the live API
-earlier in the project, when the catalogue held 11 tools; it now holds 15. `tools/list` returned
+earlier in the project, when the catalogue held 11 tools; it now holds 18. `tools/list` returned
 every one of them, `tablinum_list_tree` rendered the outline, `tablinum_create_page` created a page
 that REST search then found, and a missing path returned a readable tool error. The later runs
-covered the MCP package by its 120 unit tests, plus `e2e/agent-editing.spec.ts` over the remote
-endpoint; there has been no second live stdio session.
+covered the MCP package by its 143 unit tests, plus `e2e/agent-editing.spec.ts` and
+`e2e/agent-comments.spec.ts` over the remote endpoint; there has been no second live stdio session.
 
 ### Agents and the remote MCP endpoint
 
@@ -390,6 +390,41 @@ or two out in a heading, which is close enough to show.
   the clamps at both ends.
 - `apps/web/test/editor/docStream.test.tsx`, 2 tests: an agent caret drawn where it points, and
   taken away when the agent leaves.
+
+### An agent comments like a person
+
+An agent reviews as well as writes. Three tools put it in the conversation beside the people:
+
+- `tablinum_comment` opens a thread on the words it quotes, or on the whole page when it quotes
+  nothing.
+- `tablinum_reply` answers a thread anybody opened.
+- `tablinum_resolve_comment` closes a thread, and reopens one with `resolved: false`.
+
+A thread quotes what a reader sees, never the markdown behind it. `packages/mcp/src/comments.ts`
+builds the anchor from `markdownToPlainText(page.markdown)`, which is the same flattened text the
+browser searches when it re-finds a quote, so `"Release"` anchors a heading and `"# Release"` is
+refused with a message that says why. `occurrence` picks which repeat of a phrase to take.
+
+`markdownToPlainText` moved from `@tablinum/search` into `@tablinum/shared`, so the index, the
+browser and the MCP package all strip markdown the same way. `@tablinum/search` still re-exports it.
+
+An agent now authors a comment because the server no longer demands an account for one.
+`writerOf(request)` in `apps/server/src/auth.ts` returns the agent or the account behind the
+credential, and a comment stores that id. An operator token names nobody, so it still reads
+comments and writes none. Both rosters opened to match: `GET /api/v1/users` and `GET /api/v1/agents`
+answer any signed-in caller, because a comment card and a byline have to turn an id into a name and
+a picture. Making an agent is still an admin's job.
+
+- `packages/mcp/test/comments.test.ts`, 10 tests: a heading, a link, a bold run, a code span, the
+  occurrence, the case, and every refusal.
+- `packages/mcp/test/tools.test.ts`, 14 comment tests: the three tools, the anchor that is actually
+  sent, the whole-page thread, and an agent named in the listing.
+- `apps/server/test/comments.test.ts`, 3 agent tests: a thread written under the agent's own name, a
+  reply and a resolve on a person's thread, and an edit that reaches its own remark and no other.
+- `apps/web/test/comments.test.tsx`, 1 test: an agent byline drawn exactly like a person's.
+- `e2e/agent-comments.spec.ts`, 1 test: an agent is refused a markdown quote, opens a thread on the
+  heading, a reader answers it in the panel, the agent reads the answer back with both names, then
+  replies and resolves, and the markdown file never changes.
 
 ### An agent at work on an open page
 

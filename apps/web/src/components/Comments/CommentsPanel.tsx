@@ -8,8 +8,9 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from 'react';
-import type { Account, Comment, CommentAnchor, CommentThread } from '@tablinum/shared';
+import type { Account, Agent, Comment, CommentAnchor, CommentThread } from '@tablinum/shared';
 import {
+  useAgents,
   useCreateThread,
   useDeleteComment,
   useReplyToThread,
@@ -42,8 +43,18 @@ const GONE: Omit<AvatarPerson, 'id'> = { name: 'A former member', color: 'var(--
 /** The key the draft carries in the field, matching the id its highlight is drawn under. */
 const DRAFT_KEY = 'draft';
 
-function peopleById(users: Account[]): Map<string, Account> {
-  return new Map(users.map((user) => [user.id, user]));
+/** Everyone who can author a remark here, people and agents together, by id. */
+function writersById(users: Account[], agents: Agent[]): Map<string, AvatarPerson> {
+  const all = new Map<string, AvatarPerson>();
+  for (const writer of [...users, ...agents]) {
+    all.set(writer.id, {
+      id: writer.id,
+      name: writer.name,
+      color: writer.color,
+      avatarRev: writer.avatarRev,
+    });
+  }
+  return all;
 }
 
 interface ComposerProps {
@@ -517,6 +528,8 @@ export function CommentsPanel() {
   const comments = useComments();
   const { user } = useAuth();
   const users = useUsers();
+  // An agent authors a remark under its own name, so its picture has to be here too.
+  const agents = useAgents();
   const toast = useToast();
   const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
 
@@ -526,7 +539,10 @@ export function CommentsPanel() {
   const update = useUpdateComment();
   const remove = useDeleteComment();
 
-  const roster = useMemo(() => peopleById(users.data?.users ?? []), [users.data]);
+  const roster = useMemo(
+    () => writersById(users.data?.users ?? [], agents.data?.agents ?? []),
+    [users.data, agents.data],
+  );
   const mentionable = useMemo(() => peopleToMention(users.data?.users ?? []), [users.data]);
   const pageId = comments.pageId;
 
@@ -537,11 +553,8 @@ export function CommentsPanel() {
     update.isPending ||
     remove.isPending;
 
-  const personFor = (userId: string): AvatarPerson => {
-    const person = roster.get(userId);
-    if (person === undefined) return { id: userId, ...GONE };
-    return { id: person.id, name: person.name, color: person.color, avatarRev: person.avatarRev };
-  };
+  const personFor = (writerId: string): AvatarPerson =>
+    roster.get(writerId) ?? { id: writerId, ...GONE };
 
   const isAdmin = user?.role === 'admin';
   const canEdit = (comment: Comment): boolean => comment.author === user?.id;

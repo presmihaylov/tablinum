@@ -27,6 +27,9 @@ const INSTRUCTIONS = [
   'tablinum_erase. tablinum_type replaces whatever is selected, so select then type is how you rewrite a',
   'sentence, a block or a whole page. tablinum_update_page changes the title, the icon and the order only.',
   'Everyone reading the page sees your caret while you work, so open a page before you change it.',
+  'You take part in the review too: tablinum_comment leaves a remark on the words you quote,',
+  'tablinum_reply answers a thread, and tablinum_resolve_comment closes one. A comment is never part',
+  'of the page. Comment when a person has to decide something; edit the page when you already know.',
   'Read the tablinum_style_guide prompt before you write your first page.',
 ].join(' ');
 

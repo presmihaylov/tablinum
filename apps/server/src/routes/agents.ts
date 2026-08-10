@@ -38,8 +38,13 @@ function originOf(request: FastifyRequest): string {
 export function registerAgentRoutes(app: FastifyInstance, ctx: RouteContext): void {
   const { accounts } = ctx.deps;
 
+  /**
+   * Who else writes here. Everybody in the workspace may read this, not only an admin: a
+   * comment card and a byline both have to turn an agent id into a name and a picture. Making
+   * one is still an admin's job.
+   */
   app.get(`${API_PREFIX}/agents`, async (request): Promise<AgentsResponse> => {
-    requireAdmin(request);
+    // The auth hook already turned away a caller with no credentials.
     // An agent belongs to one workspace, so this lists the current one only.
     return { agents: accounts.listAgents(request.workspace.id) };
   });

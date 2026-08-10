@@ -314,6 +314,15 @@ export const api = {
   rotateAgentToken: (id: string): Promise<AgentTokenResponse> =>
     request(`/agents/${encodeURIComponent(id)}/token`, { method: 'POST' }),
 
+  uploadAgentAvatar: (id: string, file: File): Promise<AvatarResponse> => {
+    const form = new FormData();
+    form.append('file', file, file.name);
+    return request(`/agents/${encodeURIComponent(id)}/avatar`, { method: 'POST', form });
+  },
+
+  removeAgentAvatar: (id: string): Promise<OkResponse> =>
+    request(`/agents/${encodeURIComponent(id)}/avatar`, { method: 'DELETE' }),
+
   listEmoji: (signal?: AbortSignal): Promise<CustomEmojiListResponse> => request('/emoji', { signal }),
 
   uploadEmoji: (shortcode: string, file: File): Promise<CustomEmojiResponse> => {

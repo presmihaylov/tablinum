@@ -44,7 +44,7 @@ class FakeSocket {
   }
 }
 
-const ADA: LiveAgent = { id: 'ag_01ADA', name: 'Ada Writer', handle: 'ada' };
+const ADA: LiveAgent = { id: 'ag_01ADA', name: 'Ada Writer', handle: 'ada', avatarRev: null };
 /** The person watching the page. The strip draws nothing until this tab has an account. */
 const GRACE: Account = {
   id: 'us_00000000000000000000000001',

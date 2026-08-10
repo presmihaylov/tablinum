@@ -15,6 +15,7 @@ import {
   colorForId,
   conflict,
   isShortcode,
+  isUserId,
   newAgentId,
   newCommentId,
   newCustomEmojiId,
@@ -223,7 +224,7 @@ interface AgentRow {
   handle: string;
   identity: string;
   workspace_id: string;
-  disabled: number;
+  avatar_rev: string | null;
   created: number;
   updated: number;
   last_used: number | null;
@@ -305,7 +306,7 @@ const USER_COLUMNS_QUALIFIED = USER_COLUMNS.split(', ')
   .join(', ');
 
 const AGENT_COLUMNS =
-  'id, name, handle, identity, workspace_id, disabled, created, updated, last_used';
+  'id, name, handle, identity, workspace_id, avatar_rev, created, updated, last_used';
 
 const WORKSPACE_COLUMNS = 'id, slug, name, icon, dir, created, updated';
 
@@ -347,11 +348,18 @@ function toAgent(row: AgentRow): Agent {
     handle: row.handle,
     identity: row.identity,
     workspaceId: row.workspace_id,
-    disabled: row.disabled === 1,
+    color: colorForId(row.id),
+    avatarRev: row.avatar_rev,
     created: iso(row.created),
     updated: iso(row.updated),
     lastUsed: row.last_used === null ? null : iso(row.last_used),
   };
+}
+
+/** Which table holds the picture behind an id, and what to call its owner in an error. */
+function avatarOwner(id: string): { table: 'users' | 'agents'; what: string } {
+  if (isUserId(id)) return { table: 'users', what: 'account' };
+  return { table: 'agents', what: 'agent' };
 }
 
 function toWorkspace(row: WorkspaceRow): WorkspaceRecord {
@@ -536,15 +544,17 @@ export class AccountStore {
       );
 
       CREATE TABLE IF NOT EXISTS agents (
-        id         TEXT PRIMARY KEY,
-        name       TEXT NOT NULL,
-        handle     TEXT NOT NULL UNIQUE,
-        identity   TEXT NOT NULL DEFAULT '',
-        token_hash TEXT NOT NULL UNIQUE,
-        disabled   INTEGER NOT NULL DEFAULT 0,
-        created    INTEGER NOT NULL,
-        updated    INTEGER NOT NULL,
-        last_used  INTEGER
+        id           TEXT PRIMARY KEY,
+        name         TEXT NOT NULL,
+        handle       TEXT NOT NULL UNIQUE,
+        identity     TEXT NOT NULL DEFAULT '',
+        token_hash   TEXT NOT NULL UNIQUE,
+        avatar_mime  TEXT,
+        avatar_bytes BLOB,
+        avatar_rev   TEXT,
+        created      INTEGER NOT NULL,
+        updated      INTEGER NOT NULL,
+        last_used    INTEGER
       );
 
       CREATE TABLE IF NOT EXISTS workspaces (
@@ -618,6 +628,11 @@ export class AccountStore {
     // ensureWorkspaceForDir() adopts these rows into on the next boot.
     addColumn(db, 'agents', 'workspace_id', 'TEXT');
     addColumn(db, 'invites', 'workspace_id', 'TEXT');
+
+    // An agent has a picture of its own, so a page says who wrote it without reading a name.
+    addColumn(db, 'agents', 'avatar_mime', 'TEXT');
+    addColumn(db, 'agents', 'avatar_bytes', 'BLOB');
+    addColumn(db, 'agents', 'avatar_rev', 'TEXT');
 
     db.pragma(`user_version = ${SCHEMA_VERSION}`);
   }
@@ -1211,8 +1226,8 @@ export class AccountStore {
     const token = AGENT_TOKEN_PREFIX + newToken();
     this.#handle
       .prepare(
-        `INSERT INTO agents (id, name, handle, identity, workspace_id, token_hash, disabled, created, updated)
-         VALUES (@id, @name, @handle, @identity, @workspace, @hash, 0, @now, @now)`,
+        `INSERT INTO agents (id, name, handle, identity, workspace_id, token_hash, created, updated)
+         VALUES (@id, @name, @handle, @identity, @workspace, @hash, @now, @now)`,
       )
       .run({
         id,
@@ -1237,14 +1252,12 @@ export class AccountStore {
     const next = {
       name: patch.name?.trim() ?? current.name,
       identity: patch.identity?.trim() ?? current.identity,
-      disabled: patch.disabled ?? current.disabled,
     };
     this.#handle
       .prepare(
-        `UPDATE agents SET name = @name, identity = @identity, disabled = @disabled, updated = @now
-         WHERE id = @id`,
+        `UPDATE agents SET name = @name, identity = @identity, updated = @now WHERE id = @id`,
       )
-      .run({ id, name: next.name, identity: next.identity, disabled: next.disabled ? 1 : 0, now });
+      .run({ id, name: next.name, identity: next.identity, now });
 
     const updated = this.getAgent(id);
     if (updated === null) throw notFound(`No agent with id ${id}`);
@@ -1269,14 +1282,13 @@ export class AccountStore {
     return { agent, token };
   }
 
-  /** The agent behind a token, or null when it is unknown or switched off. */
+  /** The agent behind a token, or null when the token is unknown. */
   resolveAgentToken(token: string, now: number = Date.now()): Agent | null {
     const row = this.#handle
       .prepare(`SELECT ${AGENT_COLUMNS} FROM agents WHERE token_hash = ?`)
       .get(hashToken(token)) as AgentRow | undefined;
     if (row === undefined) return null;
     const agent = toAgent(row);
-    if (agent.disabled) return null;
 
     if (row.last_used === null || now - row.last_used > LAST_USED_INTERVAL_MS) {
       this.#handle.prepare('UPDATE agents SET last_used = ? WHERE id = ?').run(now, agent.id);
@@ -1289,7 +1301,9 @@ export class AccountStore {
   // -------------------------------------------------------------------------
 
   /**
-   * Store an avatar and return its new revision.
+   * Store an avatar and return its new revision. The id says whether it belongs to a person or
+   * to an agent, because both have a picture and their ids never collide.
+   *
    * Avatars live here rather than in the content repo: they are not documentation, and a new
    * binary on every change would bloat the git history that the page files depend on.
    */
@@ -1302,31 +1316,33 @@ export class AccountStore {
       throw validation(`An avatar must be smaller than ${MAX_AVATAR_BYTES} bytes`);
     }
 
+    const owner = avatarOwner(id);
     const rev = digestOf(bytes);
     const info = this.#handle
       .prepare(
-        `UPDATE users SET avatar_mime = ?, avatar_bytes = ?, avatar_rev = ?, updated = ? WHERE id = ?`,
+        `UPDATE ${owner.table} SET avatar_mime = ?, avatar_bytes = ?, avatar_rev = ?, updated = ? WHERE id = ?`,
       )
       .run(mime, bytes, rev, now, id);
-    if (info.changes === 0) throw notFound(`No account with id ${id}`);
+    if (info.changes === 0) throw notFound(`No ${owner.what} with id ${id}`);
     return rev;
   }
 
   getAvatar(id: string): Avatar | null {
     const row = this.#handle
-      .prepare('SELECT avatar_mime, avatar_bytes, avatar_rev FROM users WHERE id = ?')
+      .prepare(`SELECT avatar_mime, avatar_bytes, avatar_rev FROM ${avatarOwner(id).table} WHERE id = ?`)
       .get(id) as AvatarRow | undefined;
     if (row === undefined || row.avatar_mime === null || row.avatar_bytes === null) return null;
     return { mime: row.avatar_mime, bytes: row.avatar_bytes, rev: row.avatar_rev ?? digestOf(row.avatar_bytes) };
   }
 
   clearAvatar(id: string, now: number = Date.now()): void {
+    const owner = avatarOwner(id);
     const info = this.#handle
       .prepare(
-        'UPDATE users SET avatar_mime = NULL, avatar_bytes = NULL, avatar_rev = NULL, updated = ? WHERE id = ?',
+        `UPDATE ${owner.table} SET avatar_mime = NULL, avatar_bytes = NULL, avatar_rev = NULL, updated = ? WHERE id = ?`,
       )
       .run(now, id);
-    if (info.changes === 0) throw notFound(`No account with id ${id}`);
+    if (info.changes === 0) throw notFound(`No ${owner.what} with id ${id}`);
   }
 
   // -------------------------------------------------------------------------

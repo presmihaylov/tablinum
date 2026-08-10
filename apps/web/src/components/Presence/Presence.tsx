@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { LivePresence, LiveUser } from '@tablinum/shared';
+import { avatarUrl, type LivePresence, type LiveUser } from '@tablinum/shared';
 import { myUser, onIdentityChange } from '../../lib/identity';
 import { useLive } from '../../lib/live';
 import { Bot } from '../ui/Icon';
@@ -28,6 +28,14 @@ function chipClass(user: LivePresence): string {
   return classes.join(' ');
 }
 
+/** An agent shows its own picture where it has one, and the robot mark where it has none. */
+function face(user: LivePresence) {
+  const agent = user.agent;
+  if (agent === null) return initials(user.name);
+  if (agent.avatarRev === null) return <Bot />;
+  return <img className="presence__chip-image" src={avatarUrl(agent.id, agent.avatarRev)} alt="" />;
+}
+
 /** Who else is on the page this tab shows. Nothing is drawn when nobody else is here. */
 export function Presence() {
   const { presence, connected } = useLive();
@@ -47,7 +55,7 @@ export function Presence() {
           style={{ backgroundColor: user.color }}
           title={label(user)}
         >
-          {user.agent === null ? initials(user.name) : <Bot />}
+          {face(user)}
         </span>
       ))}
       <span

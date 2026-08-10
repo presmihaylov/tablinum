@@ -268,8 +268,10 @@ export interface Invite {
 // A password hash, a session token and the avatar bytes NEVER leave the server.
 ```
 
-Helpers in the same file: `avatarUrl(id, rev)` -> `/api/v1/users/<id>/avatar?v=<rev>`,
-`inviteUrl(origin, token)` -> `<origin>/invite/<token>`, `initialsOf(name)`, `colorForId(id)`.
+Helpers in the same file: `avatarUrl(id, rev)` -> `/api/v1/users/<id>/avatar?v=<rev>` for a
+person and `/api/v1/agents/<id>/avatar?v=<rev>` for an agent, because both have a picture and
+their ids never collide. Also `inviteUrl(origin, token)` -> `<origin>/invite/<token>`,
+`initialsOf(name)`, `colorForId(id)`.
 
 `packages/shared/src/agents.ts` — agents, the non-human writers:
 
@@ -285,10 +287,14 @@ export interface Agent {
   name: string;
   handle: string;         // one namespace with the people, so `@handle` names exactly one writer
   identity: string;       // the brief the MCP server hands back as its instructions. May be ''.
-  disabled: boolean;
+  color: string;          // derived from the id, so it looks the same in every browser
+  avatarRev: string | null;  // changes on every upload; null means "draw the initials"
   created: string; updated: string;
   lastUsed: string | null;   // refreshed at most once a minute
 }
+
+// An agent has no active or paused state. Deleting it is what stops it, and its token dies
+// with it, so there is nothing switched off that still holds a working credential.
 
 // The token itself is stored hashed and is readable ONLY in the response that issues it.
 ```
@@ -469,11 +475,14 @@ DELETE /api/v1/invites/:id                     admin -> { ok: true }
 GET    /api/v1/agents                          admin -> { agents: Agent[] }
 POST   /api/v1/agents                          admin, body { name, identity?, handle? }
                                                -> { agent: Agent, token, url }  (token appears once)
-PATCH  /api/v1/agents/:id                      admin, body { name?, identity?, disabled? }
+PATCH  /api/v1/agents/:id                      admin, body { name?, identity? }
                                                -> { agent: Agent }   (the handle never changes)
 DELETE /api/v1/agents/:id                      admin -> { ok: true }
 POST   /api/v1/agents/:id/token                admin -> { agent, token, url }
                                                (the old token stops working at once)
+GET    /api/v1/agents/:id/avatar               ?v=<rev> -> the image bytes, immutable cache, 404 when none
+POST   /api/v1/agents/:id/avatar               admin, multipart field `file` -> { url, rev }
+DELETE /api/v1/agents/:id/avatar               admin -> { ok: true }
 
 GET    /api/v1/emoji                           -> { emoji: CustomEmoji[] }   (oldest first)
 POST   /api/v1/emoji                           account, multipart field `shortcode` + field `file`
@@ -604,7 +613,7 @@ tab ignores its own echo. Each workspace has its own hub and its own rooms.
 interface LiveUser { id: string; name: string; color: string }
 
 // An agent works over MCP and holds no socket, so the server seats it and expires it itself.
-interface LiveAgent { id: string; name: string; handle: string }
+interface LiveAgent { id: string; name: string; handle: string; avatarRev: string | null }
 
 // client -> server
 type ClientMessage =

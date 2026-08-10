@@ -26,7 +26,8 @@ const DOC_BOT: Agent = {
   name: 'Doc Bot',
   handle: 'doc.bot',
   identity: 'You keep the runbooks tidy.',
-  disabled: false,
+  color: '#3b82f6',
+  avatarRev: null,
   created: '2026-01-01T00:00:00.000Z',
   updated: '2026-01-01T00:00:00.000Z',
   lastUsed: null,
@@ -105,7 +106,7 @@ describe('the agents dialog', () => {
     expect(mock.calls.some((item) => item.method === 'POST')).toBe(false);
   });
 
-  it('lists each agent with its handle and its last use', async () => {
+  it('lists each agent with its name, its handle and its last use', async () => {
     const busy: Agent = {
       ...DOC_BOT,
       id: 'ag_00000000000000000000000002',
@@ -117,8 +118,57 @@ describe('the agents dialog', () => {
     renderPanel();
 
     await screen.findByText('Doc Bot');
+    expect(screen.getByText('Release Bot')).toBeInTheDocument();
     expect(screen.getByText(/@doc\.bot · never connected/)).toBeInTheDocument();
     expect(screen.getByText(/@release\.bot · last seen/)).toBeInTheDocument();
+    // Its initials stand in until somebody gives it a picture.
+    expect(screen.getByLabelText('Doc Bot')).toHaveTextContent('DB');
+  });
+
+  it('draws the picture an agent has, in place of its initials', async () => {
+    start({ 'GET /api/v1/agents': { agents: [{ ...DOC_BOT, avatarRev: 'rev1' }] } });
+    renderPanel();
+
+    const image = await screen.findByAltText('Doc Bot');
+    expect(image).toHaveAttribute('src', `/api/v1/agents/${DOC_BOT.id}/avatar?v=rev1`);
+  });
+
+  it('uploads a picture for an agent', async () => {
+    const mock = start({
+      ...routes,
+      'POST /api/v1/agents/ag_00000000000000000000000001/avatar': {
+        url: `/api/v1/agents/${DOC_BOT.id}/avatar?v=rev1`,
+        rev: 'rev1',
+      },
+    });
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.click(await screen.findByRole('button', { name: 'Edit Doc Bot' }));
+    const file = new File(['png'], 'bot.png', { type: 'image/png' });
+    await user.upload(screen.getByLabelText('Picture of Doc Bot'), file);
+
+    await waitFor(() => {
+      const call = mock.calls.find((item) => item.method === 'POST');
+      expect(call?.url.pathname).toBe(`/api/v1/agents/${DOC_BOT.id}/avatar`);
+    });
+  });
+
+  it('removes the picture of an agent that has one', async () => {
+    const mock = start({
+      'GET /api/v1/agents': { agents: [{ ...DOC_BOT, avatarRev: 'rev1' }] },
+      'DELETE /api/v1/agents/ag_00000000000000000000000001/avatar': { ok: true },
+    });
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.click(await screen.findByRole('button', { name: 'Edit Doc Bot' }));
+    await user.click(screen.getByRole('button', { name: 'Remove' }));
+
+    await waitFor(() => {
+      const call = mock.calls.find((item) => item.method === 'DELETE');
+      expect(call?.url.pathname).toBe(`/api/v1/agents/${DOC_BOT.id}/avatar`);
+    });
   });
 
   it('saves a changed identity', async () => {
@@ -142,20 +192,14 @@ describe('the agents dialog', () => {
     });
   });
 
-  it('pauses an agent', async () => {
-    const mock = start({
-      ...routes,
-      'PATCH /api/v1/agents/ag_00000000000000000000000001': { agent: { ...DOC_BOT, disabled: true } },
-    });
-    const user = userEvent.setup();
+  // Deleting an agent is what stops it, so there is nothing to pause and nothing to switch on.
+  it('offers no active or paused state at all', async () => {
+    start(routes);
     renderPanel();
 
-    await user.selectOptions(await screen.findByLabelText('State of Doc Bot'), 'paused');
-
-    await waitFor(() => {
-      const call = mock.calls.find((item) => item.method === 'PATCH');
-      expect(bodyOf(call)).toEqual({ disabled: true });
-    });
+    await screen.findByText('Doc Bot');
+    expect(screen.queryByLabelText('State of Doc Bot')).toBeNull();
+    expect(screen.queryByRole('option', { name: 'Paused' })).toBeNull();
   });
 
   it('asks before it issues a new token, then shows the new one', async () => {

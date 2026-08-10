@@ -26,6 +26,13 @@
   border-radius: var(--radius-md);
 }
 
+.presence__chip-image {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+}
+
 /* A pulse says the person has unsaved edits, so the page is about to move. */
 .presence__chip--editing {
   box-shadow: 0 0 0 2px var(--accent-soft);

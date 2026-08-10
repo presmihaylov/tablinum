@@ -237,6 +237,8 @@ describe('mutation audit', () => {
     { method: 'PATCH', url: '/api/v1/agents/ag_00000000000000000000000000' },
     { method: 'DELETE', url: '/api/v1/agents/ag_00000000000000000000000000' },
     { method: 'POST', url: '/api/v1/agents/ag_00000000000000000000000000/token' },
+    { method: 'POST', url: '/api/v1/agents/ag_00000000000000000000000000/avatar' },
+    { method: 'DELETE', url: '/api/v1/agents/ag_00000000000000000000000000/avatar' },
     { method: 'POST', url: '/api/v1/mcp' },
     { method: 'DELETE', url: '/api/v1/mcp' },
     { method: 'POST', url: '/api/v1/workspaces' },

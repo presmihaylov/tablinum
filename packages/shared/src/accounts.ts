@@ -225,9 +225,13 @@ export function initialsOf(name: string): string {
   return (first + last).toUpperCase();
 }
 
-/** Where a person's avatar is served from. `rev` busts the cache after an upload. */
+/**
+ * Where an avatar is served from. `rev` busts the cache after an upload. People and agents both
+ * have one and their ids never collide, so the id alone picks the route.
+ */
 export function avatarUrl(id: string, rev: string): string {
-  return `/api/v1/users/${encodeURIComponent(id)}/avatar?v=${encodeURIComponent(rev)}`;
+  const kind = isUserId(id) ? 'users' : 'agents';
+  return `/api/v1/${kind}/${encodeURIComponent(id)}/avatar?v=${encodeURIComponent(rev)}`;
 }
 
 /** The link an invited person opens. `origin` is the browser's, so no base URL is configured. */

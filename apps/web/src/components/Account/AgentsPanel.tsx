@@ -1,16 +1,24 @@
-import { useState } from 'react';
-import { MAX_IDENTITY_LENGTH, type Agent, type AgentTokenResponse } from '@tablinum/shared';
+import { useRef, useState, type ChangeEvent } from 'react';
+import {
+  AVATAR_MIME_TYPES,
+  MAX_IDENTITY_LENGTH,
+  type Agent,
+  type AgentTokenResponse,
+} from '@tablinum/shared';
 import {
   useAgents,
   useCreateAgent,
   useDeleteAgent,
+  useRemoveAgentAvatar,
   useRotateAgentToken,
   useUpdateAgent,
+  useUploadAgentAvatar,
 } from '../../api/hooks';
 import { relativeTime } from '../../lib/format';
 import { describeError, useToast } from '../../lib/toast';
 import { ConfirmDialog, type ConfirmRequest } from '../ui/ConfirmDialog';
 import { Copy, Pencil, Sync, Trash } from '../ui/Icon';
+import { Avatar } from './Avatar';
 import './account.css';
 
 const PLACEHOLDER = [
@@ -33,6 +41,8 @@ export function AgentsPanel() {
   const updateAgent = useUpdateAgent();
   const deleteAgent = useDeleteAgent();
   const rotateToken = useRotateAgentToken();
+  const uploadAvatar = useUploadAgentAvatar();
+  const removeAvatar = useRemoveAgentAvatar();
 
   const [name, setName] = useState('');
   const [identity, setIdentity] = useState('');
@@ -41,6 +51,7 @@ export function AgentsPanel() {
   const [draft, setDraft] = useState<Draft>({ name: '', identity: '' });
   const [error, setError] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
 
   const copy = (value: string, what: string): void => {
     void navigator.clipboard
@@ -94,10 +105,17 @@ export function AgentsPanel() {
     );
   };
 
-  const setPaused = (agent: Agent, disabled: boolean): void => {
-    updateAgent.mutate(
-      { id: agent.id, patch: { disabled } },
-      { onError: (cause) => setError(describeError(cause, 'Could not change that agent.')) },
+  const pickAvatar = (agent: Agent, event: ChangeEvent<HTMLInputElement>): void => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    setError(null);
+    uploadAvatar.mutate(
+      { id: agent.id, file },
+      {
+        onSuccess: () => toast.push(`Picture updated for ${agent.name}`, 'success'),
+        onError: (cause) => setError(describeError(cause, 'Could not use that image.')),
+      },
     );
   };
 
@@ -204,6 +222,7 @@ export function AgentsPanel() {
           {list.map((agent) => (
             <div key={agent.id}>
               <div className="people-row">
+                <Avatar person={agent} size={26} />
                 <div className="people-row__who">
                   <div className="people-row__name">{agent.name}</div>
                   <div className="people-row__email">
@@ -211,15 +230,6 @@ export function AgentsPanel() {
                     {agent.lastUsed === null ? 'never connected' : `last seen ${relativeTime(agent.lastUsed)}`}
                   </div>
                 </div>
-                <select
-                  className="input"
-                  value={agent.disabled ? 'paused' : 'active'}
-                  onChange={(event) => setPaused(agent, event.target.value === 'paused')}
-                  aria-label={`State of ${agent.name}`}
-                >
-                  <option value="active">Active</option>
-                  <option value="paused">Paused</option>
-                </select>
                 <button
                   type="button"
                   className="btn btn--icon"
@@ -251,6 +261,36 @@ export function AgentsPanel() {
 
               {editing !== agent.id ? null : (
                 <div className="agent-edit">
+                  <div className="account-form__row">
+                    <Avatar person={agent} size={48} />
+                    <button
+                      type="button"
+                      className="btn btn--outline"
+                      onClick={() => fileRef.current?.click()}
+                      disabled={uploadAvatar.isPending}
+                    >
+                      Upload a picture
+                    </button>
+                    {agent.avatarRev === null ? null : (
+                      <button
+                        type="button"
+                        className="btn btn--outline"
+                        onClick={() => removeAvatar.mutate(agent.id)}
+                        disabled={removeAvatar.isPending}
+                      >
+                        Remove
+                      </button>
+                    )}
+                    <input
+                      ref={fileRef}
+                      type="file"
+                      hidden
+                      accept={AVATAR_MIME_TYPES.join(',')}
+                      aria-label={`Picture of ${agent.name}`}
+                      onChange={(event) => pickAvatar(agent, event)}
+                    />
+                  </div>
+                  <p className="account-form__note">PNG, JPEG, WebP or GIF, up to 512 KB.</p>
                   <input
                     className="input"
                     aria-label={`Name of ${agent.name}`}

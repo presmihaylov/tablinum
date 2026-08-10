@@ -1,6 +1,8 @@
 import {
+  AgentsResponseSchema,
   AppError,
   BacklinksResponseSchema,
+  CommentThreadResponseSchema,
   CommentThreadsResponseSchema,
   CursorResponseSchema,
   DeletePageResponseSchema,
@@ -19,9 +21,11 @@ import {
   TreeResponseSchema,
   UsersResponseSchema,
   type Account,
+  type Agent,
   type Backlink,
   type CommentThread,
   type CreatePageBody,
+  type CreateThreadBody,
   type CursorState,
   type ErrorCode,
   type GitPullResponse,
@@ -325,6 +329,43 @@ export class TablinumClient {
       CommentThreadsResponseSchema,
     );
     return body.threads;
+  }
+
+  /** Open a thread. Without an anchor the remark is about the whole page. */
+  async createThread(id: PageId, input: CreateThreadBody): Promise<CommentThread> {
+    const body = await this.request(
+      'POST',
+      `/api/v1/pages/${encodeURIComponent(id)}/comments`,
+      CommentThreadResponseSchema,
+      input,
+    );
+    return body.thread;
+  }
+
+  async replyToThread(threadId: string, text: string): Promise<CommentThread> {
+    const body = await this.request(
+      'POST',
+      `/api/v1/comment-threads/${encodeURIComponent(threadId)}/replies`,
+      CommentThreadResponseSchema,
+      { body: text },
+    );
+    return body.thread;
+  }
+
+  async setThreadResolved(threadId: string, resolved: boolean): Promise<CommentThread> {
+    const body = await this.request(
+      'PATCH',
+      `/api/v1/comment-threads/${encodeURIComponent(threadId)}`,
+      CommentThreadResponseSchema,
+      { resolved },
+    );
+    return body.thread;
+  }
+
+  /** Every agent in the workspace, so a remark one of them left carries a name. */
+  async listAgents(): Promise<Agent[]> {
+    const body = await this.request('GET', '/api/v1/agents', AgentsResponseSchema);
+    return body.agents;
   }
 
   /** The roster, so a comment can be reported with a name instead of a user id. */

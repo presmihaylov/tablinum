@@ -15,6 +15,7 @@ import {
 import type { ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { TablinumClient } from './client.js';
+import { anchorFor } from './comments.js';
 import {
   blockSpan,
   findSpan,
@@ -36,6 +37,7 @@ import {
   formatPage,
   formatPageLine,
   formatSearchHits,
+  formatThread,
   formatTreeOutline,
 } from './format.js';
 import { resolvePage, resolvePageId } from './refs.js';
@@ -626,7 +628,7 @@ const listCommentsTool = defineTool({
     'actually asked for. Each thread shows the text it is about, whether it is open or resolved, and',
     'every remark with its author and date. A thread marked as no longer in the page was written',
     'about text somebody has since changed; find the new wording before you act on it.',
-    'This tool only reads. Reply to a thread in the web UI, not here.',
+    'Answer one with tablinum_reply, and close it with tablinum_resolve_comment once it is done.',
   ].join(' '),
   annotations: { readOnlyHint: true, openWorldHint: false, title: 'Read the comments on a page' },
   inputShape: {
@@ -641,8 +643,92 @@ const listCommentsTool = defineTool({
     const threads = await client.comments(page.id, args.open === true ? false : undefined);
     if (threads.length === 0) return formatComments(threads, page, (id) => id);
 
-    const people = new Map((await client.listUsers()).map((user) => [user.id, user.name]));
-    return formatComments(threads, page, (id) => people.get(id) ?? 'a former member');
+    // An agent authors a remark too, so both rosters are needed to name every author.
+    const [users, agents] = await Promise.all([client.listUsers(), client.listAgents()]);
+    const names = new Map([...users, ...agents].map((writer) => [writer.id, writer.name]));
+    return formatComments(threads, page, (id) => names.get(id) ?? 'a former member');
+  },
+});
+
+const commentTool = defineTool({
+  name: 'tablinum_comment',
+  title: 'Leave a comment on a page',
+  description: [
+    'Open a comment thread on a page, under your own name. Identify the page with "id" or "path".',
+    'Quote the words the remark is about in "quote", exactly as a reader sees them: quote "Release",',
+    'not "# Release", and quote the words of a link, not its markdown. Leave "quote" out for a remark',
+    'about the whole page. A comment is review feedback and it is NOT part of the page: it never',
+    'reaches the markdown file. Comment when you want a person to decide something; edit the page',
+    'when you already know the answer. Name somebody with "@handle" to tell them about it.',
+  ].join(' '),
+  annotations: { readOnlyHint: false, openWorldHint: false, title: 'Leave a comment on a page' },
+  inputShape: {
+    ...pageRefShape,
+    body: z.string().min(1).describe('The remark, in CommonMark. Mention a person with "@handle".'),
+    quote: z
+      .string()
+      .optional()
+      .describe('The words the remark is about, as a reader sees them. Omit for the whole page.'),
+    occurrence: z
+      .number()
+      .int()
+      .min(1)
+      .optional()
+      .describe('Which time the quote appears, counted from 1. Defaults to the first.'),
+  },
+  run: async (client, args) => {
+    const page = await resolvePage(client, args);
+    const quoted =
+      args.quote === undefined ? null : anchorFor(page.markdown, args.quote, args.occurrence);
+    const thread = await client.createThread(page.id, {
+      body: args.body,
+      ...(quoted === null ? {} : { anchor: quoted }),
+    });
+    return formatThread(thread, page, 'Left a comment on');
+  },
+});
+
+const replyTool = defineTool({
+  name: 'tablinum_reply',
+  title: 'Reply to a comment thread',
+  description: [
+    'Answer a comment thread under your own name. Take the thread id from tablinum_list_comments.',
+    'Reply when you have done what was asked, or when you need the writer to decide something.',
+    'Answering a thread does not close it: resolve it with tablinum_resolve_comment once it is done.',
+  ].join(' '),
+  annotations: { readOnlyHint: false, openWorldHint: false, title: 'Reply to a comment thread' },
+  inputShape: {
+    thread: z.string().min(1).describe('Thread id, like "ct_...", from tablinum_list_comments.'),
+    body: z.string().min(1).describe('The reply, in CommonMark. Mention a person with "@handle".'),
+  },
+  run: async (client, args) => {
+    const thread = await client.replyToThread(args.thread, args.body);
+    const page = await client.getPageById(thread.pageId);
+    return formatThread(thread, page, 'Replied to a comment on');
+  },
+});
+
+const resolveCommentTool = defineTool({
+  name: 'tablinum_resolve_comment',
+  title: 'Resolve or reopen a comment thread',
+  description: [
+    'Mark a comment thread as answered, which takes it out of the panel. Take the thread id from',
+    'tablinum_list_comments. Resolve a thread only once the page really says what was asked for;',
+    'a resolved thread is easy to miss. Set "resolved" to false to put a thread back.',
+  ].join(' '),
+  annotations: { readOnlyHint: false, openWorldHint: false, title: 'Resolve a comment thread' },
+  inputShape: {
+    thread: z.string().min(1).describe('Thread id, like "ct_...", from tablinum_list_comments.'),
+    resolved: z
+      .boolean()
+      .optional()
+      .describe('Defaults to true. Set false to reopen a thread somebody resolved too early.'),
+  },
+  run: async (client, args) => {
+    const wanted = args.resolved ?? true;
+    const thread = await client.setThreadResolved(args.thread, wanted);
+    const page = await client.getPageById(thread.pageId);
+    return formatThread(thread, page, wanted ? 'Resolved a comment on' : 'Reopened a comment on');
   },
 });
 
@@ -704,6 +790,9 @@ export const TOOL_SPECS: readonly ToolSpec[] = [
   movePageTool,
   deletePageTool,
   listCommentsTool,
+  commentTool,
+  replyTool,
+  resolveCommentTool,
   pageHistoryTool,
   gitSyncTool,
 ];

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { Account, CommentAnchor, CommentThread, Page } from '@tablinum/shared';
+import type { Account, Agent, CommentAnchor, CommentThread, Page } from '@tablinum/shared';
 import { PageEditor } from '../src/editor';
 import { AuthProvider } from '../src/lib/auth';
 import { CommentsProvider, useComments } from '../src/lib/comments';
@@ -38,6 +38,19 @@ const SAM: Account = {
   handle: 'sam.rivers',
   role: 'member',
   color: '#22c55e',
+};
+
+const BOT: Agent = {
+  id: 'ag_00000000000000000000000001',
+  name: 'Doc Bot',
+  handle: 'doc.bot',
+  identity: 'Keeps the runbooks tidy.',
+  workspaceId: 'ws_00000000000000000000000001',
+  color: '#a855f7',
+  avatarRev: null,
+  created: '2026-01-01T00:00:00.000Z',
+  updated: '2026-01-01T00:00:00.000Z',
+  lastUsed: null,
 };
 
 const PAGE: Page = page({ markdown: 'Run the pipeline every Friday.\n' });
@@ -89,6 +102,7 @@ async function mount(threads: CommentThread[], routes: Routes = {}): Promise<voi
     'GET /api/v1/tree': { spaces: [] },
     'GET /api/v1/auth/state': { setupRequired: false, user: ADA },
     'GET /api/v1/users': { users: [ADA, SAM] },
+    'GET /api/v1/agents': { agents: [BOT] },
     [`GET /api/v1/pages/${PAGE.id}/comments`]: { threads },
     ...routes,
   });
@@ -167,6 +181,27 @@ describe('the comments panel', () => {
     expect(within(card).getByText('Is this still the right pipeline?')).toBeTruthy();
     expect(openCount()).toBe('1 open');
     expect(screen.getByLabelText('Comments, 1 open')).toBeTruthy();
+  });
+
+  it('names an agent that left a remark, exactly as it names a person', async () => {
+    const byBot = thread({
+      comments: [
+        {
+          id: 'cm_00000000000000000000000009',
+          threadId: 'ct_00000000000000000000000001',
+          author: BOT.id,
+          body: 'This pipeline moved to Tuesday.',
+          created: '2026-01-01T00:00:00.000Z',
+          updated: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+    });
+    await mount([byBot]);
+
+    const card = cardFor('ct_00000000000000000000000001');
+    expect(within(card).getByText('Doc Bot')).toBeTruthy();
+    expect(within(card).getByText('This pipeline moved to Tuesday.')).toBeTruthy();
+    expect(within(card).queryByText('A former member')).toBeNull();
   });
 
   it('hides a resolved thread until somebody asks for it', async () => {

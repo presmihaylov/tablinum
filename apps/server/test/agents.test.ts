@@ -9,6 +9,7 @@ import {
   DEFAULT_WORKSPACE_SLUG,
   ErrorBodySchema,
   PageResponseSchema,
+  UsersResponseSchema,
   WorkspaceResponseSchema,
   WorkspacesResponseSchema,
   type ServerMessage,
@@ -107,7 +108,17 @@ describe('agents', () => {
     expect(page.statusCode).toBe(201);
     expect(bodyOf(page, PageResponseSchema).page.path).toBe('eng/notes');
 
-    const forbidden = await harness.app.inject({ method: 'GET', url: '/api/v1/agents', headers });
+    // It sees who else writes here, which is what a byline needs, but makes no new agent.
+    const listed = await harness.app.inject({ method: 'GET', url: '/api/v1/agents', headers });
+    expect(listed.statusCode).toBe(200);
+    expect(bodyOf(listed, AgentsResponseSchema).agents.map((one) => one.name)).toContain('Doc Bot');
+
+    const forbidden = await harness.app.inject({
+      method: 'POST',
+      url: '/api/v1/agents',
+      headers,
+      payload: { name: 'Another Bot' },
+    });
     expect(forbidden.statusCode).toBe(401);
     expect(bodyOf(forbidden, ErrorBodySchema).error.code).toBe('UNAUTHORIZED');
   });
@@ -372,14 +383,24 @@ describe('an agent token stays in its workspace', () => {
     expect(bodyOf(own, ErrorBodySchema).error.code).toBe('UNAUTHORIZED');
   });
 
-  it('reads no roster of accounts either', async () => {
+  it('reads the roster of its own workspace, and of no other', async () => {
+    const other = await otherWorkspace();
+    const stranger = harness.accounts.createUser({
+      email: 'finance@example.com',
+      name: 'Fiona Finance',
+      password: 'correct horse battery',
+    });
+    harness.accounts.addMember(other.id, stranger.id, 'member');
+
     const { token } = await addAgent();
     const response = await harness.app.inject({
       method: 'GET',
       url: '/api/v1/users',
       headers: { authorization: `Bearer ${token}` },
     });
-    expect(response.statusCode).toBe(401);
-    expect(bodyOf(response, ErrorBodySchema).error.code).toBe('UNAUTHORIZED');
+    expect(response.statusCode).toBe(200);
+    // It names the author of a comment, so it needs the people of its own workspace only.
+    const names = bodyOf(response, UsersResponseSchema).users.map((one) => one.name);
+    expect(names).not.toContain('Fiona Finance');
   });
 });

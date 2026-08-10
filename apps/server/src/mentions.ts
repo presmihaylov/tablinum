@@ -1,6 +1,6 @@
 import type { FastifyBaseLogger } from 'fastify';
 import type { AccountStore } from '@tablinum/accounts';
-import { findMentions, type Account, type Page } from '@tablinum/shared';
+import { findMentions, type Page, type Writer } from '@tablinum/shared';
 import type { SlackApi } from './slack.js';
 
 /**
@@ -25,7 +25,7 @@ export interface PageSaved {
   /** The body before this save. Null for a new page, where every mention is new. */
   before: string | null;
   /** Who saved it, so nobody is told about their own mention. */
-  by: Account | null;
+  by: Writer | null;
 }
 
 export interface CommentPosted {
@@ -34,7 +34,7 @@ export interface CommentPosted {
   body: string;
   /** The body before an edit. Null for a new comment, where every mention is new. */
   before: string | null;
-  by: Account | null;
+  by: Writer | null;
 }
 
 export interface MentionNotifierOptions {
@@ -51,7 +51,7 @@ export function createMentionNotifier(options: MentionNotifierOptions): MentionN
   let queue: Promise<void> = Promise.resolve();
 
   /** Sends one message to everybody the handles name, skipping the writer and the unreachable. */
-  async function tell(handles: string[], by: Account | null, text: string): Promise<void> {
+  async function tell(handles: string[], by: Writer | null, text: string): Promise<void> {
     if (slack === null || handles.length === 0) return;
     for (const handle of handles) {
       const target = accounts.getUserByHandle(handle);
@@ -109,7 +109,7 @@ function commentMessage(input: CommentPosted, publicUrl: string | null): string 
   return `${head}\n${linkOf(input.page, publicUrl)}`;
 }
 
-function who(by: Account | null): string {
+function who(by: Writer | null): string {
   return by === null ? 'Somebody' : escape(by.name);
 }
 

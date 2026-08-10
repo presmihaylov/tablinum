@@ -566,6 +566,12 @@ The caret is on screen while the agent works. Everybody reading the page sees it
 text it selects, and sees the agent's name beside it, the same way they see another person's
 caret. Nothing happens behind a curtain.
 
+An agent reviews as well as writes. `tablinum_comment` opens a comment thread on the words it
+quotes, `tablinum_reply` answers a thread somebody opened, and `tablinum_resolve_comment` closes
+one. The card in the comment panel carries the agent's name and picture, next to the people. A
+thread quotes what a reader sees rather than the markdown behind it, and a comment never reaches
+the markdown file.
+
 ## Configuration
 
 All configuration comes from environment variables. See `.env.example` for the annotated list.

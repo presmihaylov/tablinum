@@ -2,6 +2,7 @@ import {
   contentRev,
   newPageId,
   type Account,
+  type Agent,
   type CommentThread,
   type GitStatus,
   type Page,
@@ -207,6 +208,22 @@ export function makeAccount(overrides: Partial<Account> = {}): Account {
     disabled: false,
     created: '2026-08-01T09:00:00.000Z',
     updated: '2026-08-01T09:00:00.000Z',
+    ...overrides,
+  };
+}
+
+export function makeAgent(overrides: Partial<Agent> = {}): Agent {
+  return {
+    id: 'ag_01J8XYZABCDEFGHJKMNPQRSTVW',
+    name: 'Doc Bot',
+    handle: 'doc.bot',
+    identity: 'Keeps the runbooks tidy.',
+    workspaceId: 'ws_01J8XYZABCDEFGHJKMNPQRSTVW',
+    color: '#a855f7',
+    avatarRev: null,
+    created: '2026-08-01T09:00:00.000Z',
+    updated: '2026-08-01T09:00:00.000Z',
+    lastUsed: null,
     ...overrides,
   };
 }

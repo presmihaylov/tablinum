@@ -262,7 +262,9 @@ test.describe('people, invites and roles', () => {
     const api = member.context.request;
     expect((await api.get('/api/v1/invites')).status()).toBe(401);
     expect((await api.post('/api/v1/invites', { data: { role: 'admin' } })).status()).toBe(401);
-    expect((await api.get('/api/v1/agents')).status()).toBe(401);
+    // A member reads the agent roster, because a comment card names its author, but makes none.
+    expect((await api.get('/api/v1/agents')).ok()).toBeTruthy();
+    expect((await api.post('/api/v1/agents', { data: { name: 'Bot' } })).status()).toBe(401);
     expect((await api.patch(`/api/v1/users/${admin?.id ?? ''}`, { data: { role: 'member' } })).status()).toBe(401);
     expect((await api.delete(`/api/v1/users/${admin?.id ?? ''}`)).status()).toBe(401);
 

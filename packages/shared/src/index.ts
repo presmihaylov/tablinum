@@ -15,4 +15,5 @@ export * from './comments.js';
 export * from './favorites.js';
 export * from './workspaces.js';
 export * from './mentions.js';
+export * from './plaintext.js';
 export * from './slack.js';

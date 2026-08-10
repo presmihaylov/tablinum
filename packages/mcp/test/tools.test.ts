@@ -1,9 +1,16 @@
-import { AppError, newPageId } from '@tablinum/shared';
+import {
+  AppError,
+  MAX_QUOTE_LENGTH,
+  markdownToPlainText,
+  newPageId,
+  type CommentAnchor,
+} from '@tablinum/shared';
 import { describe, expect, it } from 'vitest';
 import { TablinumClient } from '../src/client.js';
 import { TOOL_SPECS, getToolSpec } from '../src/tools.js';
 import {
   makeAccount,
+  makeAgent,
   makeHit,
   makeNode,
   makePage,
@@ -53,6 +60,9 @@ describe('tool catalogue', () => {
       'tablinum_move_page',
       'tablinum_delete_page',
       'tablinum_list_comments',
+      'tablinum_comment',
+      'tablinum_reply',
+      'tablinum_resolve_comment',
       'tablinum_page_history',
       'tablinum_git_sync',
     ]);
@@ -530,6 +540,7 @@ describe('tablinum_list_comments', () => {
     const { run, mock } = harness({
       'GET /api/v1/pages': { page },
       'GET /api/v1/users': { users: [ana] },
+      'GET /api/v1/agents': { agents: [makeAgent()] },
       [`GET /api/v1/pages/${page.id}/comments`]: {
         threads: [makeThread({ pageId: page.id, anchor: null })],
       },
@@ -550,6 +561,7 @@ describe('tablinum_list_comments', () => {
     const { run, mock } = harness({
       [`GET /api/v1/pages/${page.id}`]: { page },
       'GET /api/v1/users': { users: [makeAccount()] },
+      'GET /api/v1/agents': { agents: [] },
       [`GET /api/v1/pages/${page.id}/comments`]: { threads: [makeThread({ pageId: page.id })] },
     });
 
@@ -573,11 +585,246 @@ describe('tablinum_list_comments', () => {
     expect(mock.matching('GET /api/v1/users')).toHaveLength(0);
   });
 
-  it('offers no way to write a comment', () => {
-    const writers = TOOL_SPECS.filter((spec) => spec.name.includes('comment')).filter(
-      (spec) => spec.annotations?.readOnlyHint !== true,
+  it('names an agent that left a remark, and not "a former member"', async () => {
+    const page = makePage();
+    const bot = makeAgent();
+    const thread = makeThread({ pageId: page.id, anchor: null });
+    const first = thread.comments[0];
+    if (first === undefined) throw new Error('the fixture has no comment');
+    const { run } = harness({
+      'GET /api/v1/pages': { page },
+      'GET /api/v1/users': { users: [] },
+      'GET /api/v1/agents': { agents: [bot] },
+      [`GET /api/v1/pages/${page.id}/comments`]: {
+        threads: [{ ...thread, comments: [{ ...first, author: bot.id }] }],
+      },
+    });
+
+    const text = await run('tablinum_list_comments', { path: page.path });
+
+    expect(text).toContain('Doc Bot');
+    expect(text).not.toContain('a former member');
+  });
+
+  it('reads no roster at all when nobody has commented', async () => {
+    const page = makePage();
+    const { run, mock } = harness({
+      'GET /api/v1/pages': { page },
+      [`GET /api/v1/pages/${page.id}/comments`]: { threads: [] },
+    });
+
+    await run('tablinum_list_comments', { path: page.path });
+
+    expect(mock.matching('GET /api/v1/agents')).toHaveLength(0);
+  });
+});
+
+describe('tablinum_comment', () => {
+  const prose = '# Release\n\nShip the [runbook](/eng/deploy) on Friday. Ship it twice.\n';
+
+  it('anchors the thread on the prose a reader sees, not on the markdown', async () => {
+    const page = makePage({ markdown: prose });
+    const { run, mock } = harness({
+      'GET /api/v1/pages': { page },
+      [`POST /api/v1/pages/${page.id}/comments`]: (call) => ({
+        thread: makeThread({
+          pageId: page.id,
+          anchor: (call.body as { anchor: CommentAnchor }).anchor,
+          comments: [
+            {
+              id: 'cm_01J8XYZABCDEFGHJKMNPQRSTVX',
+              threadId: 'ct_01J8XYZABCDEFGHJKMNPQRSTVW',
+              author: 'ag_01J8XYZABCDEFGHJKMNPQRSTVW',
+              body: 'Which Friday?',
+              created: '2026-08-08T11:00:00.000Z',
+              updated: '2026-08-08T11:00:00.000Z',
+            },
+          ],
+        }),
+      }),
+    });
+
+    const text = await run('tablinum_comment', {
+      path: page.path,
+      body: 'Which Friday?',
+      quote: 'Release',
+    });
+
+    const sent = mock.last().body as { body: string; anchor: CommentAnchor };
+    expect(sent.body).toBe('Which Friday?');
+    expect(sent.anchor.quote).toBe('Release');
+    // The heading marker is gone from the prose, so the quote starts the document.
+    expect(sent.anchor.start).toBe(0);
+    expect(text).toContain('Left a comment on eng/deploy');
+    expect(text).toContain('Which Friday?');
+    expect(text).toContain('the markdown file did not change');
+  });
+
+  it('quotes the words of a link rather than its markdown', async () => {
+    const page = makePage({ markdown: prose });
+    const { run, mock } = harness({
+      'GET /api/v1/pages': { page },
+      [`POST /api/v1/pages/${page.id}/comments`]: { thread: makeThread({ pageId: page.id }) },
+    });
+
+    await run('tablinum_comment', { path: page.path, body: 'Stale link.', quote: 'runbook' });
+
+    const sent = mock.last().body as { anchor: CommentAnchor };
+    expect(sent.anchor.prefix).toContain('Ship the ');
+    expect(sent.anchor.suffix).toContain(' on Friday');
+  });
+
+  it('picks the occurrence it is told to pick', async () => {
+    const page = makePage({ markdown: prose });
+    const { run, mock } = harness({
+      'GET /api/v1/pages': { page },
+      [`POST /api/v1/pages/${page.id}/comments`]: { thread: makeThread({ pageId: page.id }) },
+    });
+
+    await run('tablinum_comment', {
+      path: page.path,
+      body: 'Twice?',
+      quote: 'Ship',
+      occurrence: 2,
+    });
+
+    const first = markdownToPlainText(prose).indexOf('Ship');
+    const sent = mock.last().body as { anchor: CommentAnchor };
+    expect(sent.anchor.start).toBeGreaterThan(first);
+  });
+
+  it('sends no anchor when the remark is about the whole page', async () => {
+    const page = makePage({ markdown: prose });
+    const { run, mock } = harness({
+      'GET /api/v1/pages': { page },
+      [`POST /api/v1/pages/${page.id}/comments`]: {
+        thread: makeThread({ pageId: page.id, anchor: null }),
+      },
+    });
+
+    const text = await run('tablinum_comment', { path: page.path, body: 'Needs an owner.' });
+
+    expect(mock.last().body).toEqual({ body: 'Needs an owner.' });
+    expect(text).toContain('about: the whole page');
+  });
+
+  it('refuses a quote the page does not say, and writes nothing', async () => {
+    const page = makePage({ markdown: prose });
+    const { run, mock } = harness({ 'GET /api/v1/pages': { page } });
+
+    const error = await expectError(() =>
+      run('tablinum_comment', { path: page.path, body: 'Hm.', quote: '# Release' }),
     );
-    expect(writers).toEqual([]);
+
+    expect(error.code).toBe('VALIDATION');
+    expect(error.message).toContain('as a reader sees it');
+    expect(mock.matching(`POST /api/v1/pages/${page.id}/comments`)).toHaveLength(0);
+  });
+
+  it('refuses an occurrence past the last one', async () => {
+    const page = makePage({ markdown: prose });
+    const { run } = harness({ 'GET /api/v1/pages': { page } });
+
+    const error = await expectError(() =>
+      run('tablinum_comment', { path: page.path, body: 'Hm.', quote: 'Ship', occurrence: 9 }),
+    );
+
+    expect(error.code).toBe('VALIDATION');
+    expect(error.message).toContain('occurrence 9');
+  });
+
+  it('refuses a quote longer than a thread may hold', async () => {
+    const long = 'word '.repeat(400);
+    const page = makePage({ markdown: long });
+    const { run } = harness({ 'GET /api/v1/pages': { page } });
+
+    const error = await expectError(() =>
+      run('tablinum_comment', { path: page.path, body: 'Hm.', quote: long.trim() }),
+    );
+
+    expect(error.code).toBe('VALIDATION');
+    expect(error.message).toContain(String(MAX_QUOTE_LENGTH));
+  });
+
+  it('refuses an empty body before it calls the API', async () => {
+    const { run, mock } = harness({});
+    const error = await expectError(() => run('tablinum_comment', { id: newPageId(), body: '' }));
+    expect(error.code).toBe('VALIDATION');
+    expect(mock.calls).toHaveLength(0);
+  });
+});
+
+describe('tablinum_reply', () => {
+  it('appends a remark to the thread and reads the page back for its path', async () => {
+    const page = makePage();
+    const thread = makeThread({ pageId: page.id });
+    const answered = {
+      ...thread,
+      comments: [
+        ...thread.comments,
+        {
+          id: 'cm_01J8XYZABCDEFGHJKMNPQRSTVX',
+          threadId: thread.id,
+          author: 'ag_01J8XYZABCDEFGHJKMNPQRSTVW',
+          body: 'Fixed, the order now matches the runbook.',
+          created: '2026-08-08T11:00:00.000Z',
+          updated: '2026-08-08T11:00:00.000Z',
+        },
+      ],
+    };
+    const { run, mock } = harness({
+      [`POST /api/v1/comment-threads/${thread.id}/replies`]: { thread: answered },
+      [`GET /api/v1/pages/${page.id}`]: { page },
+    });
+
+    const text = await run('tablinum_reply', { thread: thread.id, body: 'Fixed, the order now matches the runbook.' });
+
+    expect(mock.calls[0]?.body).toEqual({ body: 'Fixed, the order now matches the runbook.' });
+    expect(text).toContain('Replied to a comment on eng/deploy');
+    expect(text).toContain('2 remarks so far');
+    expect(text).toContain('Fixed, the order now matches the runbook.');
+  });
+
+  it('refuses an empty reply before it calls the API', async () => {
+    const { run, mock } = harness({});
+    const error = await expectError(() => run('tablinum_reply', { thread: 'ct_1', body: '' }));
+    expect(error.code).toBe('VALIDATION');
+    expect(mock.calls).toHaveLength(0);
+  });
+});
+
+describe('tablinum_resolve_comment', () => {
+  it('closes a thread by default', async () => {
+    const page = makePage();
+    const thread = makeThread({ pageId: page.id });
+    const { run, mock } = harness({
+      [`PATCH /api/v1/comment-threads/${thread.id}`]: {
+        thread: { ...thread, resolved: true },
+      },
+      [`GET /api/v1/pages/${page.id}`]: { page },
+    });
+
+    const text = await run('tablinum_resolve_comment', { thread: thread.id });
+
+    expect(mock.calls[0]?.body).toEqual({ resolved: true });
+    expect(text).toContain('Resolved a comment on eng/deploy');
+    expect(text).toContain('[resolved] thread');
+  });
+
+  it('reopens a thread when it is told to', async () => {
+    const page = makePage();
+    const thread = makeThread({ pageId: page.id, resolved: true });
+    const { run, mock } = harness({
+      [`PATCH /api/v1/comment-threads/${thread.id}`]: {
+        thread: { ...thread, resolved: false },
+      },
+      [`GET /api/v1/pages/${page.id}`]: { page },
+    });
+
+    const text = await run('tablinum_resolve_comment', { thread: thread.id, resolved: false });
+
+    expect(mock.calls[0]?.body).toEqual({ resolved: false });
+    expect(text).toContain('Reopened a comment on eng/deploy');
   });
 });
 

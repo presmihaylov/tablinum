@@ -104,9 +104,13 @@ export function registerUserRoutes(app: FastifyInstance, ctx: RouteContext): voi
     return slackState(null);
   });
 
-  /** Everyone signed in may read the roster: the UI names the author of every edit. */
+  /**
+   * Everyone signed in may read the roster: the UI names the author of every edit, and an agent
+   * naming the author of a comment needs the same list.
+   */
   app.get(`${API_PREFIX}/users`, async (request): Promise<UsersResponse> => {
-    requireAccount(request);
+    // An operator token administers the install from a script and has never needed the roster.
+    if (request.principal.agent === null) requireAccount(request);
     // An admin runs the People screen, so they need the whole install. Everybody else gets
     // this workspace, which is all the mention list and the author byline ask for.
     if (request.principal.admin) return { users: accounts.listUsers() };

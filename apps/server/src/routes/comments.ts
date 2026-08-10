@@ -11,14 +11,14 @@ import {
   notFound,
   parseOrThrow,
   unauthorized,
-  type Account,
   type CommentThread,
   type CommentThreadResponse,
   type CommentThreadsResponse,
   type DeleteCommentResponse,
   type PageId,
+  type Writer,
 } from '@tablinum/shared';
-import { requireAccount } from '../auth.js';
+import { requireAccount, writerOf } from '../auth.js';
 import { API_PREFIX, partsOf, type RouteContext } from '../context.js';
 import { clientOf } from '../live.js';
 
@@ -43,13 +43,18 @@ function workspaceFor(ctx: RouteContext, request: FastifyRequest): string {
   throw unauthorized('You are not in this workspace');
 }
 
-/** Who is writing, and where. Agents and API tokens read comments but never author one. */
+/**
+ * Who is writing, and where. An agent authors a remark exactly as a person does, under its own
+ * name. An operator token names nobody, so it still reads comments without writing one.
+ */
 function writerFor(
   ctx: RouteContext,
   request: FastifyRequest,
-): { account: Account; workspaceId: string } {
-  const account = requireAccount(request);
-  return { account, workspaceId: workspaceFor(ctx, request) };
+): { writer: Writer; workspaceId: string } {
+  const workspaceId = workspaceFor(ctx, request);
+  const writer = writerOf(request);
+  if (writer === null) throw unauthorized('Sign in with an account to do that');
+  return { writer, workspaceId };
 }
 
 /** The page a thread is about, or a 404. A page in another workspace is simply not there. */
@@ -82,7 +87,7 @@ export function registerCommentRoutes(app: FastifyInstance, ctx: RouteContext): 
     pageId: PageId,
     body: string,
     before: string | null,
-    by: Account,
+    by: Writer,
   ): Promise<void> {
     const { store } = await partsOf(ctx, request);
     const page = await store.getPageById(pageId);
@@ -103,19 +108,19 @@ export function registerCommentRoutes(app: FastifyInstance, ctx: RouteContext): 
   });
 
   app.post(`${API_PREFIX}/pages/:id/comments`, async (request, reply): Promise<CommentThreadResponse> => {
-    const { account, workspaceId } = writerFor(ctx, request);
+    const { writer, workspaceId } = writerFor(ctx, request);
     const { id } = parseOrThrow(PageParamsSchema, request.params, 'page id');
     const body = parseOrThrow(CreateThreadBodySchema, request.body, 'comment');
     const pageId = await requirePageId(ctx, request, id);
 
     const thread = accounts.createThread(workspaceId, {
       pageId,
-      author: account.id,
+      author: writer.id,
       body: body.body,
       anchor: body.anchor ?? null,
     });
     await announce(request, pageId);
-    await notify(request, pageId, body.body, null, account);
+    await notify(request, pageId, body.body, null, writer);
 
     reply.status(201);
     return { thread };
@@ -124,13 +129,13 @@ export function registerCommentRoutes(app: FastifyInstance, ctx: RouteContext): 
   app.post(
     `${API_PREFIX}/comment-threads/:id/replies`,
     async (request, reply): Promise<CommentThreadResponse> => {
-      const { account, workspaceId } = writerFor(ctx, request);
+      const { writer, workspaceId } = writerFor(ctx, request);
       const { id } = parseOrThrow(ThreadParamsSchema, request.params, 'thread id');
       const body = parseOrThrow(ReplyBodySchema, request.body, 'reply');
 
-      const thread = accounts.addReply(workspaceId, id, account.id, body.body);
+      const thread = accounts.addReply(workspaceId, id, writer.id, body.body);
       await announce(request, thread.pageId);
-      await notify(request, thread.pageId, body.body, null, account);
+      await notify(request, thread.pageId, body.body, null, writer);
       reply.status(201);
       return { thread };
     },
@@ -138,29 +143,29 @@ export function registerCommentRoutes(app: FastifyInstance, ctx: RouteContext): 
 
   /** Resolve or reopen a thread. Anybody in the workspace may, not only the author. */
   app.patch(`${API_PREFIX}/comment-threads/:id`, async (request): Promise<CommentThreadResponse> => {
-    const { account, workspaceId } = writerFor(ctx, request);
+    const { writer, workspaceId } = writerFor(ctx, request);
     const { id } = parseOrThrow(ThreadParamsSchema, request.params, 'thread id');
     const body = parseOrThrow(ResolveThreadBodySchema, request.body, 'thread');
 
-    const thread = accounts.setThreadResolved(workspaceId, id, body.resolved, account.id);
+    const thread = accounts.setThreadResolved(workspaceId, id, body.resolved, writer.id);
     await announce(request, thread.pageId);
     return { thread };
   });
 
   app.patch(`${API_PREFIX}/comments/:id`, async (request): Promise<CommentThreadResponse> => {
-    const { account, workspaceId } = writerFor(ctx, request);
+    const { writer, workspaceId } = writerFor(ctx, request);
     const { id } = parseOrThrow(CommentParamsSchema, request.params, 'comment id');
     const body = parseOrThrow(UpdateCommentBodySchema, request.body, 'comment');
 
     const comment = accounts.getComment(workspaceId, id);
     if (comment === null) throw notFound(`No comment with id ${id}`);
     // Editing is stricter than deleting: an admin may remove a remark but never reword one.
-    if (comment.author !== account.id) throw unauthorized('You can only edit your own comment');
+    if (comment.author !== writer.id) throw unauthorized('You can only edit your own comment');
 
     const thread = accounts.updateComment(workspaceId, id, body.body);
     await announce(request, thread.pageId);
     // Only what the edit adds: a handle that was already there was told about once.
-    await notify(request, thread.pageId, body.body, comment.body, account);
+    await notify(request, thread.pageId, body.body, comment.body, writer);
     return { thread };
   });
 
@@ -170,7 +175,7 @@ export function registerCommentRoutes(app: FastifyInstance, ctx: RouteContext): 
 
     const comment = accounts.getComment(workspaceId, id);
     if (comment === null) throw notFound(`No comment with id ${id}`);
-    const me = request.principal.account;
+    const me = request.principal.agent ?? request.principal.account;
     const mine = me !== null && me.id === comment.author;
     if (!mine && !request.principal.admin) {
       throw unauthorized('You can only delete your own comment');

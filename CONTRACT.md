@@ -373,7 +373,7 @@ export interface CommentAnchor {
 export interface Comment {
   id: string;             // "cm_" + ULID
   threadId: string;
-  author: string;         // an account id. Agents and API tokens read comments, never write one.
+  author: string;         // an account id or an agent id. An API token reads comments, writes none.
   body: string;           // CommonMark, rendered with raw HTML OFF
   created: string; updated: string;   // ISO; equal until the author edits it
 }
@@ -445,9 +445,9 @@ that names none gets its first workspace, which is what a single-workspace insta
 
 A comment endpoint takes its workspace the same way and every comment query filters on that id, so
 a thread in one workspace stays unreachable from another even when somebody knows its id. A page in
-another workspace answers `NOT_FOUND`, exactly as the page endpoints do. Writing a comment needs an
-account: an agent token and an API token read comments but author none, because a comment names a
-person. Deleting a page deletes its threads.
+another workspace answers `NOT_FOUND`, exactly as the page endpoints do. Writing a comment needs a
+named writer: an account or an agent, because a comment says who left it. An API token names
+nobody, so it reads comments and authors none. Deleting a page deletes its threads.
 
 Every response carries `x-content-type-options: nosniff` and `referrer-policy: same-origin`. An
 HTML document also carries a `content-security-policy` with `script-src 'self'`, so the web app
@@ -482,7 +482,8 @@ POST   /api/v1/me/slack                        body { slackUserId? } -> the same
                                                 bot token; 404 when Slack knows no such address)
 DELETE /api/v1/me/slack                        -> the same state, disconnected
 
-GET    /api/v1/users                           account only -> { users: Account[] }
+GET    /api/v1/users                           an account or an agent -> { users: Account[] }
+                                               (an admin gets the install, everybody else the workspace)
                                                (an admin reads the install, everybody else reads
                                                 the people in this workspace)
 GET    /api/v1/users/:id/avatar                ?v=<rev> -> the image bytes, immutable cache, 404 when none
@@ -494,7 +495,8 @@ POST   /api/v1/invites                         admin, body { email?, role?, expi
                                                -> { invite: Invite, url }   (the token appears once)
 DELETE /api/v1/invites/:id                     admin -> { ok: true }
 
-GET    /api/v1/agents                          admin -> { agents: Agent[] }
+GET    /api/v1/agents                          any credential -> { agents: Agent[] } of this workspace
+                                               (a byline turns an agent id into a name and a picture)
 POST   /api/v1/agents                          admin, body { name, identity?, handle? }
                                                -> { agent: Agent, token, url }  (token appears once)
 PATCH  /api/v1/agents/:id                      admin, body { name?, identity? }

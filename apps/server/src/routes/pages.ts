@@ -26,6 +26,7 @@ import {
   type PageResponse,
   type RevisionContentResponse,
 } from '@tablinum/shared';
+import { writerOf } from '../auth.js';
 import { API_PREFIX, partsOf, type RouteContext } from '../context.js';
 import { clampedTo, ownerKey } from '../cursors.js';
 import { agentOf, clientOf, type LiveHub } from '../live.js';
@@ -130,7 +131,7 @@ export function registerPageRoutes(app: FastifyInstance, ctx: RouteContext): voi
       by: clientOf(request),
       agent: agentOf(request),
     });
-    ctx.mentions.pageSaved({ page, before: null, by: request.principal.account });
+    ctx.mentions.pageSaved({ page, before: null, by: writerOf(request) });
 
     reply.status(201);
     return { page };
@@ -161,7 +162,7 @@ export function registerPageRoutes(app: FastifyInstance, ctx: RouteContext): voi
       agent: agentOf(request),
       ...(page.path === before.path ? {} : { removedPaths: [before.path] }),
     });
-    ctx.mentions.pageSaved({ page, before: before.markdown, by: request.principal.account });
+    ctx.mentions.pageSaved({ page, before: before.markdown, by: writerOf(request) });
 
     return { page };
   });

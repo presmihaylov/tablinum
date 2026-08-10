@@ -143,6 +143,10 @@ instructions carry the shared tool guidance alone.
 | `tablinum_erase` | `id?`/`path?`, `before?`, `after?` | What it took out, the caret, and the page summary. |
 | `tablinum_move_page` | `id?`/`path?`, `newPath` | The new path, plus the page summary. |
 | `tablinum_delete_page` | `id?`/`path?`, `recursive?` | Every deleted path. |
+| `tablinum_list_comments` | `id?`/`path?`, `open?` | Every thread, its quoted text and every remark with its author. |
+| `tablinum_comment` | `id?`/`path?`, `body`, `quote?`, `occurrence?` | The new thread, as a reader will see it. |
+| `tablinum_reply` | `thread`, `body` | The thread with the reply on the end. |
+| `tablinum_resolve_comment` | `thread`, `resolved?` | The thread, open or closed. |
 | `tablinum_page_history` | `id?`/`path?`, `limit?` | Short sha, date, author and subject per commit. |
 | `tablinum_git_sync` | `push?` | Commit, pull and push outcome, plus the git status. |
 
@@ -160,6 +164,11 @@ Design rules that make these usable by a model:
   `tablinum_erase` change the text under it. The server holds one caret per credential per page, so
   a model can read, think, and come back to the same place. Everyone reading the page in a browser
   sees that caret move, with the agent's name on it.
+- **A comment, under its own name.** An agent reviews the way a person does: `tablinum_comment`
+  opens a thread, `tablinum_reply` answers one and `tablinum_resolve_comment` closes it. Every
+  remark carries the agent's name and picture in the browser. A thread quotes the words a reader
+  sees, not the markdown around them, so `"Release"` anchors a heading and `"# Release"` matches
+  nothing. A comment never reaches the markdown file.
 - **Compact text, not JSON dumps.** Search results, the tree and history come back as short
   lines a model can read cheaply. Only `tablinum_get_page` returns the full markdown, byte for byte.
 - **Errors are actionable.** Every API error becomes `CODE: message` followed by `What to do: ...`,

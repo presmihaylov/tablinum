@@ -1,4 +1,5 @@
 import {
+  markdownToPlainText,
   spanOffsets,
   splitBlocks,
   type Block,
@@ -182,7 +183,8 @@ export function formatComments(
     lines.push(`[${state}] thread ${thread.id}`);
     if (thread.anchor === null) lines.push('  about: the whole page');
     if (thread.anchor !== null) {
-      const found = page.markdown.includes(thread.anchor.quote);
+      // Against the prose, not the markup: a thread quotes what a reader sees.
+      const found = markdownToPlainText(page.markdown).includes(thread.anchor.quote);
       const note = found ? '' : '  (this text is no longer in the page)';
       lines.push(`  about: ${JSON.stringify(clip(thread.anchor.quote, QUOTE_MAX))}${note}`);
     }
@@ -195,6 +197,32 @@ export function formatComments(
   }
   lines.push('Comments are not part of the page. Editing the page does not answer them.');
   return lines.join('\n').trim();
+}
+
+/** One thread, just after it was written to, so an agent reads back what a person will see. */
+export function formatThread(
+  thread: CommentThread,
+  page: Pick<Page, 'path' | 'id'>,
+  what: string,
+): string {
+  const state = thread.resolved ? 'resolved' : 'open';
+  const about =
+    thread.anchor === null
+      ? 'the whole page'
+      : JSON.stringify(clip(thread.anchor.quote, QUOTE_MAX));
+  const last = thread.comments[thread.comments.length - 1];
+
+  const lines = [
+    `${what} ${page.path} (${page.id}).`,
+    '',
+    `[${state}] thread ${thread.id}`,
+    `  about: ${about}`,
+    `  ${count(thread.comments.length, 'remark')} so far, the last one yours:`,
+  ];
+  const body = last === undefined ? '' : last.body;
+  for (const line of body.split('\n')) lines.push(`    ${line}`);
+  lines.push('', 'A comment is not part of the page, so the markdown file did not change.');
+  return lines.join('\n');
 }
 
 // ---------------------------------------------------------------------------

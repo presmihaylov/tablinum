@@ -328,6 +328,16 @@ button.editor__icon:hover {
   border-radius: var(--radius-sm);
 }
 
+/*
+ * ProseMirror keeps a node selected after the box is blurred, so a clicked diagram or image
+ * stayed lit up long after the pointer had gone somewhere else. Nothing is lit unless the
+ * caret is still in here.
+ */
+.gd-editor-surface:not(.ProseMirror-focused) .ProseMirror-selectednode {
+  outline: none;
+  background: none;
+}
+
 /* placeholder */
 .gd-editor-surface .is-empty::before {
   content: attr(data-placeholder);

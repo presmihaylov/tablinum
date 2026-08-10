@@ -107,8 +107,8 @@ describe('comment highlights', () => {
   });
 
   it('reports the thread behind a click, and leaves the caret alone', () => {
-    const seen: string[] = [];
-    const editor = createTestEditor(DOC, { openComment: (id: string) => seen.push(id) });
+    const seen: Array<string | null> = [];
+    const editor = createTestEditor(DOC, { openComment: (id) => seen.push(id) });
     const range = rangeOf(editor, 'the pipeline');
     editor.commands.setCommentSpans(
       [
@@ -127,9 +127,13 @@ describe('comment highlights', () => {
     expect(click(range.from + 1)).toBeFalsy();
     expect(seen).toEqual(['ct_one']);
 
-    // A click on the draft span names no thread, so nothing is focused.
+    // A click on the draft span names no thread, so the focus is cleared instead.
     click(2);
-    expect(seen).toEqual(['ct_one']);
+    expect(seen).toEqual(['ct_one', null]);
+
+    // The same for a click on plain text, which is how a reader leaves a thread.
+    click(editor.state.doc.content.size - 1);
+    expect(seen).toEqual(['ct_one', null, null]);
     editor.destroy();
   });
 });

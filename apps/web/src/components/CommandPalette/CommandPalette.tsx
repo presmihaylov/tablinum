@@ -2,13 +2,33 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactEle
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { useGitSync, useSearch } from '../../api/hooks';
+import { useAuth } from '../../lib/auth';
 import { pageHref } from '../../lib/href';
 import { filterActions, type PaletteAction } from '../../lib/palette';
 import { useTheme } from '../../lib/theme';
 import { useToast } from '../../lib/toast';
 import { useDebouncedValue } from '../../lib/useDebouncedValue';
 import { useContent } from '../../lib/content';
-import { DocIcon, Moon, Plus, Search, Sun, Sync } from '../ui/Icon';
+import { findNode } from '../../lib/tree';
+import {
+  Bot,
+  Copy,
+  DocIcon,
+  Link,
+  Moon,
+  MoveTo,
+  Pencil,
+  People,
+  Plus,
+  Search,
+  Settings,
+  Smiley,
+  Star,
+  Sun,
+  Sync,
+  Trash,
+  UserIcon,
+} from '../ui/Icon';
 import './palette.css';
 
 interface CommandPaletteProps {
@@ -25,11 +45,18 @@ interface Row {
   run: () => void;
 }
 
+/** A palette action draws its own icon, so no list has to be kept in step by hand. */
+interface Action extends PaletteAction {
+  icon: ReactElement;
+}
+
 const SEARCH_DEBOUNCE_MS = 160;
 
 export function CommandPalette({ open, onClose }: CommandPaletteProps) {
   const navigate = useNavigate();
-  const { newPage, currentSpace, currentPath } = useContent();
+  const content = useContent();
+  const { newPage, newSpace, currentSpace, currentPath, spaces } = content;
+  const { user } = useAuth();
   const { toggle: toggleTheme, resolved } = useTheme();
   const { push, pushError } = useToast();
   const sync = useGitSync();
@@ -56,21 +83,48 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
     return () => clearTimeout(timer);
   }, [open]);
 
-  const actions = useMemo<PaletteAction[]>(
-    () => [
+  // The page the reader is on, if any. Everything under "This page" acts on it.
+  const here = useMemo(
+    () => (currentPath.length === 0 ? null : findNode(spaces, currentPath)),
+    [spaces, currentPath],
+  );
+  const isAdmin = user?.role === 'admin';
+
+  const actions = useMemo<Action[]>(() => {
+    const made: Action[] = [
       {
         id: 'new-page',
         label: 'New page',
         group: 'Actions',
         hint: currentSpace,
+        icon: <Plus size={13} />,
         keywords: ['create', 'add', 'page'],
         run: () => newPage(currentPath || currentSpace || null),
+      },
+      {
+        id: 'new-space',
+        label: 'New space',
+        group: 'Actions',
+        hint: 'everybody reads it',
+        icon: <Plus size={13} />,
+        keywords: ['create', 'add', 'space', 'public'],
+        run: () => newSpace(),
+      },
+      {
+        id: 'new-private-space',
+        label: 'New private space',
+        group: 'Actions',
+        hint: 'only you read it',
+        icon: <Plus size={13} />,
+        keywords: ['create', 'add', 'space', 'private', 'secret'],
+        run: () => newSpace({ private: true }),
       },
       {
         id: 'sync',
         label: 'Sync with git',
         group: 'Actions',
         hint: 'pull, then push',
+        icon: <Sync size={13} />,
         keywords: ['git', 'pull', 'push', 'commit'],
         run: () =>
           sync.mutate(undefined, {
@@ -83,12 +137,150 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
         label: 'Toggle theme',
         group: 'Actions',
         hint: resolved === 'dark' ? 'to light' : 'to dark',
+        icon: themeIcon(resolved),
         keywords: ['dark', 'light', 'appearance'],
         run: toggleTheme,
       },
-    ],
-    [currentSpace, currentPath, newPage, sync, push, pushError, resolved, toggleTheme],
-  );
+    ];
+
+    if (here !== null) {
+      const node = here;
+      const pinned = content.isFavorite(node.id);
+      made.push(
+        {
+          id: 'favorite',
+          label: pinned ? 'Remove from favorites' : 'Add to favorites',
+          group: 'This page',
+          hint: node.title,
+          icon: <Star size={13} />,
+          keywords: ['star', 'pin', 'bookmark', 'favourite'],
+          run: () => content.toggleFavorite(node),
+        },
+        {
+          id: 'copy-link',
+          label: 'Copy link to the page',
+          group: 'This page',
+          hint: node.title,
+          icon: <Link size={13} />,
+          keywords: ['url', 'share', 'address'],
+          run: () => content.copyLink(node.path),
+        },
+        {
+          id: 'rename',
+          label: 'Rename the page',
+          group: 'This page',
+          hint: node.title,
+          icon: <Pencil size={13} />,
+          keywords: ['title', 'name'],
+          run: () => content.renamePage(node),
+        },
+        {
+          id: 'duplicate',
+          label: 'Duplicate the page',
+          group: 'This page',
+          hint: node.title,
+          icon: <Copy size={13} />,
+          keywords: ['copy', 'clone'],
+          run: () => content.duplicatePage(node),
+        },
+        {
+          id: 'move-to-space',
+          label: 'Move the page to another space',
+          group: 'This page',
+          hint: node.title,
+          icon: <MoveTo size={13} />,
+          keywords: ['space', 'private', 'public'],
+          run: () => content.moveToSpace(node),
+        },
+        {
+          id: 'delete',
+          label: 'Delete the page',
+          group: 'This page',
+          hint: node.title,
+          icon: <Trash size={13} />,
+          keywords: ['remove', 'trash'],
+          run: () => content.deletePage(node),
+        },
+      );
+    }
+
+    made.push(
+      {
+        id: 'go-home',
+        label: 'Go home',
+        group: 'Go to',
+        icon: <DocIcon size={13} />,
+        keywords: ['start', 'overview'],
+        run: () => navigate('/'),
+      },
+      {
+        id: 'go-account',
+        label: 'My account',
+        group: 'Go to',
+        hint: 'settings',
+        icon: <UserIcon size={13} />,
+        keywords: ['profile', 'password', 'name', 'settings'],
+        run: () => navigate('/settings/account'),
+      },
+      {
+        id: 'go-emoji',
+        label: 'Custom emoji',
+        group: 'Go to',
+        hint: 'settings',
+        icon: <Smiley size={13} />,
+        keywords: ['icon', 'upload', 'settings'],
+        run: () => navigate('/settings/emoji'),
+      },
+      {
+        id: 'go-workspace',
+        label: 'Workspace settings',
+        group: 'Go to',
+        hint: 'settings',
+        icon: <Settings size={13} />,
+        keywords: ['git', 'remote', 'name', 'settings'],
+        run: () => navigate('/settings/workspace'),
+      },
+    );
+
+    if (isAdmin) {
+      made.push(
+        {
+          id: 'go-people',
+          label: 'People and invites',
+          group: 'Go to',
+          hint: 'settings',
+          icon: <People size={13} />,
+          keywords: ['members', 'invite', 'team', 'settings'],
+          run: () => navigate('/settings/people'),
+        },
+        {
+          id: 'go-agents',
+          label: 'Agents',
+          group: 'Go to',
+          hint: 'settings',
+          icon: <Bot size={13} />,
+          keywords: ['mcp', 'bot', 'token', 'settings'],
+          run: () => navigate('/settings/agents'),
+        },
+      );
+    }
+
+    return made;
+  }, [
+    currentSpace,
+    currentPath,
+    newPage,
+    newSpace,
+    sync,
+    push,
+    pushError,
+    resolved,
+    toggleTheme,
+    here,
+    content,
+    isAdmin,
+    navigate,
+  ]);
 
   const rows = useMemo<Row[]>(() => {
     const matched = filterActions(actions, query).map<Row>((action) => ({
@@ -96,7 +288,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
       label: action.label,
       hint: action.hint,
       group: action.group,
-      icon: action.id === 'sync' ? <Sync size={13} /> : action.id === 'theme' ? themeIcon(resolved) : <Plus size={13} />,
+      icon: action.icon,
       run: action.run,
     }));
 
@@ -113,7 +305,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
     }));
 
     return [...matched, ...hits];
-  }, [actions, query, search.data, navigate, resolved]);
+  }, [actions, query, search.data, navigate]);
 
   useEffect(() => {
     setActive((prev) => (prev >= rows.length ? 0 : prev));

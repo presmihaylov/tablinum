@@ -2,6 +2,7 @@ import type { Locator, Page } from '@playwright/test';
 import { expect, test } from './fixtures';
 import type { ApiClient } from './fixtures';
 import { pageMenu } from './menus';
+import { openPalette } from './palette';
 
 /**
  * A favorite is one person's pin. It lives in the account database, so it survives a reload
@@ -47,6 +48,18 @@ test.describe('favorites', () => {
     await pageMenu(page, 'Add to favorites');
 
     await expect(row(page, 'Pinned')).toBeVisible();
+    expect((await api.favorites()).map((one) => one.pageId)).toEqual([seeded.id]);
+  });
+
+  test('pins the open page from the command palette', async ({ page, api }) => {
+    const seeded = await seedPage(api, 'Commanded');
+
+    await page.goto(seeded.href);
+    const palette = await openPalette(page);
+    await palette.getByRole('combobox').fill('favorite');
+    await palette.getByRole('option', { name: 'Add to favorites' }).click();
+
+    await expect(row(page, 'Commanded')).toBeVisible();
     expect((await api.favorites()).map((one) => one.pageId)).toEqual([seeded.id]);
   });
 

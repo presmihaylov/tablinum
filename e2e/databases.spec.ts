@@ -139,7 +139,16 @@ test.describe('databases', () => {
 
     // Enough columns to make the grid scroll sideways. The last one used to open a menu that
     // the scroller cut in half, because the menu was drawn inside the scroller.
-    for (let n = 0; n < 6; n += 1) await grid(page).getByLabel('Add a property').click();
+    //
+    // Each add sends the whole schema the browser holds, so wait for one to land before asking
+    // for the next. Two in flight together give the columns new ids, which pulls the header out
+    // from under the menu this test opens.
+    for (let n = 0; n < 6; n += 1) {
+      const columns = grid(page).getByRole('columnheader');
+      const before = await columns.count();
+      await grid(page).getByLabel('Add a property').click();
+      await expect(columns).toHaveCount(before + 1);
+    }
     const last = grid(page).getByRole('columnheader').nth(-2).getByRole('button');
     await expect(last).toBeVisible();
     const scrolled = await grid(page).evaluate((node) => {

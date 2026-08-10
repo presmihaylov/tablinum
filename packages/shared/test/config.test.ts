@@ -19,7 +19,8 @@ describe('loadConfig defaults', () => {
     expect(config.gitAuthorName).toBe('tablinum');
     expect(config.gitAuthorEmail).toBe('tablinum@localhost');
     expect(config.gitRemote).toBeNull();
-    expect(config.autocommitMs).toBe(5000);
+    expect(config.autocommitMs).toBe(15000);
+    expect(config.commitMaxHoldMs).toBe(120000);
     expect(config.autopullMs).toBe(60000);
     expect(config.autopushMs).toBe(5000);
   });
@@ -43,6 +44,7 @@ describe('loadConfig overrides', () => {
     TABLINUM_GIT_REMOTE: 'git@example.com:team/docs.git',
     TABLINUM_GIT_BRANCH: 'trunk',
     TABLINUM_AUTOCOMMIT_MS: '0',
+    TABLINUM_COMMIT_MAX_HOLD_MS: '0',
     TABLINUM_AUTOPULL_MS: '0',
     TABLINUM_AUTOPUSH_MS: '0',
   });
@@ -58,6 +60,7 @@ describe('loadConfig overrides', () => {
 
   it('accepts zero for the timers', () => {
     expect(config.autocommitMs).toBe(0);
+    expect(config.commitMaxHoldMs).toBe(0);
     expect(config.autopullMs).toBe(0);
     expect(config.autopushMs).toBe(0);
   });

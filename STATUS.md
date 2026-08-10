@@ -513,7 +513,8 @@ export TABLINUM_CONTENT_DIR=/absolute/path/to/content
 export TABLINUM_PORT=4000
 export TABLINUM_API_TOKENS=your-token-here
 export TABLINUM_SESSION_SECRET=$(openssl rand -hex 32)
-export TABLINUM_AUTOCOMMIT_MS=5000
+export TABLINUM_AUTOCOMMIT_MS=15000     # quiet period before the edits are committed
+export TABLINUM_COMMIT_MAX_HOLD_MS=120000 # cap on that wait
 export TABLINUM_AUTOPULL_MS=60000        # 0 turns the periodic pull off
 export TABLINUM_AUTOPUSH_MS=5000         # 0 turns the automatic push off
 

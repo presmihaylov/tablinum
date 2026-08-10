@@ -676,7 +676,8 @@ Read from env, all packages use `@tablinum/shared`'s `loadConfig()`:
 | `TABLINUM_GIT_BRANCH` | `main` |
 | `TABLINUM_GIT_AUTHOR_NAME` | `tablinum` |
 | `TABLINUM_GIT_AUTHOR_EMAIL` | `tablinum@localhost` |
-| `TABLINUM_AUTOCOMMIT_MS` | debounce before auto-commit, default `5000` |
+| `TABLINUM_AUTOCOMMIT_MS` | quiet period before the edits are committed, default `15000` |
+| `TABLINUM_COMMIT_MAX_HOLD_MS` | cap on that wait, default `120000`, `0` = no cap |
 | `TABLINUM_AUTOPULL_MS` | periodic pull interval, default `60000`, `0` = off |
 | `TABLINUM_AUTOPUSH_MS` | quiet period after a commit before the push, default `5000`, `0` = off |
 | `TABLINUM_SLACK_BOT_TOKEN` | Slack bot token. Unset turns mention notifications off |

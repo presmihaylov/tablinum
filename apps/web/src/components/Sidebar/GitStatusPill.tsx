@@ -33,7 +33,14 @@ export function GitStatusPill() {
       <div className="git-pill__info" title={git?.remote ?? 'No remote configured'}>
         <Branch size={12} />
         <span className="git-pill__branch">{git?.branch ?? '—'}</span>
-        {dirty > 0 ? <span className="git-pill__badge git-pill__badge--dirty">{dirty}</span> : null}
+        {dirty > 0 ? (
+          <span
+            className="git-pill__badge git-pill__badge--dirty"
+            title={`${dirty} saved file${dirty === 1 ? '' : 's'} waiting for git. They go in one commit once the writing stops.`}
+          >
+            {dirty}
+          </span>
+        ) : null}
         {ahead > 0 ? <span className="git-pill__badge">↑{ahead}</span> : null}
         {behind > 0 ? <span className="git-pill__badge">↓{behind}</span> : null}
         {status.isError ? <span className="git-pill__badge git-pill__badge--error">offline</span> : null}

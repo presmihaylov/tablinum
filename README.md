@@ -554,7 +554,8 @@ All configuration comes from environment variables. See `.env.example` for the a
 | `TABLINUM_GIT_BRANCH` | `main` | Branch to commit, pull and push |
 | `TABLINUM_GIT_AUTHOR_NAME` | `tablinum` | Commit author name |
 | `TABLINUM_GIT_AUTHOR_EMAIL` | `tablinum@localhost` | Commit author email |
-| `TABLINUM_AUTOCOMMIT_MS` | `5000` | Debounce before an automatic commit; `0` disables it |
+| `TABLINUM_AUTOCOMMIT_MS` | `15000` | Quiet period a page must have before its edits are committed; `0` commits every write |
+| `TABLINUM_COMMIT_MAX_HOLD_MS` | `120000` | Cap on that wait, so a page nobody stops editing still reaches git; `0` = no cap |
 | `TABLINUM_AUTOPULL_MS` | `60000` | Background pull interval; `0` disables it |
 | `TABLINUM_AUTOPUSH_MS` | `5000` | Quiet period after a commit before the push; `0` disables it |
 | `TABLINUM_SLACK_BOT_TOKEN` | - | Slack bot token; unset turns mention notifications off |

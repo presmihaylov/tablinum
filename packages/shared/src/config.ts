@@ -8,7 +8,14 @@ export const DEFAULT_PORT = 4000;
 export const DEFAULT_GIT_BRANCH = 'main';
 export const DEFAULT_GIT_AUTHOR_NAME = 'tablinum';
 export const DEFAULT_GIT_AUTHOR_EMAIL = 'tablinum@localhost';
-export const DEFAULT_AUTOCOMMIT_MS = 5000;
+/**
+ * How long a page must stay quiet before its edits reach git. A save writes the file at once,
+ * so the working tree is the live snapshot; git only records what somebody has finished. Long
+ * enough to sit out a pause for thought, so one session is a handful of commits, not a hundred.
+ */
+export const DEFAULT_AUTOCOMMIT_MS = 15000;
+/** However busy a page stays, its edits reach git no later than this after the first of them. */
+export const DEFAULT_COMMIT_MAX_HOLD_MS = 120000;
 export const DEFAULT_AUTOPULL_MS = 60000;
 export const DEFAULT_AUTOPUSH_MS = 5000;
 
@@ -23,6 +30,7 @@ export const ENV_KEYS = [
   'TABLINUM_GIT_AUTHOR_NAME',
   'TABLINUM_GIT_AUTHOR_EMAIL',
   'TABLINUM_AUTOCOMMIT_MS',
+  'TABLINUM_COMMIT_MAX_HOLD_MS',
   'TABLINUM_AUTOPULL_MS',
   'TABLINUM_AUTOPUSH_MS',
   'TABLINUM_SLACK_BOT_TOKEN',
@@ -130,6 +138,7 @@ export function loadConfig(env: EnvSource = process.env): Config {
     gitAuthorName: read(env, 'TABLINUM_GIT_AUTHOR_NAME') ?? DEFAULT_GIT_AUTHOR_NAME,
     gitAuthorEmail,
     autocommitMs: readInt(env, 'TABLINUM_AUTOCOMMIT_MS', DEFAULT_AUTOCOMMIT_MS, 0, 3600000),
+    commitMaxHoldMs: readInt(env, 'TABLINUM_COMMIT_MAX_HOLD_MS', DEFAULT_COMMIT_MAX_HOLD_MS, 0, 86400000),
     autopullMs: readInt(env, 'TABLINUM_AUTOPULL_MS', DEFAULT_AUTOPULL_MS, 0, 86400000),
     autopushMs: readInt(env, 'TABLINUM_AUTOPUSH_MS', DEFAULT_AUTOPUSH_MS, 0, 3600000),
     slackBotToken: read(env, 'TABLINUM_SLACK_BOT_TOKEN') ?? null,
@@ -183,6 +192,7 @@ export function redactConfig(config: Config): Record<string, string | number | b
     gitAuthorName: config.gitAuthorName,
     gitAuthorEmail: config.gitAuthorEmail,
     autocommitMs: config.autocommitMs,
+    commitMaxHoldMs: config.commitMaxHoldMs,
     autopullMs: config.autopullMs,
     autopushMs: config.autopushMs,
     slackBotToken: config.slackBotToken === null ? 'unset' : 'set',

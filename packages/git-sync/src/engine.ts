@@ -4,6 +4,7 @@ import { simpleGit, type SimpleGit } from 'simple-git';
 import {
   DEFAULT_AUTOCOMMIT_MS,
   DEFAULT_AUTOPULL_MS,
+  DEFAULT_COMMIT_MAX_HOLD_MS,
   DEFAULT_AUTOPUSH_MS,
   DEFAULT_GIT_AUTHOR_EMAIL,
   DEFAULT_GIT_AUTHOR_NAME,
@@ -26,6 +27,7 @@ export interface GitEngineOptions {
   authorName?: string;
   authorEmail?: string;
   autocommitMs?: number;
+  commitMaxHoldMs?: number;
   autopullMs?: number;
   autopushMs?: number;
   logger?: GitLogger;
@@ -258,6 +260,7 @@ export class GitEngine {
   readonly authorName: string;
   readonly authorEmail: string;
   readonly autocommitMs: number;
+  readonly commitMaxHoldMs: number;
   readonly autopullMs: number;
   readonly autopushMs: number;
 
@@ -269,6 +272,8 @@ export class GitEngine {
   private pushTimer: ReturnType<typeof setTimeout> | null = null;
   private pendingMessage: string | null = null;
   private pendingCommits = 0;
+  /** When the oldest uncommitted write of the current burst arrived. */
+  private pendingSince: number | null = null;
   private autoPullRunning = false;
   private autoPushRunning = false;
   private disposed = false;
@@ -289,6 +294,7 @@ export class GitEngine {
     this.authorName = options.authorName ?? DEFAULT_GIT_AUTHOR_NAME;
     this.authorEmail = options.authorEmail ?? DEFAULT_GIT_AUTHOR_EMAIL;
     this.autocommitMs = options.autocommitMs ?? DEFAULT_AUTOCOMMIT_MS;
+    this.commitMaxHoldMs = options.commitMaxHoldMs ?? DEFAULT_COMMIT_MAX_HOLD_MS;
     this.autopullMs = options.autopullMs ?? DEFAULT_AUTOPULL_MS;
     this.autopushMs = options.autopushMs ?? DEFAULT_AUTOPUSH_MS;
     this.logger = options.logger ?? consoleLogger;
@@ -303,6 +309,7 @@ export class GitEngine {
       authorName: config.gitAuthorName,
       authorEmail: config.gitAuthorEmail,
       autocommitMs: config.autocommitMs,
+      commitMaxHoldMs: config.commitMaxHoldMs,
       autopullMs: config.autopullMs,
       autopushMs: config.autopushMs,
       ...(logger ? { logger } : {}),
@@ -492,8 +499,13 @@ export class GitEngine {
   }
 
   /**
-   * Signal that a write happened. Bursts coalesce: ten saves inside the debounce window produce
-   * exactly one commit, `autocommitMs` after the last one.
+   * Signal that a write happened.
+   *
+   * The file is already on disk, so the working tree holds the live snapshot and git only has to
+   * record what somebody has finished. The commit therefore waits for the page to go quiet:
+   * every write inside the window pushes the commit back, and a whole editing session lands as a
+   * few commits instead of one every few seconds. `commitMaxHoldMs` is the backstop, so a page
+   * nobody stops editing still reaches git.
    */
   scheduleCommit(message?: string): void {
     if (this.disposed) return;
@@ -502,12 +514,28 @@ export class GitEngine {
     // The message is kept only while it is the sole one pending.
     this.pendingMessage = this.pendingCommits === 0 ? (message ?? null) : null;
     this.pendingCommits += 1;
+    this.pendingSince ??= Date.now();
 
     this.commitTimer = setTimeout(() => {
       this.commitTimer = null;
       void this.runScheduledCommit();
-    }, this.autocommitMs);
+    }, this.commitDelay());
     this.commitTimer.unref?.();
+  }
+
+  /** How long the burst may still wait: the quiet window, cut short by the hold cap. */
+  private commitDelay(): number {
+    if (this.commitMaxHoldMs <= 0 || this.pendingSince === null) return this.autocommitMs;
+    const left = this.pendingSince + this.commitMaxHoldMs - Date.now();
+    return Math.max(0, Math.min(this.autocommitMs, left));
+  }
+
+  /**
+   * True while writes are waiting for the page to go quiet. The periodic pull sits those rounds
+   * out: a rebase needs a clean tree, so pulling now would commit half of what is being typed.
+   */
+  busy(): boolean {
+    return this.commitTimer !== null;
   }
 
   /** Take the message the pending burst should use, and reset the burst. */
@@ -515,6 +543,7 @@ export class GitEngine {
     const message = this.pendingMessage;
     this.pendingMessage = null;
     this.pendingCommits = 0;
+    this.pendingSince = null;
     return message ?? undefined;
   }
 
@@ -1032,6 +1061,8 @@ export class GitEngine {
 
   private async autoPullTick(): Promise<void> {
     if (this.autoPullRunning) return;
+    // Somebody is still writing. Let the next round pull, once their edits are one commit.
+    if (this.busy()) return;
     this.autoPullRunning = true;
     try {
       const result = await this.pull();

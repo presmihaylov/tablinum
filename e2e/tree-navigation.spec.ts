@@ -1,5 +1,6 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect, test, uniqueSlug, type ApiClient } from './fixtures';
+import { pageTree } from './sidebar';
 
 const SPACE_NAME = 'Tree Space';
 
@@ -41,7 +42,7 @@ async function seedSpace(api: ApiClient): Promise<Seeded> {
  * also holds their titles; the title span is the only part that belongs to the row alone.
  */
 function row(page: Page, title: string): Locator {
-  return page.getByRole('navigation', { name: 'Pages' }).getByText(title, { exact: true }).locator('..');
+  return pageTree(page).getByText(title, { exact: true }).locator('..');
 }
 
 function twisty(page: Page, title: string, label: 'Expand' | 'Collapse'): Locator {

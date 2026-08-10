@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { depth, isDescendantOf, parentPath, segments, slugify, spaceOf } from '@tablinum/shared';
 import type { PagePath, TreeNode } from '@tablinum/shared';
@@ -33,10 +33,16 @@ import { childrenOf, type SpaceTree } from './tree';
 import { useToast } from './toast';
 
 const SPACE_KEY = 'space';
+const RECENTS_KEY = 'recents';
+
+/** How many pages the Recents bucket keeps. Notion shows about this many. */
+const RECENTS_LIMIT = 10;
 
 interface ContentValue {
   spaces: SpaceTree[];
   isLoadingTree: boolean;
+  /** Pages opened on this device, newest first. */
+  recents: PagePath[];
   currentPath: PagePath;
   currentSpace: string;
   setCurrentSpace: (slug: string) => void;
@@ -75,6 +81,7 @@ export function ContentProvider({ children }: { children: ReactNode }) {
   const [spacePick, setSpacePick] = useState<SpacePickerRequest | null>(null);
   const [spaceEdit, setSpaceEdit] = useState<SpaceDialogRequest | null>(null);
   const [storedSpace, setStoredSpace] = useState<string>(() => readStored<string>(SPACE_KEY, ''));
+  const [recents, setRecents] = useState<PagePath[]>(() => readStored<PagePath[]>(RECENTS_KEY, []));
 
   const spaces = useMemo<SpaceTree[]>(() => tree.data?.spaces ?? [], [tree.data]);
 
@@ -94,6 +101,16 @@ export function ContentProvider({ children }: { children: ReactNode }) {
     setStoredSpace(slug);
     writeStored(SPACE_KEY, slug);
   }, []);
+
+  useEffect(() => {
+    if (currentPath === '') return;
+    setRecents((prev) => {
+      if (prev[0] === currentPath) return prev;
+      const next = [currentPath, ...prev.filter((entry) => entry !== currentPath)].slice(0, RECENTS_LIMIT);
+      writeStored(RECENTS_KEY, next);
+      return next;
+    });
+  }, [currentPath]);
 
   const newPage = useCallback(
     (parent: PagePath | null) => {
@@ -323,6 +340,7 @@ export function ContentProvider({ children }: { children: ReactNode }) {
     () => ({
       spaces,
       isLoadingTree: tree.isLoading,
+      recents,
       currentPath,
       currentSpace,
       setCurrentSpace,
@@ -339,6 +357,7 @@ export function ContentProvider({ children }: { children: ReactNode }) {
     [
       spaces,
       tree.isLoading,
+      recents,
       currentPath,
       currentSpace,
       setCurrentSpace,

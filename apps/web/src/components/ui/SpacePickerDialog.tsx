@@ -6,6 +6,8 @@ export interface SpaceOption {
   slug: string;
   name: string;
   icon?: string;
+  /** A private space keeps its files out of git. The move is not the same, so it is named. */
+  private?: boolean;
 }
 
 export interface SpacePickerRequest {
@@ -76,6 +78,13 @@ export function SpacePickerDialog({ request, onClose }: SpacePickerDialogProps) 
                 <EmojiGlyph value={option.icon ?? '#'} />
               </span>
               <span className="picker__label">{option.name}</span>
+              <span
+                className={
+                  option.private ? 'picker__tag picker__tag--private' : 'picker__tag'
+                }
+              >
+                {option.private ? 'Private' : 'Public'}
+              </span>
             </button>
           ))}
         </div>

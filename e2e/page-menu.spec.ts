@@ -105,7 +105,10 @@ test.describe('the page menu', () => {
     await page.goto(seeded.href);
     await pageMenu(page, 'Move to');
 
-    await page.getByRole('option', { name: other.name }).click();
+    // The dialog names each space, so nobody moves work into or out of a private space blind.
+    const option = page.getByRole('option', { name: other.name });
+    await expect(option.getByText('Public', { exact: true })).toBeVisible();
+    await option.click();
     await page.getByRole('button', { name: 'Move', exact: true }).click();
 
     await expect(page).toHaveURL(new RegExp(`/p/${other.slug}/nomad$`));

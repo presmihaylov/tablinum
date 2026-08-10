@@ -417,6 +417,8 @@ export function ContentProvider({ children }: { children: ReactNode }) {
         .map((space) => ({
           slug: space.slug,
           name: space.name,
+          // A space with an owner belongs to one person, and git never takes its files.
+          private: space.owner !== undefined,
           ...(space.icon ? { icon: space.icon } : {}),
         }));
       if (options.length === 0) {

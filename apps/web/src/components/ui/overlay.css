@@ -158,6 +158,22 @@
   text-overflow: ellipsis;
 }
 
+.picker__tag {
+  margin-left: auto;
+  padding: 1px var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.picker__tag--private {
+  border-color: var(--border-strong);
+  color: var(--text-muted);
+}
+
 .space-dialog__icons {
   margin-top: var(--space-4);
 }

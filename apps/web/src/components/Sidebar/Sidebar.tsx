@@ -4,7 +4,8 @@ import type { PagePath } from '@tablinum/shared';
 import { ancestorPaths } from '../../lib/tree';
 import { usePersistedState } from '../../lib/storage';
 import { useContent } from '../../lib/content';
-import { Plus, Search } from '../ui/Icon';
+import { PanelLeft, Plus, Search } from '../ui/Icon';
+import { AccountMenu } from '../Account/AccountMenu';
 import { GitStatusPill } from './GitStatusPill';
 import { PageTree } from './PageTree';
 import { SpaceSwitcher } from './SpaceSwitcher';
@@ -13,9 +14,10 @@ import './sidebar.css';
 
 interface SidebarProps {
   onOpenPalette: () => void;
+  onCollapse: () => void;
 }
 
-export function Sidebar({ onOpenPalette }: SidebarProps) {
+export function Sidebar({ onOpenPalette, onCollapse }: SidebarProps) {
   const navigate = useNavigate();
   const { spaces, currentSpace, currentPath, newPage, isLoadingTree } = useContent();
   const [expanded, setExpanded] = usePersistedState<string[]>('tree.expanded', []);
@@ -48,7 +50,19 @@ export function Sidebar({ onOpenPalette }: SidebarProps) {
 
   return (
     <aside className="sidebar">
-      <WorkspaceSwitcher />
+      <div className="sidebar__head">
+        <WorkspaceSwitcher />
+        <AccountMenu />
+        <button
+          type="button"
+          className="btn btn--icon"
+          onClick={onCollapse}
+          title="Hide the sidebar (⌘\)"
+          aria-label="Hide the sidebar"
+        >
+          <PanelLeft />
+        </button>
+      </div>
 
       <div className="sidebar__top">
         <SpaceSwitcher />

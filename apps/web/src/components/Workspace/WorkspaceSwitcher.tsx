@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import type { Workspace } from '@tablinum/shared';
 import { useCreateWorkspace, useImportWorkspace } from '../../api/hooks';
 import { describeError, useToast } from '../../lib/toast';
 import { useWorkspace } from '../../lib/workspaces';
 import { EmojiGlyph } from '../ui/EmojiGlyph';
-import { ChevronDown, Plus, Settings, Upload } from '../ui/Icon';
+import { ChevronDown, People, Plus, Settings, Upload } from '../ui/Icon';
 import { SpaceDialog, type SpaceDialogRequest } from '../ui/SpaceDialog';
-import { WorkspaceDialog } from './WorkspaceDialog';
 import './workspace.css';
 
 /** The top level of the sidebar: which workspace this tab is in, and how to leave it. */
@@ -14,11 +14,11 @@ export function WorkspaceSwitcher() {
   const { workspaces, current, switchTo } = useWorkspace();
   const createWorkspace = useCreateWorkspace();
   const importWorkspace = useImportWorkspace();
+  const navigate = useNavigate();
   const toast = useToast();
 
   const [open, setOpen] = useState(false);
   const [dialog, setDialog] = useState<SpaceDialogRequest | null>(null);
-  const [settings, setSettings] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
 
@@ -83,6 +83,38 @@ export function WorkspaceSwitcher() {
 
       {open ? (
         <div className="workspace-switcher__menu" role="menu">
+          <button
+            type="button"
+            role="menuitem"
+            className="workspace-switcher__item"
+            onClick={() => {
+              setOpen(false);
+              navigate('/settings');
+            }}
+          >
+            <span className="workspace-switcher__mark">
+              <Settings size={12} />
+            </span>
+            <span className="workspace-switcher__name">Settings</span>
+          </button>
+
+          <button
+            type="button"
+            role="menuitem"
+            className="workspace-switcher__item"
+            onClick={() => {
+              setOpen(false);
+              navigate('/settings/people');
+            }}
+          >
+            <span className="workspace-switcher__mark">
+              <People size={12} />
+            </span>
+            <span className="workspace-switcher__name">Invite members</span>
+          </button>
+
+          <div className="workspace-switcher__divider" />
+
           {workspaces.map((one) => (
             <button
               key={one.id}
@@ -144,7 +176,7 @@ export function WorkspaceSwitcher() {
               className="workspace-switcher__item"
               onClick={() => {
                 setOpen(false);
-                setSettings(true);
+                navigate('/settings/workspace');
               }}
             >
               <span className="workspace-switcher__mark">
@@ -170,7 +202,6 @@ export function WorkspaceSwitcher() {
       />
 
       <SpaceDialog request={dialog} onClose={() => setDialog(null)} />
-      <WorkspaceDialog open={settings} onClose={() => setSettings(false)} />
     </div>
   );
 }

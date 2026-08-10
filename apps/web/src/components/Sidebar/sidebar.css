@@ -9,6 +9,14 @@
   user-select: none;
 }
 
+/* The Notion row: workspace on the left, then you, then the way to fold the sidebar away. */
+.sidebar__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-2) 0;
+}
+
 .sidebar__top {
   display: flex;
   align-items: center;

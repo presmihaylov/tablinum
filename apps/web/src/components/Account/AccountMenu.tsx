@@ -1,22 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useLogout } from '../../api/hooks';
 import { useAuth } from '../../lib/auth';
-import { Bot, People, SignOut, Smiley, UserIcon } from '../ui/Icon';
-import { AgentsDialog } from './AgentsDialog';
+import { Settings, SignOut } from '../ui/Icon';
 import { Avatar } from './Avatar';
-import { EmojiDialog } from './EmojiDialog';
-import { PeopleDialog } from './PeopleDialog';
-import { ProfileDialog } from './ProfileDialog';
 import './account.css';
 
-type OpenDialog = 'none' | 'profile' | 'people' | 'agents' | 'emoji';
-
-/** The avatar in the top bar: your profile, the roster, and the way out. */
+/** The avatar in the sidebar: the two things an account ever needs, and nothing else. */
 export function AccountMenu() {
   const { user } = useAuth();
   const logout = useLogout();
+  const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
-  const [dialog, setDialog] = useState<OpenDialog>('none');
   const ref = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -41,11 +36,6 @@ export function AccountMenu() {
       // A full reload is the simplest way to drop every cached page and the live socket.
       onSettled: () => window.location.assign('/'),
     });
-  };
-
-  const choose = (next: OpenDialog): void => {
-    setMenuOpen(false);
-    setDialog(next);
   };
 
   // The shell is only reached by a signed-in account, but the auth state lands a tick later.
@@ -76,29 +66,18 @@ export function AccountMenu() {
 
           <div className="account-menu__sep" />
 
-          <button type="button" role="menuitem" className="account-menu__item" onClick={() => choose('profile')}>
-            <UserIcon />
-            Your account
+          <button
+            type="button"
+            role="menuitem"
+            className="account-menu__item"
+            onClick={() => {
+              setMenuOpen(false);
+              navigate('/settings');
+            }}
+          >
+            <Settings />
+            Settings
           </button>
-
-          <button type="button" role="menuitem" className="account-menu__item" onClick={() => choose('emoji')}>
-            <Smiley />
-            Custom emoji
-          </button>
-
-          {user.role === 'admin' ? (
-            <button type="button" role="menuitem" className="account-menu__item" onClick={() => choose('people')}>
-              <People />
-              People and invites
-            </button>
-          ) : null}
-
-          {user.role === 'admin' ? (
-            <button type="button" role="menuitem" className="account-menu__item" onClick={() => choose('agents')}>
-              <Bot />
-              Agents
-            </button>
-          ) : null}
 
           <button
             type="button"
@@ -107,15 +86,10 @@ export function AccountMenu() {
             onClick={signOut}
           >
             <SignOut />
-            Sign out
+            Log out
           </button>
         </div>
       )}
-
-      <ProfileDialog user={user} open={dialog === 'profile'} onClose={() => setDialog('none')} />
-      <EmojiDialog user={user} open={dialog === 'emoji'} onClose={() => setDialog('none')} />
-      <PeopleDialog me={user} open={dialog === 'people'} onClose={() => setDialog('none')} />
-      <AgentsDialog open={dialog === 'agents'} onClose={() => setDialog('none')} />
     </div>
   );
 }

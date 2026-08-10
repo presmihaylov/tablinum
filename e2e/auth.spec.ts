@@ -192,7 +192,7 @@ test.describe('authentication and session', () => {
     await expect(signedOutPage.getByRole('navigation', { name: 'Pages' })).toBeVisible();
 
     await signedOutPage.getByRole('button', { name: 'Your account' }).click();
-    await signedOutPage.getByRole('menuitem', { name: 'Sign out' }).click();
+    await signedOutPage.getByRole('menuitem', { name: 'Log out' }).click();
 
     await expect(signedOutPage.getByText(LOGIN_LEDE)).toBeVisible();
     await expect(signedOutPage.getByRole('navigation', { name: 'Pages' })).toHaveCount(0);

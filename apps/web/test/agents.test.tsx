@@ -2,8 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Account, Agent, AuthStateResponse } from '@tablinum/shared';
-import { AccountMenu } from '../src/components/Account/AccountMenu';
-import { AgentsDialog } from '../src/components/Account/AgentsDialog';
+import { AgentsPanel } from '../src/components/Account/AgentsPanel';
 import { AuthProvider } from '../src/lib/auth';
 import { installFetch, type MockServer, type Routes as MockRoutes } from './mockFetch';
 import { renderApp } from './render';
@@ -54,10 +53,10 @@ function start(routes: MockRoutes): MockServer {
   return server;
 }
 
-function renderDialog(): void {
+function renderPanel(): void {
   renderApp(
     <AuthProvider>
-      <AgentsDialog open onClose={vi.fn()} />
+      <AgentsPanel />
     </AuthProvider>,
   );
 }
@@ -80,7 +79,7 @@ describe('the agents dialog', () => {
       'POST /api/v1/agents': { agent: DOC_BOT, token: 'gda_secret-token', url: MCP_URL },
     });
     const user = userEvent.setup();
-    renderDialog();
+    renderPanel();
 
     await user.type(screen.getByLabelText('Agent name'), 'Doc Bot');
     await user.type(screen.getByLabelText('Agent identity'), 'You keep the runbooks tidy.');
@@ -99,7 +98,7 @@ describe('the agents dialog', () => {
   it('refuses to add an agent with no name', async () => {
     const mock = start(routes);
     const user = userEvent.setup();
-    renderDialog();
+    renderPanel();
 
     await user.click(screen.getByRole('button', { name: 'Add agent' }));
     await screen.findByText('Give the agent a name.');
@@ -115,7 +114,7 @@ describe('the agents dialog', () => {
       lastUsed: new Date().toISOString(),
     };
     start({ 'GET /api/v1/agents': { agents: [DOC_BOT, busy] } });
-    renderDialog();
+    renderPanel();
 
     await screen.findByText('Doc Bot');
     expect(screen.getByText(/@doc\.bot · never connected/)).toBeInTheDocument();
@@ -128,7 +127,7 @@ describe('the agents dialog', () => {
       'PATCH /api/v1/agents/ag_00000000000000000000000001': { agent: DOC_BOT },
     });
     const user = userEvent.setup();
-    renderDialog();
+    renderPanel();
 
     await user.click(await screen.findByRole('button', { name: 'Edit Doc Bot' }));
     const field = screen.getByLabelText('Identity of Doc Bot');
@@ -149,7 +148,7 @@ describe('the agents dialog', () => {
       'PATCH /api/v1/agents/ag_00000000000000000000000001': { agent: { ...DOC_BOT, disabled: true } },
     });
     const user = userEvent.setup();
-    renderDialog();
+    renderPanel();
 
     await user.selectOptions(await screen.findByLabelText('State of Doc Bot'), 'paused');
 
@@ -169,7 +168,7 @@ describe('the agents dialog', () => {
       },
     });
     const user = userEvent.setup();
-    renderDialog();
+    renderPanel();
 
     await user.click(await screen.findByRole('button', { name: 'Issue a new token for Doc Bot' }));
     expect(mock.calls.some((item) => item.method === 'POST')).toBe(false);
@@ -184,7 +183,7 @@ describe('the agents dialog', () => {
       'DELETE /api/v1/agents/ag_00000000000000000000000001': { ok: true },
     });
     const user = userEvent.setup();
-    renderDialog();
+    renderPanel();
 
     await user.click(await screen.findByRole('button', { name: 'Delete Doc Bot' }));
     expect(mock.calls.some((item) => item.method === 'DELETE')).toBe(false);
@@ -197,37 +196,7 @@ describe('the agents dialog', () => {
 
   it('says so when there are no agents at all', async () => {
     start({ 'GET /api/v1/agents': { agents: [] } });
-    renderDialog();
+    renderPanel();
     await screen.findByText('No agents yet.');
-  });
-});
-
-describe('the agents menu item', () => {
-  it('offers agents to an admin and hides them from a member', async () => {
-    start({ 'GET /api/v1/auth/state': authState({ user: { ...ADA, role: 'member' } }) });
-    const user = userEvent.setup();
-    renderApp(
-      <AuthProvider>
-        <AccountMenu />
-      </AuthProvider>,
-    );
-
-    await user.click(await screen.findByRole('button', { name: 'Your account' }));
-    expect(screen.queryByRole('menuitem', { name: /Agents/ })).toBeNull();
-  });
-
-  it('opens the dialog from the menu', async () => {
-    start({ 'GET /api/v1/auth/state': authState(), 'GET /api/v1/agents': { agents: [DOC_BOT] } });
-    const user = userEvent.setup();
-    renderApp(
-      <AuthProvider>
-        <AccountMenu />
-      </AuthProvider>,
-    );
-
-    await user.click(await screen.findByRole('button', { name: 'Your account' }));
-    await user.click(screen.getByRole('menuitem', { name: /Agents/ }));
-    await screen.findByText('Add an agent');
-    expect(await screen.findByText('Doc Bot')).toBeInTheDocument();
   });
 });

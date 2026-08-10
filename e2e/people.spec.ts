@@ -81,13 +81,15 @@ async function joinFromLink(
   return { context, page: await context.newPage(), account };
 }
 
+/** The roster lives on the settings page now, reached from the avatar in the sidebar. */
 async function openPeopleDialog(page: Page) {
   await page.goto('/');
   await page.getByRole('button', { name: 'Your account' }).click();
-  await page.getByRole('menuitem', { name: 'People and invites' }).click();
-  const dialog = page.getByRole('dialog', { name: 'People' });
-  await expect(dialog).toBeVisible();
-  return dialog;
+  await page.getByRole('menuitem', { name: 'Settings' }).click();
+  await page.getByRole('button', { name: 'People and invites' }).click();
+  const panel = page.getByRole('region', { name: 'People and invites' });
+  await expect(panel).toBeVisible();
+  return panel;
 }
 
 /**
@@ -235,11 +237,14 @@ test.describe('people, invites and roles', () => {
 
     await member.page.goto('/');
     await member.page.getByRole('button', { name: 'Your account' }).click();
+    await expect(member.page.getByRole('menuitem', { name: 'Settings' })).toBeVisible();
+    await expect(member.page.getByRole('menuitem', { name: 'Log out' })).toBeVisible();
 
-    await expect(member.page.getByRole('menuitem', { name: 'Your account' })).toBeVisible();
-    await expect(member.page.getByRole('menuitem', { name: 'Sign out' })).toBeVisible();
-    await expect(member.page.getByRole('menuitem', { name: 'People and invites' })).toHaveCount(0);
-    await expect(member.page.getByRole('menuitem', { name: 'Agents' })).toHaveCount(0);
+    // The settings page offers a member no admin section, whatever the path asks for.
+    await member.page.goto('/settings/people');
+    await expect(member.page.getByRole('heading', { name: 'My account' })).toBeVisible();
+    await expect(member.page.getByRole('button', { name: 'People and invites' })).toHaveCount(0);
+    await expect(member.page.getByRole('button', { name: 'Agents' })).toHaveCount(0);
 
     const admin = (await listUsers(request)).find((user) => user.email === ADMIN.email);
     expect(admin).toBeDefined();
@@ -272,9 +277,8 @@ test.describe('people, invites and roles', () => {
       .toBe('admin');
 
     // The new admin sees the admin screens as soon as the browser asks again.
-    await member.page.goto('/');
-    await member.page.getByRole('button', { name: 'Your account' }).click();
-    await expect(member.page.getByRole('menuitem', { name: 'People and invites' })).toBeVisible();
+    await member.page.goto('/settings');
+    await expect(member.page.getByRole('button', { name: 'People and invites' })).toBeVisible();
 
     await select.selectOption('member');
     await expect(select).toHaveValue('member');

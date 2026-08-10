@@ -217,6 +217,33 @@ describe('the workspace settings panel', () => {
     });
   });
 
+  it('stays in the workspace after a rename changes its slug', async () => {
+    // A rename changes the slug and keeps the id. A request that still carried the old slug was
+    // refused, and the shell dropped the reader on the login screen.
+    let listed: Workspace[] = [MAIN, HANDBOOK];
+    const renamed: Workspace = { ...MAIN, slug: 'head-office', name: 'Head office' };
+    const mock = await openSettings({
+      'GET /api/v1/workspaces': () => ({ workspaces: listed, current: listed[0]?.slug }),
+      'PATCH /api/v1/workspaces/ws_00000000000000000000000001': () => {
+        listed = [renamed, HANDBOOK];
+        return { workspace: renamed };
+      },
+    });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+    fireEvent.change(screen.getByLabelText('Workspace name'), { target: { value: 'Head office' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(screen.getByText('head-office')).toBeTruthy());
+    const renamedAt = mock.calls.findIndex((call) => call.method === 'PATCH');
+    const after = mock.calls.slice(renamedAt + 1);
+    expect(after.length).toBeGreaterThan(0);
+    // Never the dead slug, and never the other workspace either.
+    for (const call of after) {
+      expect([MAIN.id, renamed.slug, undefined]).toContain(call.headers[WORKSPACE_HEADER]);
+    }
+  });
+
   it('links the export straight at the archive', async () => {
     await openSettings();
 

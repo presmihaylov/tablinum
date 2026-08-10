@@ -38,21 +38,28 @@ export function WorkspacesProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const query = useWorkspacesQuery();
 
-  const [slug, setSlug] = useState<string | null>(() => currentWorkspace());
+  // The key this tab holds settles on the workspace id. A rename changes the slug, and a request
+  // that still carried the old one was refused, which signed the reader out of a workspace they
+  // had just renamed. An id outlives every rename. A slug stored by an older build still resolves.
+  const [key, setKey] = useState<string | null>(() => currentWorkspace());
 
   const workspaces = useMemo(() => query.data?.workspaces ?? [], [query.data]);
 
   const current = useMemo<Workspace | null>(() => {
-    const wanted = slug ?? query.data?.current ?? null;
-    return workspaces.find((one) => one.slug === wanted) ?? workspaces[0] ?? null;
-  }, [workspaces, slug, query.data]);
+    const wanted = key ?? query.data?.current ?? null;
+    const found = workspaces.find((one) => one.id === wanted || one.slug === wanted);
+    return found ?? workspaces[0] ?? null;
+  }, [workspaces, key, query.data]);
 
-  // A first visit, or a workspace that was deleted or renamed: settle on what the server sent.
+  // A first visit, or a workspace that was deleted: settle on what the server sent. Never while
+  // the list is in flight: one just made or just renamed is missing from the answer in hand, and
+  // overwriting the choice with a stale row sends the tab back where it came from.
   useEffect(() => {
-    if (current === null || current.slug === slug) return;
-    setCurrentWorkspace(current.slug);
-    setSlug(current.slug);
-  }, [current, slug]);
+    if (query.isFetching) return;
+    if (current === null || current.id === key) return;
+    setCurrentWorkspace(current.id);
+    setKey(current.id);
+  }, [current, key, query.isFetching]);
 
   const value = useMemo<WorkspacesValue>(
     () => ({
@@ -60,9 +67,9 @@ export function WorkspacesProvider({ children }: { children: ReactNode }) {
       current,
       isLoading: query.isLoading,
       switchTo: (next: string): void => {
-        if (next === current?.slug) return;
+        if (next === current?.id || next === current?.slug) return;
         setCurrentWorkspace(next);
-        setSlug(next);
+        setKey(next);
         // Nothing cached belongs to the new workspace, down to the page ids.
         client.clear();
         navigate('/');

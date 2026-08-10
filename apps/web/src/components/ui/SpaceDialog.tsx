@@ -33,13 +33,20 @@ export function SpaceDialog({ request, onClose }: SpaceDialogProps) {
   const [name, setName] = useState('');
   const [icon, setIcon] = useState<string | null>(null);
   const [query, setQuery] = useState('');
+  const [seeded, setSeeded] = useState<SpaceDialogRequest | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+
+  // Seeded while rendering, not in an effect. React flushes an effect after the paint, so a
+  // seed that lives in one can wipe the first keys somebody types into the open dialog.
+  if (request !== seeded) {
+    setSeeded(request);
+    setName(request?.initialName ?? '');
+    setIcon(request?.initialIcon ?? null);
+    setQuery('');
+  }
 
   useEffect(() => {
     if (!request) return;
-    setName(request.initialName ?? '');
-    setIcon(request.initialIcon ?? null);
-    setQuery('');
     const timer = setTimeout(() => {
       inputRef.current?.focus();
       inputRef.current?.select();

@@ -26,11 +26,17 @@ export function PagePicker({ open, search, onClose, onPick, onCreate }: PagePick
   const inputRef = useRef<HTMLInputElement | null>(null);
   const settled = useDebouncedValue(query, DEBOUNCE_MS);
 
+  // Cleared on the way out, never on the way in. A reset that runs after the dialog is on screen
+  // races the first keys: React flushes the effect after paint, so it can wipe what was typed.
   useEffect(() => {
-    if (!open) return;
+    if (open) return;
     setQuery('');
     setItems([]);
     setActive(0);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
     const timer = setTimeout(() => inputRef.current?.focus(), 10);
     return () => clearTimeout(timer);
   }, [open]);

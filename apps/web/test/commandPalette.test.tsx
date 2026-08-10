@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -52,6 +53,19 @@ async function openPalette(onClose: () => void = vi.fn()): Promise<{ user: Retur
   const input = await screen.findByRole('combobox');
   await waitFor(() => expect(input).toHaveFocus());
   return { user, input };
+}
+
+/** Opens and closes the palette from outside, the way the shell does. */
+function Toggler() {
+  const [open, setOpen] = useState(true);
+  return (
+    <>
+      <button type="button" onClick={() => setOpen((current) => !current)}>
+        Toggle the palette
+      </button>
+      <CommandPalette open={open} onClose={() => setOpen(false)} />
+    </>
+  );
 }
 
 afterEach(() => {
@@ -211,5 +225,23 @@ describe('CommandPalette', () => {
     startServer();
     renderApp(<CommandPalette open={false} onClose={vi.fn()} />);
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('starts empty again after it is closed and reopened', async () => {
+    startServer();
+    const user = userEvent.setup();
+    // The reset runs on the way out. The way in must leave the field alone, or the first
+    // keys of a fast typist are wiped when React flushes the effect after the paint.
+    renderApp(<Toggler />);
+    const input = await screen.findByRole('combobox');
+    await user.type(input, 'runbook');
+    await waitFor(() => expect(rowLabels()).toEqual(['Deploy runbook', 'Rollback runbook']));
+
+    const toggle = screen.getByRole('button', { name: 'Toggle the palette' });
+    await user.click(toggle);
+    await user.click(toggle);
+
+    expect(await screen.findByRole('combobox')).toHaveValue('');
+    await waitFor(() => expect(rowLabels()).toEqual(['New page', 'Sync with git', 'Toggle theme']));
   });
 });

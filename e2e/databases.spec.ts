@@ -31,7 +31,7 @@ async function titles(page: Page): Promise<string[]> {
 /** Add a row and wait for it to arrive under the title it was given. */
 async function addRow(page: Page, title: string): Promise<void> {
   const before = (await titles(page)).length;
-  // The sidebar has a "New page" button, and an accessible name matches on a substring.
+  // An accessible name matches on a substring, so the exact one keeps other buttons out.
   await db(page).getByRole('button', { name: 'New', exact: true }).first().click();
   await expect.poll(async () => (await titles(page)).length).toBe(before + 1);
 

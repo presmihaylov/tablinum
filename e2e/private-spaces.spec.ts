@@ -1,5 +1,6 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect, test, uniqueSlug, type ApiClient, type ContentRepo } from './fixtures';
+import { newPageFromPalette } from './palette';
 import { pageTree } from './sidebar';
 
 /**
@@ -152,14 +153,11 @@ test.describe('private spaces', () => {
 
     await page.goto(`/p/${seeded.path}`);
     await expect(page.getByRole('textbox', { name: 'Page title' })).toHaveValue('Salary');
-    // A step off the page onto the home route. The button used to fall back to the first space
+    // A step off the page onto the home route. The action used to fall back to the first space
     // in the tree here, which is a public one, so private work landed where everybody reads it.
     await page.goto('/');
 
-    await page.getByRole('button', { name: 'New page' }).click();
-    const dialog = page.getByRole('dialog', { name: 'New page' });
-    await dialog.getByLabel('Page title').fill('Bonus letter');
-    await dialog.getByRole('button', { name: 'Create' }).click();
+    await newPageFromPalette(page, 'Bonus letter');
 
     await expect(page).toHaveURL(new RegExp(`/p/${seeded.slug}/`));
     await expect(row(privateBucket(page), 'Bonus letter')).toBeVisible();

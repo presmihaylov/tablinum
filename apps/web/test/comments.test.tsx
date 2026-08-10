@@ -224,6 +224,26 @@ describe('the comments panel', () => {
     expect(sent?.body).toEqual({ resolved: true });
   });
 
+  it('takes a resolved thread out of the list at once, even while it is in focus', async () => {
+    const id = 'ct_00000000000000000000000001';
+    const done = thread({ resolved: true, resolvedBy: ADA.id, resolvedAt: '2026-01-02T00:00:00.000Z' });
+    let stored: CommentThread[] = [thread()];
+    await mount([thread()], {
+      [`GET /api/v1/pages/${PAGE.id}/comments`]: () => ({ threads: stored }),
+      [`PATCH /api/v1/comment-threads/${id}`]: () => {
+        stored = [done];
+        return { thread: done };
+      },
+    });
+
+    // A click puts the thread in focus, which is what used to keep the card on the screen.
+    await userEvent.click(cardFor(id));
+    await userEvent.click(screen.getByRole('button', { name: 'Resolve' }));
+
+    await waitFor(() => expect(document.querySelectorAll('[data-thread-id]')).toHaveLength(0));
+    expect(openCount()).toBe('0 open');
+  });
+
   it('offers Edit on your own comment only, and Delete on anybody as an admin', async () => {
     const mine = thread();
     const theirs = thread({

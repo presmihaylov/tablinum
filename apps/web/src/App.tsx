@@ -100,7 +100,8 @@ function AppShell() {
           onOpenPalette={openPalette}
         />
 
-        <div className="app-body">
+        {/* One scroll container, so the page and its comments read as a single canvas. */}
+        <div className="app-body scroll-y">
           <Routes>
             <Route path="/" element={<HomeRoute />} />
             <Route path="/p/*" element={<PageRoute metaOpen={metaOpen} />} />

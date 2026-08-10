@@ -253,7 +253,11 @@ function ThreadCard({
             type="button"
             className={thread.resolved ? 'btn' : 'btn btn--outline'}
             disabled={busy}
-            onClick={() => onResolve(!thread.resolved)}
+            // The card puts itself in focus on any click, which would keep a resolved thread here.
+            onClick={(event) => {
+              event.stopPropagation();
+              onResolve(!thread.resolved);
+            }}
           >
             {thread.resolved ? 'Reopen' : <><Check size={12} /> Resolve</>}
           </button>
@@ -340,7 +344,7 @@ export function CommentsPanel() {
   };
 
   return (
-    <aside className="comments scroll-y" aria-label="Comments">
+    <aside className="comments" aria-label="Comments">
       <header className="comments__head">
         <h2 className="comments__title">Comments</h2>
         <span className="comments__count">{comments.unresolved} open</span>
@@ -423,6 +427,8 @@ export function CommentsPanel() {
             }}
             onResolve={(resolved) => {
               if (pageId === null) return;
+              // A thread in focus stays in the list even when resolved, so the focus goes first.
+              if (resolved) comments.focus(null);
               resolve.mutate(
                 { pageId, threadId: thread.id, resolved },
                 { onError: (error) => fail(error, 'The thread could not be updated') },

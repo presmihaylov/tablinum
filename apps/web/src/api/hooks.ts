@@ -368,7 +368,21 @@ export function useResolveThread(): UseMutationResult<CommentThreadResponse, Api
   return useMutation({
     mutationFn: ({ threadId, resolved }: ResolveThreadVars) =>
       api.resolveThread(threadId, { resolved }),
-    onSuccess: (_data, vars) => void client.invalidateQueries({ queryKey: qk.comments(vars.pageId) }),
+    onSuccess: (data, vars) => {
+      const key = qk.comments(vars.pageId);
+      // Seed from the response, or the card stays open until the refetch lands.
+      client.setQueryData<CommentThreadsResponse>(key, (previous) =>
+        previous === undefined
+          ? previous
+          : {
+              ...previous,
+              threads: previous.threads.map((thread) =>
+                thread.id === data.thread.id ? data.thread : thread,
+              ),
+            },
+      );
+      void client.invalidateQueries({ queryKey: key });
+    },
   });
 }
 

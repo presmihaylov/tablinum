@@ -23,7 +23,7 @@ export function PageMeta({ page }: PageMetaProps) {
     setOpenSections((prev) => ({ ...prev, [id]: !prev[id] }));
 
   return (
-    <aside className="pagemeta scroll-y" aria-label="Page details">
+    <aside className="pagemeta" aria-label="Page details">
       <dl className="pagemeta__facts">
         <dt>Created</dt>
         <dd title={absoluteTime(page.created)}>{relativeTime(page.created)}</dd>

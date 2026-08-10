@@ -27,7 +27,7 @@ function startServer(): MockServer {
   return server;
 }
 
-async function showTree(nodes: TreeNode[]): Promise<void> {
+async function showTree(nodes: TreeNode[], spaceCount = 2): Promise<void> {
   renderApp(
     <>
       <SpacesProbe />
@@ -41,7 +41,7 @@ async function showTree(nodes: TreeNode[]): Promise<void> {
       />
     </>,
   );
-  await waitFor(() => expect(screen.getByTestId('spaces').textContent).toBe('2'));
+  await waitFor(() => expect(screen.getByTestId('spaces').textContent).toBe(String(spaceCount)));
 }
 
 function openMenuOn(title: string): void {
@@ -94,7 +94,26 @@ describe('move a page to another space', () => {
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Move to space' }));
 
     const options = await screen.findAllByRole('option');
-    expect(options.map((item) => item.textContent)).toEqual(['#ops']);
+    expect(options.map((item) => item.textContent)).toEqual(['#opsPublic']);
+  });
+
+  it('names a private space, so the move never hides work by accident', async () => {
+    server = installFetch({
+      'GET /api/v1/tree': {
+        spaces: [
+          space('eng', [RUNBOOKS, FAQ]),
+          space('ops', [ONCALL]),
+          { ...space('vault', []), owner: 'us_ada' },
+        ],
+      },
+    });
+    await showTree([RUNBOOKS, FAQ], 3);
+
+    openMenuOn('FAQ');
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Move to space' }));
+
+    const options = await screen.findAllByRole('option');
+    expect(options.map((item) => item.textContent)).toEqual(['#opsPublic', '#vaultPrivate']);
   });
 
   it('sends nothing when the dialog is cancelled', async () => {

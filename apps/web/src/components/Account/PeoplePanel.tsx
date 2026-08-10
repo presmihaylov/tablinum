@@ -12,14 +12,11 @@ import { absoluteTime } from '../../lib/format';
 import { describeError, useToast } from '../../lib/toast';
 import { ConfirmDialog, type ConfirmRequest } from '../ui/ConfirmDialog';
 import { Copy, Trash } from '../ui/Icon';
-import { Modal } from '../ui/Overlay';
 import { Avatar } from './Avatar';
 import './account.css';
 
-interface PeopleDialogProps {
+interface PeoplePanelProps {
   me: Account | null;
-  open: boolean;
-  onClose: () => void;
 }
 
 /** An invite is still worth showing while it is unused and inside its lifetime. */
@@ -28,10 +25,10 @@ function isPending(invite: Invite): boolean {
 }
 
 /** Everyone with an account, plus the links that have been sent but not used. */
-export function PeopleDialog({ me, open, onClose }: PeopleDialogProps) {
+export function PeoplePanel({ me }: PeoplePanelProps) {
   const toast = useToast();
-  const users = useUsers(open);
-  const invites = useInvites(open);
+  const users = useUsers(true);
+  const invites = useInvites(true);
   const updateUser = useUpdateUser();
   const deleteUser = useDeleteUser();
   const createInvite = useCreateInvite();
@@ -88,17 +85,7 @@ export function PeopleDialog({ me, open, onClose }: PeopleDialogProps) {
 
   return (
     <>
-      <Modal
-        open={open}
-        title="People"
-        onClose={onClose}
-        width="34rem"
-        footer={
-          <button type="button" className="btn btn--outline" onClick={onClose}>
-            Done
-          </button>
-        }
-      >
+      <div className="account-form">
         <div className="account-section__title">Invite somebody</div>
         <div className="account-form__row">
           <input
@@ -204,7 +191,7 @@ export function PeopleDialog({ me, open, onClose }: PeopleDialogProps) {
             ))}
           </div>
         )}
-      </Modal>
+      </div>
 
       <ConfirmDialog request={confirm} onClose={() => setConfirm(null)} />
     </>

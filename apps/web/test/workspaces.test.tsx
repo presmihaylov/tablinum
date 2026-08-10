@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { WORKSPACE_HEADER, type Account, type Workspace } from '@tablinum/shared';
+import { WorkspacePanel } from '../src/components/Workspace/WorkspacePanel';
 import { WorkspaceSwitcher } from '../src/components/Workspace/WorkspaceSwitcher';
 import { setCurrentWorkspace } from '../src/lib/currentWorkspace';
 import { installFetch, type MockServer, type Routes as MockRoutes } from './mockFetch';
@@ -139,7 +140,25 @@ describe('the workspace switcher', () => {
   });
 });
 
-describe('the workspace settings dialog', () => {
+describe('the switcher menu', () => {
+  it('sends every settings item to the settings page', async () => {
+    startServer();
+    await showSwitcher();
+
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Invite members' }));
+    expect(screen.getByTestId('location')).toHaveTextContent('/settings/people');
+  });
+
+  it('sends the workspace item to the workspace section', async () => {
+    startServer();
+    await showSwitcher();
+
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Workspace settings' }));
+    expect(screen.getByTestId('location')).toHaveTextContent('/settings/workspace');
+  });
+});
+
+describe('the workspace settings panel', () => {
   async function openSettings(extra: MockRoutes = {}): Promise<MockServer> {
     const mock = startServer({
       'GET /api/v1/workspaces/ws_00000000000000000000000001/members': {
@@ -151,8 +170,8 @@ describe('the workspace settings dialog', () => {
       'GET /api/v1/users': { users: [ADA, SAM] },
       ...extra,
     });
-    await showSwitcher();
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Workspace settings' }));
+    renderApp(<WorkspacePanel />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Edit' })).toBeTruthy());
     return mock;
   }
 

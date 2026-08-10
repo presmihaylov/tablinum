@@ -6,8 +6,8 @@ import type { Account, AuthStateResponse, Invite, Workspace } from '@tablinum/sh
 import { App } from '../src/App';
 import { AccountMenu } from '../src/components/Account/AccountMenu';
 import { Avatar } from '../src/components/Account/Avatar';
-import { PeopleDialog } from '../src/components/Account/PeopleDialog';
-import { ProfileDialog } from '../src/components/Account/ProfileDialog';
+import { PeoplePanel } from '../src/components/Account/PeoplePanel';
+import { ProfilePanel } from '../src/components/Account/ProfilePanel';
 import { AuthProvider } from '../src/lib/auth';
 import { InviteRoute } from '../src/routes/InviteRoute';
 import { LoginRoute } from '../src/routes/LoginRoute';
@@ -276,14 +276,27 @@ describe('the account menu', () => {
     await waitFor(() => expect(container.querySelector('.account-menu')).toBeNull());
   });
 
-  it('offers the roster to an admin and hides it from a member', async () => {
+  it('offers two things and nothing else, whoever is signed in', async () => {
     start({ 'GET /api/v1/auth/state': authState({ user: SAM }) });
     const user = userEvent.setup();
     renderWithAuth(<AccountMenu />);
 
     await user.click(await screen.findByRole('button', { name: 'Your account' }));
-    expect(screen.getByRole('menuitem', { name: /Your account/ })).toBeInTheDocument();
-    expect(screen.queryByRole('menuitem', { name: /People and invites/ })).toBeNull();
+    expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
+      'Settings',
+      'Log out',
+    ]);
+  });
+
+  it('sends you to the settings page', async () => {
+    start({ 'GET /api/v1/auth/state': authState({ user: ADA }) });
+    const user = userEvent.setup();
+    renderWithAuth(<AccountMenu />);
+
+    await user.click(await screen.findByRole('button', { name: 'Your account' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Settings' }));
+
+    expect(screen.getByTestId('location')).toHaveTextContent('/settings');
   });
 
   it('shows who is signed in, and reloads after a sign-out', async () => {
@@ -302,9 +315,8 @@ describe('the account menu', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Your account' }));
     expect(screen.getByText(ADA.email)).toBeInTheDocument();
-    expect(screen.getByRole('menuitem', { name: /People and invites/ })).toBeInTheDocument();
 
-    await user.click(screen.getByRole('menuitem', { name: /Sign out/ }));
+    await user.click(screen.getByRole('menuitem', { name: 'Log out' }));
     await waitFor(() => {
       expect(mock.calls.some((item) => item.url.pathname === '/api/v1/auth/logout')).toBe(true);
       expect(assign).toHaveBeenCalledWith('/');
@@ -313,14 +325,14 @@ describe('the account menu', () => {
   });
 });
 
-describe('the profile dialog', () => {
+describe('the profile panel', () => {
   it('saves a new display name when the field loses focus', async () => {
     const mock = start({
       'GET /api/v1/auth/state': authState({ user: ADA }),
       'PATCH /api/v1/me': { user: { ...ADA, name: 'Ada L' } },
     });
     const user = userEvent.setup();
-    renderWithAuth(<ProfileDialog user={ADA} open onClose={vi.fn()} />);
+    renderWithAuth(<ProfilePanel user={ADA} />);
 
     const field = screen.getByLabelText('Display name');
     await user.clear(field);
@@ -339,7 +351,7 @@ describe('the profile dialog', () => {
       'POST /api/v1/me/password': { ok: true },
     });
     const user = userEvent.setup();
-    renderWithAuth(<ProfileDialog user={ADA} open onClose={vi.fn()} />);
+    renderWithAuth(<ProfilePanel user={ADA} />);
 
     const submit = screen.getByRole('button', { name: 'Change password' });
     expect(submit).toBeDisabled();
@@ -362,18 +374,18 @@ describe('the profile dialog', () => {
 
   it('offers no way to remove a picture that is not there', () => {
     start({ 'GET /api/v1/auth/state': authState({ user: ADA }) });
-    renderWithAuth(<ProfileDialog user={ADA} open onClose={vi.fn()} />);
+    renderWithAuth(<ProfilePanel user={ADA} />);
     expect(screen.queryByRole('button', { name: 'Remove' })).toBeNull();
   });
 
   it('offers to remove a picture once there is one', () => {
     start({ 'GET /api/v1/auth/state': authState({ user: ADA }) });
-    renderWithAuth(<ProfileDialog user={{ ...ADA, avatarRev: 'abc123' }} open onClose={vi.fn()} />);
+    renderWithAuth(<ProfilePanel user={{ ...ADA, avatarRev: 'abc123' }} />);
     expect(screen.getByRole('button', { name: 'Remove' })).toBeInTheDocument();
   });
 });
 
-describe('the people dialog', () => {
+describe('the people panel', () => {
   const routes: MockRoutes = {
     'GET /api/v1/auth/state': authState({ user: ADA }),
     'GET /api/v1/users': { users: [ADA, SAM] },
@@ -386,7 +398,7 @@ describe('the people dialog', () => {
       'POST /api/v1/invites': { invite: INVITE, url: 'http://localhost/invite/tok-9' },
     });
     const user = userEvent.setup();
-    renderWithAuth(<PeopleDialog me={ADA} open onClose={vi.fn()} />);
+    renderWithAuth(<PeoplePanel me={ADA} />);
 
     await user.type(screen.getByPlaceholderText('name@example.com (optional)'), SAM.email);
     await user.selectOptions(screen.getByLabelText('Role'), 'admin');
@@ -399,7 +411,7 @@ describe('the people dialog', () => {
 
   it('lists everybody and refuses to remove you', async () => {
     start(routes);
-    renderWithAuth(<PeopleDialog me={ADA} open onClose={vi.fn()} />);
+    renderWithAuth(<PeoplePanel me={ADA} />);
 
     await screen.findByText(`${ADA.name} (you)`);
     expect(screen.getByText(SAM.name)).toBeInTheDocument();
@@ -410,7 +422,7 @@ describe('the people dialog', () => {
   it('changes a role', async () => {
     const mock = start({ ...routes, 'PATCH /api/v1/users/us_00000000000000000000000002': { user: SAM } });
     const user = userEvent.setup();
-    renderWithAuth(<PeopleDialog me={ADA} open onClose={vi.fn()} />);
+    renderWithAuth(<PeoplePanel me={ADA} />);
 
     await user.selectOptions(await screen.findByLabelText(`Role of ${SAM.name}`), 'admin');
 
@@ -427,7 +439,7 @@ describe('the people dialog', () => {
       'DELETE /api/v1/invites/iv_00000000000000000000000001': { ok: true },
     });
     const user = userEvent.setup();
-    renderWithAuth(<PeopleDialog me={ADA} open onClose={vi.fn()} />);
+    renderWithAuth(<PeoplePanel me={ADA} />);
 
     const section = await screen.findByText('Invites waiting');
     expect(section).toBeInTheDocument();
@@ -440,7 +452,7 @@ describe('the people dialog', () => {
 
   it('hides an invite that is already used', async () => {
     start({ ...routes, 'GET /api/v1/invites': { invites: [{ ...INVITE, acceptedBy: SAM.id }] } });
-    renderWithAuth(<PeopleDialog me={ADA} open onClose={vi.fn()} />);
+    renderWithAuth(<PeoplePanel me={ADA} />);
 
     await screen.findByText(SAM.name);
     expect(screen.queryByText('Invites waiting')).toBeNull();
@@ -454,7 +466,7 @@ describe('the roster rows', () => {
       'GET /api/v1/users': { users: [SAM] },
       'GET /api/v1/invites': { invites: [] },
     });
-    renderWithAuth(<PeopleDialog me={ADA} open onClose={vi.fn()} />);
+    renderWithAuth(<PeoplePanel me={ADA} />);
 
     const row = (await screen.findByText(SAM.name)).closest('.people-row');
     expect(row).not.toBeNull();

@@ -16,21 +16,15 @@ import { Avatar } from '../Account/Avatar';
 import { ConfirmDialog, type ConfirmRequest } from '../ui/ConfirmDialog';
 import { EmojiGlyph } from '../ui/EmojiGlyph';
 import { Download, Trash } from '../ui/Icon';
-import { Modal } from '../ui/Overlay';
 import { SpaceDialog, type SpaceDialogRequest } from '../ui/SpaceDialog';
 import './workspace.css';
 
-interface WorkspaceDialogProps {
-  open: boolean;
-  onClose: () => void;
-}
-
 /** Rename the workspace, say who is in it, take a copy of it or throw it away. */
-export function WorkspaceDialog({ open, onClose }: WorkspaceDialogProps) {
+export function WorkspacePanel() {
   const { workspaces, current, switchTo } = useWorkspace();
   const toast = useToast();
-  const members = useWorkspaceMembers(open && current !== null ? current.id : null);
-  const users = useUsers(open);
+  const members = useWorkspaceMembers(current?.id ?? null);
+  const users = useUsers(true);
   const updateWorkspace = useUpdateWorkspace();
   const deleteWorkspace = useDeleteWorkspace();
   const addMember = useAddWorkspaceMember();
@@ -42,7 +36,7 @@ export function WorkspaceDialog({ open, onClose }: WorkspaceDialogProps) {
   const [error, setError] = useState<string | null>(null);
   const [add, setAdd] = useState('');
 
-  if (!open || current === null) return null;
+  if (current === null) return <p className="account-form__note">No workspace is open.</p>;
 
   const inWorkspace = new Set((members.data?.members ?? []).map((one) => one.account.id));
   const outsiders = (users.data?.users ?? []).filter((user) => !inWorkspace.has(user.id));
@@ -70,7 +64,6 @@ export function WorkspaceDialog({ open, onClose }: WorkspaceDialogProps) {
       onConfirm: () =>
         deleteWorkspace.mutate(current.id, {
           onSuccess: () => {
-            onClose();
             const next = workspaces.find((one) => one.id !== current.id);
             if (next !== undefined) switchTo(next.slug);
           },
@@ -91,17 +84,7 @@ export function WorkspaceDialog({ open, onClose }: WorkspaceDialogProps) {
 
   return (
     <>
-      <Modal
-        open
-        title={current.name}
-        onClose={onClose}
-        width="34rem"
-        footer={
-          <button type="button" className="btn btn--outline" onClick={onClose}>
-            Done
-          </button>
-        }
-      >
+      <div className="account-form">
         <div className="workspace-head">
           <span className="workspace-head__mark">
             <EmojiGlyph value={current.icon ?? '◆'} />
@@ -202,7 +185,7 @@ export function WorkspaceDialog({ open, onClose }: WorkspaceDialogProps) {
             on any tablinum to get the workspace back.
           </p>
         </div>
-      </Modal>
+      </div>
 
       <SpaceDialog request={rename} onClose={() => setRename(null)} />
       <ConfirmDialog request={confirm} onClose={() => setConfirm(null)} />

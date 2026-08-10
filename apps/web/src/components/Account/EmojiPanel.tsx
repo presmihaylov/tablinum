@@ -11,20 +11,17 @@ import { describeError, useToast } from '../../lib/toast';
 import { ConfirmDialog, type ConfirmRequest } from '../ui/ConfirmDialog';
 import { EmojiGlyph } from '../ui/EmojiGlyph';
 import { Trash } from '../ui/Icon';
-import { Modal } from '../ui/Overlay';
 import './account.css';
 
-interface EmojiDialogProps {
+interface EmojiPanelProps {
   user: Account;
-  open: boolean;
-  onClose: () => void;
 }
 
 /** Your own emoji. Everybody sees them all; you delete yours, an admin deletes anybody's. */
-export function EmojiDialog({ user, open, onClose }: EmojiDialogProps) {
+export function EmojiPanel({ user }: EmojiPanelProps) {
   const toast = useToast();
   const emoji = useCustomEmoji();
-  const users = useUsers(open);
+  const users = useUsers(true);
   const uploadEmoji = useUploadEmoji();
   const deleteEmoji = useDeleteEmoji();
 
@@ -85,17 +82,7 @@ export function EmojiDialog({ user, open, onClose }: EmojiDialogProps) {
 
   return (
     <>
-      <Modal
-        open={open}
-        title="Custom emoji"
-        onClose={onClose}
-        width="34rem"
-        footer={
-          <button type="button" className="btn btn--outline" onClick={onClose}>
-            Done
-          </button>
-        }
-      >
+      <div className="account-form">
         <div className="account-section__title">Add an emoji</div>
         <div className="account-form__row">
           <input
@@ -161,7 +148,7 @@ export function EmojiDialog({ user, open, onClose }: EmojiDialogProps) {
             </div>
           ))}
         </div>
-      </Modal>
+      </div>
 
       <ConfirmDialog request={confirm} onClose={() => setConfirm(null)} />
     </>
@@ -174,4 +161,3 @@ function nameOf(fileName: string): string {
   return stem.toLowerCase().replace(/[^a-z0-9_-]+/g, '-').slice(0, MAX_SHORTCODE_LENGTH);
 }
 
-export default EmojiDialog;

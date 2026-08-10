@@ -14,6 +14,7 @@ import { InviteRoute } from './routes/InviteRoute';
 import { LoginRoute } from './routes/LoginRoute';
 import { NotFoundRoute } from './routes/NotFoundRoute';
 import { PageRoute } from './routes/PageRoute';
+import { SettingsRoute } from './routes/SettingsRoute';
 
 export function App() {
   return (
@@ -89,7 +90,9 @@ function AppShell() {
 
   return (
     <div className="app-shell">
-      {sidebarOpen ? <Sidebar onOpenPalette={openPalette} /> : null}
+      {sidebarOpen ? (
+        <Sidebar onOpenPalette={openPalette} onCollapse={() => setSidebarOpen(false)} />
+      ) : null}
 
       <div className="app-main">
         <TopBar
@@ -105,6 +108,8 @@ function AppShell() {
           <Routes>
             <Route path="/" element={<HomeRoute />} />
             <Route path="/p/*" element={<PageRoute metaOpen={metaOpen} />} />
+            <Route path="/settings" element={<SettingsRoute />} />
+            <Route path="/settings/:section" element={<SettingsRoute />} />
             <Route path="*" element={<NotFoundRoute />} />
           </Routes>
         </div>

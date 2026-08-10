@@ -4,7 +4,6 @@ import { pageHref } from '../../lib/href';
 import { useTheme } from '../../lib/theme';
 import { breadcrumbFor } from '../../lib/tree';
 import { useContent } from '../../lib/content';
-import { AccountMenu } from '../Account/AccountMenu';
 import { Presence } from '../Presence/Presence';
 import { Moon, PanelLeft, PanelRight, Search, Sun } from '../ui/Icon';
 import './topbar.css';
@@ -76,8 +75,6 @@ export function TopBar({ sidebarOpen, metaOpen, onToggleSidebar, onToggleMeta, o
         >
           <PanelRight />
         </button>
-
-        <AccountMenu />
       </div>
     </header>
   );

@@ -11,13 +11,7 @@ import { relativeTime } from '../../lib/format';
 import { describeError, useToast } from '../../lib/toast';
 import { ConfirmDialog, type ConfirmRequest } from '../ui/ConfirmDialog';
 import { Copy, Pencil, Sync, Trash } from '../ui/Icon';
-import { Modal } from '../ui/Overlay';
 import './account.css';
-
-interface AgentsDialogProps {
-  open: boolean;
-  onClose: () => void;
-}
 
 const PLACEHOLDER = [
   'Who is this agent and how should it write?',
@@ -32,9 +26,9 @@ interface Draft {
 }
 
 /** Agents: the non-human writers, their identity, and the token each one connects with. */
-export function AgentsDialog({ open, onClose }: AgentsDialogProps) {
+export function AgentsPanel() {
   const toast = useToast();
-  const agents = useAgents(open);
+  const agents = useAgents(true);
   const createAgent = useCreateAgent();
   const updateAgent = useUpdateAgent();
   const deleteAgent = useDeleteAgent();
@@ -135,17 +129,7 @@ export function AgentsDialog({ open, onClose }: AgentsDialogProps) {
 
   return (
     <>
-      <Modal
-        open={open}
-        title="Agents"
-        onClose={onClose}
-        width="34rem"
-        footer={
-          <button type="button" className="btn btn--outline" onClick={onClose}>
-            Done
-          </button>
-        }
-      >
+      <div className="account-form">
         <div className="account-section__title">Add an agent</div>
         <div className="account-form__row">
           <input
@@ -299,7 +283,7 @@ export function AgentsDialog({ open, onClose }: AgentsDialogProps) {
             </div>
           ))}
         </div>
-      </Modal>
+      </div>
 
       <ConfirmDialog request={confirm} onClose={() => setConfirm(null)} />
     </>

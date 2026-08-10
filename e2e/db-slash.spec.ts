@@ -1,6 +1,7 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from './fixtures';
 import type { ContentRepo } from './fixtures';
+import { pageMenu } from './menus';
 
 /**
  * The three database commands of the slash menu, driven through the real UI. Each one makes a
@@ -105,7 +106,7 @@ test.describe('database slash commands', () => {
     const dbPath = `${slug}/tasks`;
     await api.createPage({ path: dbPath, title: 'Tasks', markdown: 'Notes.\n' });
     await page.goto(`/p/${dbPath}`);
-    await page.getByRole('button', { name: 'Turn into a database' }).click();
+    await pageMenu(page, 'Turn into a database');
 
     const grid = page.getByRole('region', { name: 'Database' });
     await expect(grid).toBeVisible();

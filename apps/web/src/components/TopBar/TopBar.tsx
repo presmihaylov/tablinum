@@ -1,22 +1,30 @@
-import { Fragment, useMemo } from 'react';
+import { Fragment, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { depth as pathDepth } from '@tablinum/shared';
+import { usePage, useRemoveDatabase, useSetDatabase } from '../../api/hooks';
 import { pageHref } from '../../lib/href';
 import { useTheme } from '../../lib/theme';
-import { breadcrumbFor } from '../../lib/tree';
+import { breadcrumbFor, findNode } from '../../lib/tree';
 import { useContent } from '../../lib/content';
+import { useToast } from '../../lib/toast';
+import type { PanelId, PanelState } from '../../lib/panels';
 import { Presence } from '../Presence/Presence';
-import { Moon, PanelLeft, PanelRight, Search, Sun } from '../ui/Icon';
+import { ContextMenu, type MenuItem } from '../ui/Overlay';
+import { Check, Dots, Moon, MoveTo, PanelLeft, Search, Sun, Table, Trash } from '../ui/Icon';
 import './topbar.css';
+
+/** The nominal width of a context menu, so the menu hangs off the right edge of its button. */
+const MENU_WIDTH = 192;
 
 interface TopBarProps {
   sidebarOpen: boolean;
-  metaOpen: boolean;
+  panels: PanelState;
   onToggleSidebar: () => void;
-  onToggleMeta: () => void;
+  onTogglePanel: (id: PanelId) => void;
   onOpenPalette: () => void;
 }
 
-export function TopBar({ sidebarOpen, metaOpen, onToggleSidebar, onToggleMeta, onOpenPalette }: TopBarProps) {
+export function TopBar({ sidebarOpen, panels, onToggleSidebar, onTogglePanel, onOpenPalette }: TopBarProps) {
   const { spaces, currentPath } = useContent();
   const { resolved, toggle } = useTheme();
 
@@ -24,7 +32,6 @@ export function TopBar({ sidebarOpen, metaOpen, onToggleSidebar, onToggleMeta, o
     () => (currentPath ? breadcrumbFor(spaces, currentPath) : []),
     [spaces, currentPath],
   );
-
 
   return (
     <header className="topbar">
@@ -66,16 +73,107 @@ export function TopBar({ sidebarOpen, metaOpen, onToggleSidebar, onToggleMeta, o
           {resolved === 'dark' ? <Sun /> : <Moon />}
         </button>
 
-        <button
-          type="button"
-          className={metaOpen ? 'btn btn--icon btn--on' : 'btn btn--icon'}
-          onClick={onToggleMeta}
-          title="Toggle page details"
-          aria-label="Toggle page details"
-        >
-          <PanelRight />
-        </button>
+        <PageMenu panels={panels} onTogglePanel={onTogglePanel} />
       </div>
     </header>
+  );
+}
+
+interface PageMenuProps {
+  panels: PanelState;
+  onTogglePanel: (id: PanelId) => void;
+}
+
+/** Everything a whole page can do, out of sight until it is asked for. */
+function PageMenu({ panels, onTogglePanel }: PageMenuProps) {
+  const { spaces, currentPath, moveToSpace, deletePage } = useContent();
+  const toast = useToast();
+  const setDatabase = useSetDatabase();
+  const removeDatabase = useRemoveDatabase();
+  const [open, setOpen] = useState(false);
+  const [menuAt, setMenuAt] = useState({ x: 0, y: 0 });
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+
+  // The page route asked for this already, so the cache answers and nothing goes over the wire.
+  const query = usePage(currentPath === '' ? undefined : currentPath);
+  const page = query.data?.page;
+  const node = useMemo(() => (currentPath ? findNode(spaces, currentPath) : null), [spaces, currentPath]);
+
+  const items: MenuItem[] = [
+    {
+      id: 'backlinks',
+      label: 'Backlinks',
+      icon: panels.backlinks ? <Check /> : undefined,
+      onSelect: () => onTogglePanel('backlinks'),
+    },
+    {
+      id: 'history',
+      label: 'History',
+      icon: panels.history ? <Check /> : undefined,
+      onSelect: () => onTogglePanel('history'),
+    },
+  ];
+
+  const actions: MenuItem[] = [];
+
+  if (page !== undefined) {
+    const busy = setDatabase.isPending || removeDatabase.isPending;
+    const hasDatabase = page.database !== undefined;
+    actions.push({
+      id: 'database',
+      label: hasDatabase ? 'Remove the database' : 'Turn into a database',
+      icon: <Table />,
+      onSelect: () => {
+        if (busy) return;
+        if (hasDatabase) {
+          removeDatabase.mutate(page.id, {
+            onError: (error) => toast.pushError(error, 'The database could not be removed'),
+          });
+          return;
+        }
+        setDatabase.mutate(
+          { pageId: page.id },
+          { onError: (error) => toast.pushError(error, 'The database could not be created') },
+        );
+      },
+    });
+  }
+
+  if (node !== null) {
+    // A space home page owns its space, so it can never move into another one.
+    if (pathDepth(node.path) > 1) {
+      actions.push({ id: 'move', label: 'Move to', icon: <MoveTo />, onSelect: () => moveToSpace(node) });
+    }
+    actions.push({ id: 'delete', label: 'Delete', icon: <Trash />, danger: true, onSelect: () => deletePage(node) });
+  }
+
+  // The rule sits above whichever action came first, whatever the page turned out to offer.
+  const first = actions[0];
+  if (first !== undefined) items.push({ ...first, divider: true }, ...actions.slice(1));
+
+  const show = (): void => {
+    const rect = buttonRef.current?.getBoundingClientRect();
+    if (rect === undefined) return;
+    setOpen(true);
+    setMenuAt({ x: rect.right - MENU_WIDTH, y: rect.bottom + 4 });
+  };
+
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        className={open ? 'btn btn--icon btn--on' : 'btn btn--icon'}
+        onClick={show}
+        title="Page options"
+        aria-label="Page options"
+      >
+        <Dots />
+      </button>
+
+      {open ? (
+        <ContextMenu x={menuAt.x} y={menuAt.y} items={items} onClose={() => setOpen(false)} />
+      ) : null}
+    </>
   );
 }

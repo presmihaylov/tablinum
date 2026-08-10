@@ -1,5 +1,6 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from './fixtures';
+import { pageMenu } from './menus';
 
 /** The database on the open page: its tools and its grid. */
 function db(page: Page): Locator {
@@ -30,7 +31,7 @@ async function titles(page: Page): Promise<string[]> {
 
 /** Turn the open page into a database and wait for the grid. */
 async function turnIntoDatabase(page: Page): Promise<void> {
-  await page.getByRole('button', { name: 'Turn into a database' }).click();
+  await pageMenu(page, 'Turn into a database');
   await expect(grid(page)).toBeVisible();
 }
 
@@ -202,7 +203,7 @@ test.describe('databases', () => {
     await addRow(page, 'Ship it');
     const rowFile = await content.waitForPageFile(`${path}/untitled`);
 
-    await page.getByRole('button', { name: 'Remove the database' }).click();
+    await pageMenu(page, 'Remove the database');
     await expect(grid(page)).toHaveCount(0);
 
     await expect

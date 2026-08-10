@@ -7,6 +7,7 @@ import { TopBar } from './components/TopBar/TopBar';
 import { AuthProvider, useAuth } from './lib/auth';
 import { LiveProvider } from './lib/live';
 import { usePersistedState } from './lib/storage';
+import { anyPanelOpen, NO_PANELS, type PanelId, type PanelState } from './lib/panels';
 import { ContentProvider } from './lib/content';
 import { WorkspacesProvider, useWorkspace } from './lib/workspaces';
 import { HomeRoute } from './routes/HomeRoute';
@@ -59,10 +60,15 @@ function WorkspaceScope() {
 
 function AppShell() {
   const [sidebarOpen, setSidebarOpen] = usePersistedState('ui.sidebar', true);
-  const [metaOpen, setMetaOpen] = usePersistedState('ui.meta', true);
+  const [panels, setPanels] = usePersistedState<PanelState>('ui.panels', NO_PANELS);
   const [paletteOpen, setPaletteOpen] = useState(false);
 
   const openPalette = useCallback(() => setPaletteOpen(true), []);
+
+  const togglePanel = useCallback(
+    (id: PanelId) => setPanels((prev) => ({ ...prev, [id]: !prev[id] })),
+    [setPanels],
+  );
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
@@ -81,12 +87,13 @@ function AppShell() {
       }
       if (key === '.' && event.shiftKey) {
         event.preventDefault();
-        setMetaOpen((prev) => !prev);
+        // One key for the whole rail: put it away if anything is on, else bring the backlinks up.
+        setPanels((prev) => (anyPanelOpen(prev) ? NO_PANELS : { ...prev, backlinks: true }));
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [setSidebarOpen, setMetaOpen]);
+  }, [setSidebarOpen, setPanels]);
 
   return (
     <div className="app-shell">
@@ -97,9 +104,9 @@ function AppShell() {
       <div className="app-main">
         <TopBar
           sidebarOpen={sidebarOpen}
-          metaOpen={metaOpen}
+          panels={panels}
           onToggleSidebar={() => setSidebarOpen((prev) => !prev)}
-          onToggleMeta={() => setMetaOpen((prev) => !prev)}
+          onTogglePanel={togglePanel}
           onOpenPalette={openPalette}
         />
 
@@ -107,7 +114,7 @@ function AppShell() {
         <div className="app-body scroll-y">
           <Routes>
             <Route path="/" element={<HomeRoute />} />
-            <Route path="/p/*" element={<PageRoute metaOpen={metaOpen} />} />
+            <Route path="/p/*" element={<PageRoute panels={panels} />} />
             <Route path="/settings" element={<SettingsRoute />} />
             <Route path="/settings/:section" element={<SettingsRoute />} />
             <Route path="*" element={<NotFoundRoute />} />

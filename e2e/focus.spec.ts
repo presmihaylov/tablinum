@@ -1,6 +1,7 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from './fixtures';
 import type { ApiClient } from './fixtures';
+import { pageMenu } from './menus';
 
 /**
  * What a click somewhere else has to undo. A widget that stays lit after the pointer has left
@@ -45,10 +46,14 @@ test.describe('focus leaves on a click somewhere else', () => {
     await page.goto(href);
     await expect(editorBody(page)).toContainText('Some words.');
 
+    // The meta rail is outside the editable box, so a click on it is the one that used to
+    // change nothing. The page menu is what puts the rail on screen.
+    await pageMenu(page, 'Backlinks');
+    await expect(page.locator('.pagemeta')).toBeVisible();
+
     await page.locator('.gd-editor-diagram').click();
     expect(isClear(await selectedBackground(page))).toBe(false);
 
-    // The meta rail is outside the editable box, so this is the click that used to change nothing.
     await page.locator('.pagemeta').first().click({ position: { x: 5, y: 5 } });
     await expect(editorBody(page)).not.toHaveClass(/ProseMirror-focused/);
     expect(isClear(await selectedBackground(page))).toBe(true);

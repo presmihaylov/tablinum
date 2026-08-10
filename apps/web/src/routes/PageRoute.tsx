@@ -4,6 +4,7 @@ import { usePage } from '../api/hooks';
 import { PageEditor } from '../editor';
 import { pathFromSplat } from '../lib/href';
 import { usePageDoc } from '../lib/usePageDoc';
+import { anyPanelOpen, type PanelState } from '../lib/panels';
 import { CommentsProvider } from '../lib/comments';
 import { CommentsAside } from '../components/Comments/CommentsPanel';
 import { ConflictDialog } from '../components/Conflict/ConflictDialog';
@@ -12,11 +13,11 @@ import { PageMeta } from '../components/PageMeta/PageMeta';
 import { NotFoundRoute } from './NotFoundRoute';
 
 interface PageRouteProps {
-  metaOpen: boolean;
+  panels: PanelState;
 }
 
 /** Centre pane plus the details panel. Autosave lives here, not in the editor. */
-export function PageRoute({ metaOpen }: PageRouteProps) {
+export function PageRoute({ panels }: PageRouteProps) {
   const params = useParams();
   const path = pathFromSplat(params['*']);
   const query = usePage(path);
@@ -75,7 +76,7 @@ export function PageRoute({ metaOpen }: PageRouteProps) {
 
       <CommentsAside />
 
-      {metaOpen ? <PageMeta page={page} /> : null}
+      {anyPanelOpen(panels) ? <PageMeta page={page} panels={panels} /> : null}
 
       <ConflictDialog conflict={doc.conflict} onResolve={doc.resolveConflict} />
     </CommentsProvider>

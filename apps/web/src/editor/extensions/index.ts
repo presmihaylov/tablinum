@@ -62,7 +62,7 @@ export interface EditorExtensionOptions {
   /** Opens a page in the shell, from an embed's header. */
   openPage: (path: string) => void;
   /** Focuses a comment thread, because its highlighted text was clicked. */
-  openComment: (threadId: string) => void;
+  openComment: (threadId: string | null) => void;
   /** React node views and menus are skipped when the editor runs without a UI. */
   interactive: boolean;
 }

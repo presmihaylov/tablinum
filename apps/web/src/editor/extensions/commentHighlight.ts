@@ -23,8 +23,8 @@ interface HighlightAction {
 }
 
 export interface CommentHighlightOptions {
-  /** Called when somebody clicks highlighted text, with the thread it belongs to. */
-  onActivate: (threadId: string) => void;
+  /** Called on every click in the document: the thread under it, or null for none. */
+  onActivate: (threadId: string | null) => void;
 }
 
 export const commentHighlightKey = new PluginKey<HighlightState>('gdCommentHighlight');
@@ -116,9 +116,8 @@ export const CommentHighlight = Extension.create<CommentHighlightOptions>({
           handleClick(view, pos): boolean {
             const decorations = commentHighlightKey.getState(view.state)?.decorations;
             if (decorations === undefined) return false;
-            const id = threadAt(decorations, pos);
-            if (id === null) return false;
-            onActivate(id);
+            // Null too: a click away from every highlight takes the thread out of focus.
+            onActivate(threadAt(decorations, pos));
             // The caret still moves: a click in the text is an edit gesture first.
             return false;
           },

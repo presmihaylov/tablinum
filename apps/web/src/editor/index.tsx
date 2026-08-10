@@ -92,7 +92,7 @@ interface Handlers {
   people: (query: string) => Promise<MentionItem[]>;
   load: (path: string) => Promise<EmbeddedPage | null>;
   open: (path: string) => void;
-  comment: (threadId: string) => void;
+  comment: (threadId: string | null) => void;
 }
 
 const SEARCH_LIMIT = 8;

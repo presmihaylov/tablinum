@@ -181,7 +181,7 @@ export function buildExtensions(overrides: Partial<EditorExtensionOptions> = {})
 }
 
 export { BlockLink, LINKED_CLASS } from './blockLink';
-export { BlockSelection } from './blockSelection';
+export { BAND_CLASS, BlockSelection } from './blockSelection';
 export { DRAFT_SPAN_ID } from './commentHighlight';
 export type { CommentSpan } from './commentHighlight';
 export { insertEmoji } from './customEmoji';

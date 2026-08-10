@@ -7,6 +7,7 @@ import { useContent } from '../../lib/content';
 import { EmojiGlyph } from '../ui/EmojiGlyph';
 import { ContextMenu, type MenuItem } from '../ui/Overlay';
 import { ChevronRight, Copy, DocIcon, Dots, Link, MoveTo, Pencil, Plus, Star, Trash } from '../ui/Icon';
+import { useTreeDrag, type DropState } from './TreeDrag';
 
 const DRAG_MIME = 'application/x-tablinum-page';
 
@@ -17,11 +18,6 @@ interface PageTreeProps {
   onToggle: (path: PagePath) => void;
   onExpand: (path: PagePath) => void;
   onOpen: (path: PagePath) => void;
-}
-
-interface DropState {
-  path: PagePath;
-  position: DropPosition;
 }
 
 interface MenuState {
@@ -43,8 +39,7 @@ export function PageTree({ nodes, expanded, currentPath, onToggle, onExpand, onO
     isFavorite,
     toggleFavorite,
   } = useContent();
-  const [dragPath, setDragPath] = useState<PagePath | null>(null);
-  const [drop, setDrop] = useState<DropState | null>(null);
+  const { dragPath, setDragPath, drop, setDrop } = useTreeDrag();
   const [menu, setMenu] = useState<MenuState | null>(null);
 
   const handleDrop = useCallback(
@@ -55,7 +50,7 @@ export function PageTree({ nodes, expanded, currentPath, onToggle, onExpand, onO
       if (position === 'inside') onExpand(targetPath);
       movePage(sourcePath, targetPath, position);
     },
-    [movePage, onExpand],
+    [movePage, onExpand, setDrop, setDragPath],
   );
 
   const menuItems = useCallback(

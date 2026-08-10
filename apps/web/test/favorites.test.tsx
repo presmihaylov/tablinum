@@ -77,7 +77,7 @@ describe('the favorites bucket', () => {
 
     await screen.findByRole('region', { name: 'Favorites' });
     const labels = screen.getAllByRole('region').map((one) => one.getAttribute('aria-label'));
-    expect(labels).toEqual(['Favorites', 'Spaces', 'Recents']);
+    expect(labels).toEqual(['Favorites', 'Spaces', 'Recents', 'Private']);
   });
 
   it('leaves out a pin whose page is gone', async () => {

@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { depth, isDescendantOf, parentPath, segments, slugify, spaceOf } from '@tablinum/shared';
+import { baseName, depth, isDescendantOf, parentPath, segments, slugify, spaceOf } from '@tablinum/shared';
 import type { PagePath, TreeNode } from '@tablinum/shared';
 import { api } from '../api/client';
 import {
@@ -32,7 +32,7 @@ import {
   type DropPosition,
   type MovePatch,
 } from './treeMove';
-import { childrenOf, findNodeById, type SpaceTree } from './tree';
+import { childrenOf, findNode, findNodeById, type SpaceTree } from './tree';
 import { useToast } from './toast';
 
 const SPACE_KEY = 'space';
@@ -54,7 +54,7 @@ interface ContentValue {
   currentSpace: string;
   setCurrentSpace: (slug: string) => void;
   newPage: (parent: PagePath | null) => void;
-  newSpace: () => void;
+  newSpace: (options?: { private?: boolean }) => void;
   editSpace: (slug: string) => void;
   renamePage: (node: TreeNode) => void;
   duplicatePage: (node: TreeNode) => void;
@@ -70,6 +70,19 @@ interface MoveOptions {
   message?: string;
   /** Open the page that moved even when another page is on screen. */
   follow?: boolean;
+}
+
+/**
+ * The prompt a page gets when it leaves a private space. The move is not undoable in the way it
+ * looks: the workspace can read the page from then on, and git starts to track the file.
+ */
+function publishRequest(title: string, onConfirm: () => void): ConfirmRequest {
+  return {
+    title: 'Move out of Private?',
+    message: `"${title}" is private to you today. Everybody in the workspace will be able to read it, and it will go into git.`,
+    confirmLabel: 'Move it',
+    onConfirm,
+  };
 }
 
 export function ContentProvider({ children }: { children: ReactNode }) {
@@ -179,27 +192,31 @@ export function ContentProvider({ children }: { children: ReactNode }) {
     [currentSpace, spaces, createPage, navigate, push, pushError],
   );
 
-  const newSpace = useCallback(() => {
-    setSpaceEdit({
-      title: 'New space',
-      confirmLabel: 'Create',
-      onConfirm: ({ name, icon }) => {
-        const slug = slugify(name);
-        createSpace.mutate(
-          { slug, name, ...(icon ? { icon } : {}) },
-          {
-            onSuccess: (data) => {
-              setCurrentSpace(data.space.slug);
-              // The server gives the space a home page, so open it right away.
-              navigate(pageHref(data.space.slug));
-              push(`Space "${data.space.name}" created.`, 'success');
+  const newSpace = useCallback(
+    (options: { private?: boolean } = {}) => {
+      const isPrivate = options.private === true;
+      setSpaceEdit({
+        title: isPrivate ? 'New private space' : 'New space',
+        confirmLabel: 'Create',
+        onConfirm: ({ name, icon }) => {
+          const slug = slugify(name);
+          createSpace.mutate(
+            { slug, name, ...(icon ? { icon } : {}), ...(isPrivate ? { private: true } : {}) },
+            {
+              onSuccess: (data) => {
+                setCurrentSpace(data.space.slug);
+                // The server gives the space a home page, so open it right away.
+                navigate(pageHref(data.space.slug));
+                push(`Space "${data.space.name}" created.`, 'success');
+              },
+              onError: (error) => pushError(error, 'Could not create the space.'),
             },
-            onError: (error) => pushError(error, 'Could not create the space.'),
-          },
-        );
-      },
-    });
-  }, [createSpace, navigate, push, pushError, setCurrentSpace]);
+          );
+        },
+      });
+    },
+    [createSpace, navigate, push, pushError, setCurrentSpace],
+  );
 
   const editSpace = useCallback(
     (slug: string) => {
@@ -335,13 +352,29 @@ export function ContentProvider({ children }: { children: ReactNode }) {
     [updatePage, currentPath, navigate, push, pushError],
   );
 
+  /** True when the page would leave a space only its owner sees for one the workspace reads. */
+  const leavesPrivate = useCallback(
+    (sourcePath: PagePath, targetSlug: string): boolean => {
+      const from = spaces.find((space) => space.slug === spaceOf(sourcePath));
+      const to = spaces.find((space) => space.slug === targetSlug);
+      return from?.owner !== undefined && to !== undefined && to.owner === undefined;
+    },
+    [spaces],
+  );
+
   const movePage = useCallback(
     (sourcePath: PagePath, targetPath: PagePath, position: DropPosition) => {
       const patch = computeMove({ spaces, sourcePath, targetPath, position });
       if (!patch) return;
-      applyMove(sourcePath, patch);
+      const run = (): void => applyMove(sourcePath, patch);
+      if (!leavesPrivate(sourcePath, spaceOf(targetPath))) {
+        run();
+        return;
+      }
+      const title = findNode(spaces, sourcePath)?.title ?? baseName(sourcePath);
+      setConfirm(publishRequest(title, run));
     },
-    [spaces, applyMove],
+    [spaces, applyMove, leavesPrivate],
   );
 
   const moveToSpace = useCallback(
@@ -370,11 +403,17 @@ export function ContentProvider({ children }: { children: ReactNode }) {
           const patch = computeSpaceMove({ spaces, sourcePath: node.path, spaceSlug: slug });
           if (!patch) return;
           const name = options.find((option) => option.slug === slug)?.name ?? slug;
-          applyMove(node.path, patch, { message: `Moved to ${name}.`, follow: true });
+          const run = (): void =>
+            applyMove(node.path, patch, { message: `Moved to ${name}.`, follow: true });
+          if (!leavesPrivate(node.path, slug)) {
+            run();
+            return;
+          }
+          setConfirm(publishRequest(node.title, run));
         },
       });
     },
-    [spaces, applyMove, push],
+    [spaces, applyMove, push, leavesPrivate],
   );
 
   const value = useMemo<ContentValue>(

@@ -11,6 +11,7 @@ import { AccountMenu } from '../Account/AccountMenu';
 import { GitStatusPill } from './GitStatusPill';
 import { PageTree } from './PageTree';
 import { SidebarSection } from './SidebarSection';
+import { TreeDragProvider } from './TreeDrag';
 import { WorkspaceSwitcher } from '../Workspace/WorkspaceSwitcher';
 import './sidebar.css';
 
@@ -62,6 +63,11 @@ export function Sidebar({ onOpenPalette, onCollapse }: SidebarProps) {
     [recents, spaces],
   );
 
+  // A space with an owner belongs to one person. The server sends nobody else's, so the split is
+  // enough to put it in the right bucket.
+  const shared = useMemo(() => spaces.filter((space) => space.owner === undefined), [spaces]);
+  const mine = useMemo(() => spaces.filter((space) => space.owner !== undefined), [spaces]);
+
   return (
     <aside className="sidebar">
       <div className="sidebar__head">
@@ -86,75 +92,99 @@ export function Sidebar({ onOpenPalette, onCollapse }: SidebarProps) {
       </div>
 
       <nav className="sidebar__tree scroll-y" aria-label="Pages">
-        {isLoadingTree ? <p className="sidebar__hint">Loading…</p> : null}
+        <TreeDragProvider>
+          {isLoadingTree ? <p className="sidebar__hint">Loading…</p> : null}
 
-        <SidebarSection
-          label="Favorites"
-          open={isSectionOpen('favorites')}
-          onToggle={() => toggleSection('favorites')}
-        >
-          {favorites.length === 0 ? <p className="sidebar__hint">No favorites yet.</p> : null}
-          <ul className="sidebar-list">
-            {favorites.map((node) => (
-              <li key={node.id}>
-                <PageRow node={node} currentPath={currentPath} onOpen={open}>
-                  <button
-                    type="button"
-                    className="sidebar-list__action"
-                    aria-label={`Remove ${node.title} from favorites`}
-                    title="Remove from favorites"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      toggleFavorite(node);
-                    }}
-                  >
-                    <Star size={12} filled />
-                  </button>
-                </PageRow>
-              </li>
+          <SidebarSection
+            label="Favorites"
+            open={isSectionOpen('favorites')}
+            onToggle={() => toggleSection('favorites')}
+          >
+            {favorites.length === 0 ? <p className="sidebar__hint">No favorites yet.</p> : null}
+            <ul className="sidebar-list">
+              {favorites.map((node) => (
+                <li key={node.id}>
+                  <PageRow node={node} currentPath={currentPath} onOpen={open}>
+                    <button
+                      type="button"
+                      className="sidebar-list__action"
+                      aria-label={`Remove ${node.title} from favorites`}
+                      title="Remove from favorites"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        toggleFavorite(node);
+                      }}
+                    >
+                      <Star size={12} filled />
+                    </button>
+                  </PageRow>
+                </li>
+              ))}
+            </ul>
+          </SidebarSection>
+
+          <SidebarSection
+            label="Spaces"
+            open={isSectionOpen('spaces')}
+            onToggle={() => toggleSection('spaces')}
+            action={{ label: 'New space', onSelect: () => newSpace() }}
+          >
+            {!isLoadingTree && shared.length === 0 ? <p className="sidebar__hint">No spaces yet.</p> : null}
+            {shared.map((space) => (
+              <PageTree
+                key={space.slug}
+                nodes={space.tree}
+                expanded={openPaths}
+                onToggle={toggle}
+                onExpand={expand}
+                currentPath={currentPath}
+                onOpen={open}
+              />
             ))}
-          </ul>
-        </SidebarSection>
+          </SidebarSection>
 
-        <SidebarSection
-          label="Spaces"
-          open={isSectionOpen('spaces')}
-          onToggle={() => toggleSection('spaces')}
-          action={{ label: 'New space', onSelect: newSpace }}
-        >
-          {!isLoadingTree && spaces.length === 0 ? <p className="sidebar__hint">No spaces yet.</p> : null}
-          {spaces.map((space) => (
-            <PageTree
-              key={space.slug}
-              nodes={space.tree}
-              expanded={openPaths}
-              onToggle={toggle}
-              onExpand={expand}
-              currentPath={currentPath}
-              onOpen={open}
-            />
-          ))}
-        </SidebarSection>
+          <SidebarSection
+            label="Recents"
+            open={isSectionOpen('recents')}
+            onToggle={() => toggleSection('recents')}
+          >
+            {recentNodes.length === 0 ? <p className="sidebar__hint">No pages opened yet.</p> : null}
+            <ul className="sidebar-list">
+              {recentNodes.map((node) => (
+                <li key={node.id}>
+                  <PageRow node={node} currentPath={currentPath} onOpen={open} />
+                </li>
+              ))}
+            </ul>
+          </SidebarSection>
 
-        <SidebarSection
-          label="Recents"
-          open={isSectionOpen('recents')}
-          onToggle={() => toggleSection('recents')}
-        >
-          {recentNodes.length === 0 ? <p className="sidebar__hint">No pages opened yet.</p> : null}
-          <ul className="sidebar-list">
-            {recentNodes.map((node) => (
-              <li key={node.id}>
-                <PageRow node={node} currentPath={currentPath} onOpen={open} />
-              </li>
+          <SidebarSection
+            label="Private"
+            open={isSectionOpen('private')}
+            onToggle={() => toggleSection('private')}
+            action={{ label: 'New private space', onSelect: () => newSpace({ private: true }) }}
+          >
+            {!isLoadingTree && mine.length === 0 ? (
+              <p className="sidebar__hint">Nothing private yet. Only you see what lands here.</p>
+            ) : null}
+            {mine.map((space) => (
+              <PageTree
+                key={space.slug}
+                nodes={space.tree}
+                expanded={openPaths}
+                onToggle={toggle}
+                onExpand={expand}
+                currentPath={currentPath}
+                onOpen={open}
+              />
             ))}
-          </ul>
-        </SidebarSection>
+          </SidebarSection>
 
-        <button type="button" className="sidebar__new" onClick={() => newPage(null)}>
-          <Plus />
-          New page
-        </button>
+          <button type="button" className="sidebar__new" onClick={() => newPage(null)}>
+            <Plus />
+            New page
+          </button>
+        </TreeDragProvider>
       </nav>
 
       <GitStatusPill />

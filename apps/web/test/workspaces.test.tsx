@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { WORKSPACE_HEADER, type Account, type Workspace } from '@tablinum/shared';
 import { WorkspacePanel } from '../src/components/Workspace/WorkspacePanel';
 import { WorkspaceSwitcher } from '../src/components/Workspace/WorkspaceSwitcher';
@@ -158,7 +158,7 @@ describe('the workspace settings panel', () => {
       'GET /api/v1/users': { users: [ADA, SAM] },
       ...extra,
     });
-    renderApp(<WorkspacePanel />);
+    renderApp(<WorkspacePanel me={ADA} />);
     await waitFor(() => expect(screen.getByRole('button', { name: 'Edit' })).toBeTruthy());
     return mock;
   }
@@ -166,9 +166,30 @@ describe('the workspace settings panel', () => {
   it('shows who is in the workspace', async () => {
     await openSettings();
 
-    expect(await screen.findByText('Ada Lovelace')).toBeTruthy();
-    expect(screen.getByText('Sam Rivers')).toBeTruthy();
-    expect(screen.getByLabelText('Role of Sam Rivers')).toHaveValue('member');
+    const people = within(await screen.findByRole('region', { name: 'People in this workspace' }));
+    expect(people.getByText('Ada Lovelace')).toBeTruthy();
+    expect(people.getByText('Sam Rivers')).toBeTruthy();
+    expect(screen.getByLabelText('Workspace role of Sam Rivers')).toHaveValue('member');
+  });
+
+  // The page carries the roster of every account too, so an admin never leaves it to add somebody.
+  it('carries the invites and the account roster for an admin', async () => {
+    await openSettings({ 'GET /api/v1/invites': { invites: [] } });
+
+    expect(await screen.findByRole('region', { name: 'Accounts' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Create link' })).toBeTruthy();
+  });
+
+  it('keeps the account roster away from a plain member', async () => {
+    startServer({
+      'GET /api/v1/workspaces/ws_00000000000000000000000001/members': { members: [{ account: SAM, role: 'member' }] },
+      'GET /api/v1/users': { users: [ADA, SAM] },
+    });
+    renderApp(<WorkspacePanel me={SAM} />);
+
+    await screen.findByRole('button', { name: 'Edit' });
+    expect(screen.queryByRole('region', { name: 'Accounts' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Create link' })).toBeNull();
   });
 
   it('makes somebody an admin of the workspace', async () => {
@@ -178,7 +199,7 @@ describe('the workspace settings panel', () => {
       },
     });
 
-    fireEvent.change(await screen.findByLabelText('Role of Sam Rivers'), { target: { value: 'admin' } });
+    fireEvent.change(await screen.findByLabelText('Workspace role of Sam Rivers'), { target: { value: 'admin' } });
 
     await waitFor(() => {
       const patch = mock.calls.find((call) => call.method === 'PATCH');

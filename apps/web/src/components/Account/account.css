@@ -121,6 +121,17 @@
   margin-top: var(--space-4);
 }
 
+/* The invite controls stack like the rest of the form, now that a section holds them. */
+.account-section--stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.account-section--stack .account-section__title {
+  margin-bottom: 0;
+}
+
 .account-section__title {
   margin-bottom: var(--space-2);
   color: var(--text-muted);

@@ -3,10 +3,9 @@ import type { Account } from '@tablinum/shared';
 import { useAuth } from '../lib/auth';
 import { AgentsPanel } from '../components/Account/AgentsPanel';
 import { EmojiPanel } from '../components/Account/EmojiPanel';
-import { PeoplePanel } from '../components/Account/PeoplePanel';
 import { ProfilePanel } from '../components/Account/ProfilePanel';
 import { WorkspacePanel } from '../components/Workspace/WorkspacePanel';
-import { Bot, DocIcon, People, Settings, Smiley, UserIcon } from '../components/ui/Icon';
+import { Bot, DocIcon, Settings, Smiley, UserIcon } from '../components/ui/Icon';
 import './settings.css';
 
 /** One entry in the left column of the settings page. */
@@ -20,11 +19,13 @@ interface Section {
 
 const SECTIONS: Section[] = [
   { id: 'account', label: 'My account', title: 'My account', icon: <UserIcon /> },
-  { id: 'emoji', label: 'Custom emoji', title: 'Custom emoji', icon: <Smiley /> },
   { id: 'workspace', label: 'Workspace', title: 'Workspace', icon: <Settings /> },
-  { id: 'people', label: 'People and invites', title: 'People and invites', icon: <People />, adminOnly: true },
+  { id: 'emoji', label: 'Custom emoji', title: 'Custom emoji', icon: <Smiley /> },
   { id: 'agents', label: 'Agents', title: 'Agents', icon: <Bot />, adminOnly: true },
 ];
+
+/** People and invites joined the workspace section. A link somebody kept still lands right. */
+const ALIASES: Record<string, string> = { people: 'workspace' };
 
 export const DEFAULT_SETTINGS_SECTION = 'account';
 
@@ -38,7 +39,8 @@ export function SettingsRoute() {
   if (user === null) return null;
 
   const visible = SECTIONS.filter((section) => !section.adminOnly || user.role === 'admin');
-  const wanted = params['section'] ?? DEFAULT_SETTINGS_SECTION;
+  const asked = params['section'] ?? DEFAULT_SETTINGS_SECTION;
+  const wanted = ALIASES[asked] ?? asked;
   const current = visible.find((section) => section.id === wanted) ?? visible[0];
   if (current === undefined) return null;
 
@@ -75,8 +77,7 @@ export function SettingsRoute() {
 
 function SectionBody({ id, user }: { id: string; user: Account }) {
   if (id === 'emoji') return <EmojiPanel user={user} />;
-  if (id === 'workspace') return <WorkspacePanel />;
-  if (id === 'people') return <PeoplePanel me={user} />;
+  if (id === 'workspace') return <WorkspacePanel me={user} />;
   if (id === 'agents') return <AgentsPanel />;
   return <ProfilePanel user={user} />;
 }

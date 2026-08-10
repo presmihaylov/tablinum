@@ -47,15 +47,28 @@ test.describe('the settings page', () => {
 
     await nav(page).getByRole('button', { name: 'Workspace', exact: true }).click();
     await expect(page).toHaveURL(/\/settings\/workspace$/);
+    // One page now carries the workspace, its people and the invites.
+    await expect(page.getByRole('region', { name: 'People in this workspace' })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Accounts' })).toBeVisible();
+    await expect(page.getByText('Invite somebody')).toBeVisible();
     await expect(page.getByRole('link', { name: /Export as a zip/ })).toBeVisible();
 
     await nav(page).getByRole('button', { name: 'Agents' }).click();
     await expect(page).toHaveURL(/\/settings\/agents$/);
     await expect(page.getByLabel('Agent name')).toBeVisible();
 
-    // A deep link opens the same section from cold.
+    // The section list puts the workspace right under the account.
+    await expect(nav(page).getByRole('button')).toHaveText([
+      'Back to the pages',
+      'My account',
+      'Workspace',
+      'Custom emoji',
+      'Agents',
+    ]);
+
+    // People and invites was a section of its own. The old link still lands on the right page.
     await page.goto('/settings/people');
-    await expect(page.getByRole('heading', { name: 'People and invites' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Workspace' })).toBeVisible();
   });
 
   test('the workspace menu reaches settings too, and the way back works', async ({ page }) => {

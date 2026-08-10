@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { WorkspaceRole } from '@tablinum/shared';
+import type { Account, WorkspaceRole } from '@tablinum/shared';
 import { api } from '../../api/client';
 import {
   useAddWorkspaceMember,
@@ -13,14 +13,16 @@ import {
 import { describeError, useToast } from '../../lib/toast';
 import { useWorkspace } from '../../lib/workspaces';
 import { Avatar } from '../Account/Avatar';
+import { PeoplePanel } from '../Account/PeoplePanel';
 import { ConfirmDialog, type ConfirmRequest } from '../ui/ConfirmDialog';
 import { EmojiGlyph } from '../ui/EmojiGlyph';
 import { Download, Trash } from '../ui/Icon';
 import { SpaceDialog, type SpaceDialogRequest } from '../ui/SpaceDialog';
 import './workspace.css';
 
-/** Rename the workspace, say who is in it, take a copy of it or throw it away. */
-export function WorkspacePanel() {
+/** Rename the workspace, say who is in it, take a copy of it or throw it away.
+ * An admin also gets the invites and the roster of every account on the server. */
+export function WorkspacePanel({ me }: { me: Account }) {
   const { workspaces, current, switchTo } = useWorkspace();
   const toast = useToast();
   const members = useWorkspaceMembers(current?.id ?? null);
@@ -100,8 +102,8 @@ export function WorkspacePanel() {
 
         {error === null ? null : <p className="account-form__error">{error}</p>}
 
-        <div className="account-section">
-          <div className="account-section__title">People</div>
+        <section className="account-section" aria-label="People in this workspace">
+          <div className="account-section__title">People in this workspace</div>
           {(members.data?.members ?? []).map((member) => (
             <div className="people-row" key={member.account.id}>
               <Avatar person={member.account} size={26} />
@@ -112,7 +114,7 @@ export function WorkspacePanel() {
               <select
                 className="input"
                 value={member.role}
-                aria-label={`Role of ${member.account.name}`}
+                aria-label={`Workspace role of ${member.account.name}`}
                 onChange={(event) => {
                   const role: WorkspaceRole = event.target.value === 'admin' ? 'admin' : 'member';
                   setRole.mutate({ id: current.id, userId: member.account.id, role });
@@ -124,8 +126,8 @@ export function WorkspacePanel() {
               <button
                 type="button"
                 className="btn btn--icon"
-                aria-label={`Remove ${member.account.name}`}
-                title={`Remove ${member.account.name}`}
+                aria-label={`Remove ${member.account.name} from the workspace`}
+                title={`Remove ${member.account.name} from the workspace`}
                 onClick={() => removeMember.mutate({ id: current.id, userId: member.account.id })}
               >
                 <Trash />
@@ -135,7 +137,7 @@ export function WorkspacePanel() {
           {members.data?.members.length === 0 ? (
             <p className="account-form__note">Everybody on this server can open this workspace.</p>
           ) : null}
-        </div>
+        </section>
 
         {outsiders.length === 0 ? null : (
           <div className="account-form__row">
@@ -162,6 +164,8 @@ export function WorkspacePanel() {
             </button>
           </div>
         )}
+
+        {me.role === 'admin' ? <PeoplePanel me={me} /> : null}
 
         <div className="account-section">
           <div className="account-section__title">The whole workspace</div>

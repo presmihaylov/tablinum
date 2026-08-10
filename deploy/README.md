@@ -49,7 +49,7 @@ create the first account. You become the admin, and you name your first workspac
 
 **Claim it before anybody else can.** The setup form is public until the first account exists, so
 open the page as soon as the container is up. After that, invite everybody else with a link from
-"People and invites". `TABLINUM_API_TOKENS` is for agents and scripts only.
+Settings > Workspace. `TABLINUM_API_TOKENS` is for agents and scripts only.
 
 Check it from the shell:
 

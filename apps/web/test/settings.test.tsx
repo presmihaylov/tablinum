@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { screen } from '@testing-library/react';
 import { Route, Routes } from 'react-router-dom';
 import userEvent from '@testing-library/user-event';
-import type { Account, AuthStateResponse } from '@tablinum/shared';
+import type { Account, AuthStateResponse, Workspace } from '@tablinum/shared';
 import { AuthProvider } from '../src/lib/auth';
 import { SettingsRoute } from '../src/routes/SettingsRoute';
 import { installFetch, type MockServer, type Routes as MockRoutes } from './mockFetch';
@@ -23,6 +23,14 @@ const ADA: Account = {
 
 const SAM: Account = { ...ADA, id: 'us_00000000000000000000000002', name: 'Sam Rivers', role: 'member' };
 
+const MAIN: Workspace = {
+  id: 'ws_00000000000000000000000001',
+  slug: 'main',
+  name: 'Main',
+  created: '2026-01-01T00:00:00.000Z',
+  updated: '2026-01-01T00:00:00.000Z',
+};
+
 function authState(user: Account): AuthStateResponse {
   return { setupRequired: false, user };
 }
@@ -33,6 +41,10 @@ function start(user: Account, routes: MockRoutes = {}): MockServer {
   server = installFetch({
     'GET /api/v1/tree': { spaces: [] },
     'GET /api/v1/auth/state': authState(user),
+    'GET /api/v1/workspaces': { workspaces: [MAIN], current: 'main' },
+    'GET /api/v1/workspaces/ws_00000000000000000000000001/members': {
+      members: [{ account: ADA, role: 'admin' }],
+    },
     'GET /api/v1/users': { users: [ADA, SAM] },
     'GET /api/v1/invites': { invites: [] },
     'GET /api/v1/emoji': { emoji: [] },
@@ -83,8 +95,8 @@ describe('the settings page', () => {
 
     // The path named a section this account cannot see, so the first one it can see wins.
     await screen.findByRole('heading', { name: 'My account' });
-    expect(screen.queryByRole('button', { name: 'People and invites' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Agents' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Workspace' })).toBeInTheDocument();
   });
 
   it('lets an admin walk from one section to another', async () => {
@@ -92,11 +104,20 @@ describe('the settings page', () => {
     const user = userEvent.setup();
     renderSettings();
 
-    await user.click(await screen.findByRole('button', { name: 'People and invites' }));
+    await user.click(await screen.findByRole('button', { name: 'Workspace' }));
 
-    await screen.findByRole('heading', { name: 'People and invites' });
-    expect(screen.getByTestId('location')).toHaveTextContent('/settings/people');
+    await screen.findByRole('heading', { name: 'Workspace' });
+    expect(screen.getByTestId('location')).toHaveTextContent('/settings/workspace');
     expect(await screen.findByText(`${ADA.name} (you)`)).toBeInTheDocument();
+  });
+
+  // People and invites used to be a section of its own. A link somebody kept must still work.
+  it('sends the old people path to the workspace section', async () => {
+    start(ADA);
+    renderSettings('/settings/people');
+
+    await screen.findByRole('heading', { name: 'Workspace' });
+    expect(await screen.findByRole('region', { name: 'Accounts' })).toBeInTheDocument();
   });
 
   it('goes back to the pages', async () => {

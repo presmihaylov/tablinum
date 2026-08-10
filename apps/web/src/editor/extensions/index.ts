@@ -12,6 +12,7 @@ import TableRow from '@tiptap/extension-table-row';
 import Underline from '@tiptap/extension-underline';
 import { Markdown } from 'tiptap-markdown';
 
+import { BlockLink } from './blockLink';
 import { BlockSelect } from './blockSelection';
 import { Callout } from './callout';
 import { MarkdownCopy } from './clipboard';
@@ -137,6 +138,7 @@ export function buildExtensions(overrides: Partial<EditorExtensionOptions> = {})
     createPageEmbed(options.interactive, { load: options.loadPage, open: options.openPage }),
     createDiagram(options.interactive, { edit: options.editDiagram }),
     CommentHighlight.configure({ onActivate: options.openComment }),
+    BlockLink,
     MdEscape,
     Markdown.configure({
       html: true,
@@ -178,6 +180,7 @@ export function buildExtensions(overrides: Partial<EditorExtensionOptions> = {})
   ];
 }
 
+export { BlockLink, LINKED_CLASS } from './blockLink';
 export { BlockSelection } from './blockSelection';
 export { DRAFT_SPAN_ID } from './commentHighlight';
 export type { CommentSpan } from './commentHighlight';

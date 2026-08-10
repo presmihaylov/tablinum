@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { DragEvent as ReactDragEvent, RefObject } from 'react';
 import type { Editor } from '@tiptap/core';
 import { TextSelection } from '@tiptap/pm/state';
+import { anchorIdAt } from '../blockLinks';
 import { nodeSelectionAt, startNodeDrag } from './nodeDrag';
 
 interface HandleTarget {
@@ -16,6 +17,8 @@ export interface BlockHandlesProps {
   canvas: RefObject<HTMLDivElement>;
   /** Starts a comment on whatever is selected. Absent when the page holds no comments. */
   onComment?: () => void;
+  /** Copies a link to the block this id names. Absent when the page has no address. */
+  onCopyLink?: (anchorId: string) => void;
 }
 
 /**
@@ -23,7 +26,7 @@ export interface BlockHandlesProps {
  * They live outside the editable DOM, so the drag is handed to ProseMirror by
  * setting `view.dragging` rather than by relying on native drag data.
  */
-export function BlockHandles({ editor, canvas, onComment }: BlockHandlesProps) {
+export function BlockHandles({ editor, canvas, onComment, onCopyLink }: BlockHandlesProps) {
   const [target, setTarget] = useState<HandleTarget | null>(null);
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -106,6 +109,13 @@ export function BlockHandles({ editor, canvas, onComment }: BlockHandlesProps) {
     onComment();
   };
 
+  const copyLink = (): void => {
+    setOpen(false);
+    const id = anchorIdAt(editor.state.doc, target.pos);
+    if (id === null || !onCopyLink) return;
+    onCopyLink(id);
+  };
+
   const remove = (): void => {
     const range = blockRange();
     setOpen(false);
@@ -171,6 +181,16 @@ export function BlockHandles({ editor, canvas, onComment }: BlockHandlesProps) {
 
       {open ? (
         <div className="gd-editor-blockmenu" role="menu" aria-label="Block actions" ref={menuRef}>
+          {onCopyLink ? (
+            <button
+              type="button"
+              role="menuitem"
+              className="gd-editor-blockmenu__item"
+              onClick={copyLink}
+            >
+              Copy link to block
+            </button>
+          ) : null}
           {onComment ? (
             <button
               type="button"

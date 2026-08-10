@@ -114,6 +114,23 @@ describe('zipDirectory', () => {
     expect(entries.map((entry) => entry.name)).toEqual(['real.md']);
   });
 
+  it('leaves out what the skip says, and never walks into a skipped directory', async () => {
+    const source = await tempDir();
+    await write(source, 'eng/deploy.md', 'Ship it.\n');
+    await write(source, 'vault/salary.md', 'The pay review lands on Tuesday.\n');
+    await write(source, 'vault/deep/more.md', 'Also secret.\n');
+    await write(source, '.git/info/exclude', '/vault/\n');
+
+    const entries = readZip(
+      await zipDirectory(source, { skip: (rel) => rel === 'vault' || rel === '.git/info/exclude' }),
+    );
+    const names = entries.map((entry) => entry.name);
+
+    expect(names).toContain('eng/deploy.md');
+    expect(names.filter((name) => name.startsWith('vault'))).toEqual([]);
+    expect(names).not.toContain('.git/info/exclude');
+  });
+
   it('refuses to grow past the byte limit', async () => {
     const source = await tempDir();
     await write(source, 'big.bin', Buffer.alloc(4096, 7));

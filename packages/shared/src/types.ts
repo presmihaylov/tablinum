@@ -61,6 +61,11 @@ export interface Space {
   name: string;
   icon?: string;
   order?: number;
+  /**
+   * The user id this space belongs to. A space with an owner is private: nobody else sees it,
+   * and git is told to ignore its directory so the files never reach a remote.
+   */
+  owner?: string;
 }
 
 /** One result from the full-text index. */

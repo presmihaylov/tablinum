@@ -75,7 +75,12 @@ export interface ContentStore {
   rebuild(): Promise<void>;
 
   listSpaces(): Promise<Space[]>;
-  createSpace(input: CreateSpaceBody): Promise<Space>;
+
+  /**
+   * Make a space. `owner` marks it private and comes from the session, never from the body,
+   * so nobody can create a space in somebody else's name.
+   */
+  createSpace(input: CreateSpaceBody, owner?: string): Promise<Space>;
 
   /** Change the name, icon or order of a space. Its slug never changes. */
   updateSpace(slug: string, patch: UpdateSpaceBody): Promise<Space>;
@@ -133,6 +138,12 @@ export interface ContentStore {
 export interface GitEngine {
   /** Ensure the repo exists, the branch is checked out and the remote is configured. */
   init(): Promise<void>;
+
+  /** Hide one content-relative directory from git for good. Private spaces live behind it. */
+  excludePath(relDir: string): Promise<void>;
+
+  /** Every directory the exclude list hides, as content-relative paths. */
+  excludedPaths(): Promise<string[]>;
 
   status(): Promise<GitStatus>;
   pull(): Promise<{ status: GitStatus; pulled: number; files: string[] }>;

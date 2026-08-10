@@ -74,7 +74,7 @@ describe('spaces', () => {
   it('sorts by order then name', async () => {
     await store.createSpace('zeta', 'Zeta');
     await store.createSpace('alpha', 'Alpha');
-    await store.createSpace('first', 'First', undefined, 1);
+    await store.createSpace('first', 'First', { order: 1 });
     expect((await store.listSpaces()).map((space) => space.slug)).toEqual([
       'first',
       'alpha',
@@ -83,7 +83,7 @@ describe('spaces', () => {
   });
 
   it('writes a stable space file', async () => {
-    await store.createSpace('eng', 'Engineering', 'E', 2);
+    await store.createSpace('eng', 'Engineering', { icon: 'E', order: 2 });
     expect(await readFileAt(dir, 'eng/_space.yml')).toBe('name: Engineering\nicon: "E"\norder: 2\n');
   });
 
@@ -93,7 +93,7 @@ describe('spaces', () => {
   });
 
   it('gives every new space a home page', async () => {
-    await store.createSpace('eng', 'Engineering', '🚀');
+    await store.createSpace('eng', 'Engineering', { icon: '🚀' });
     expect(await exists(dir, 'eng/index.md')).toBe(true);
     const home = await store.getPageByPath('eng');
     expect(home.title).toBe('Engineering');
@@ -109,7 +109,7 @@ describe('spaces', () => {
   });
 
   it('renames a space and sets, keeps and clears its icon', async () => {
-    await store.createSpace('eng', 'Engineering', 'E');
+    await store.createSpace('eng', 'Engineering', { icon: 'E' });
 
     const renamed = await store.updateSpace('eng', { name: 'Platform' });
     expect(renamed).toEqual({ slug: 'eng', name: 'Platform', icon: 'E' });
@@ -122,6 +122,34 @@ describe('spaces', () => {
     expect(cleared.icon).toBeUndefined();
     expect(await readFileAt(dir, 'eng/_space.yml')).toBe('name: Platform\n');
     expect((await store.listSpaces())[0]?.name).toBe('Platform');
+  });
+
+  it('round-trips the owner of a private space', async () => {
+    const created = await store.createSpace('notes', 'Notes', { owner: 'us_01J0ABCDEFGHJKMNPQRSTVWXYZ' });
+
+    expect(created.owner).toBe('us_01J0ABCDEFGHJKMNPQRSTVWXYZ');
+    expect(await readFileAt(dir, 'notes/_space.yml')).toBe(
+      'name: Notes\nowner: us_01J0ABCDEFGHJKMNPQRSTVWXYZ\n',
+    );
+    expect((await store.listSpaces()).find((space) => space.slug === 'notes')?.owner).toBe(
+      'us_01J0ABCDEFGHJKMNPQRSTVWXYZ',
+    );
+  });
+
+  it('leaves a space public when nobody owns it', async () => {
+    await store.createSpace('eng', 'Engineering');
+    expect((await store.listSpaces())[0]?.owner).toBeUndefined();
+  });
+
+  it('keeps the owner through a rename, so a patch cannot make a space public', async () => {
+    await store.createSpace('notes', 'Notes', { owner: 'us_01J0ABCDEFGHJKMNPQRSTVWXYZ' });
+
+    const renamed = await store.updateSpace('notes', { name: 'Journal' });
+
+    expect(renamed.owner).toBe('us_01J0ABCDEFGHJKMNPQRSTVWXYZ');
+    expect(await readFileAt(dir, 'notes/_space.yml')).toBe(
+      'name: Journal\nowner: us_01J0ABCDEFGHJKMNPQRSTVWXYZ\n',
+    );
   });
 
   it('rejects an update of an unknown space and an empty patch', async () => {

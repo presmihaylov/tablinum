@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import { gitError, type GitConflict, type GitStatus, type Revision } from '@tablinum/shared';
@@ -38,6 +38,9 @@ export class TestGitEngine implements GitEngine {
   #pendingMessage: string | undefined;
   #chain: Promise<unknown> = Promise.resolve();
 
+  /** Directories a test asked to keep out of git, as content-relative paths. */
+  readonly excluded: string[] = [];
+
   /** Set by a test to pretend a pull hit a conflict it could not rebase. */
   conflict: GitConflict | null = null;
   versions: FileVersions[] = [];
@@ -73,6 +76,22 @@ export class TestGitEngine implements GitEngine {
     } catch {
       return null;
     }
+  }
+
+  /** Same as the real engine: the line lands in `.git/info/exclude`, and git honours it. */
+  async excludePath(relDir: string): Promise<void> {
+    if (!this.excluded.includes(relDir)) this.excluded.push(relDir);
+    const file = join(this.contentDir, '.git', 'info', 'exclude');
+    await mkdir(dirname(file), { recursive: true });
+    const current = existsSync(file) ? await readFile(file, 'utf8') : '';
+    const line = `/${relDir}/`;
+    if (current.split('\n').includes(line)) return;
+    const head = current.length === 0 || current.endsWith('\n') ? current : `${current}\n`;
+    await writeFile(file, `${head}${line}\n`, 'utf8');
+  }
+
+  async excludedPaths(): Promise<string[]> {
+    return [...this.excluded];
   }
 
   async init(): Promise<void> {

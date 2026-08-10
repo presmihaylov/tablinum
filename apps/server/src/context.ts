@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { ServerDeps } from './deps.js';
 import type { LiveHub } from './live.js';
 import type { MentionNotifier } from './mentions.js';
+import { guardPrivateSpaces, viewerOf } from './private.js';
 import type { SlackApi } from './slack.js';
 import type { Wiring } from './wiring.js';
 import type { WorkspaceParts, WorkspaceRegistry } from './workspaces.js';
@@ -25,8 +26,21 @@ export interface RouteContext {
 /** Prefix every endpoint in the contract lives under. */
 export const API_PREFIX = '/api/v1';
 
-/** The content, git, search and live parts of the workspace this request is about. */
-export function partsOf(ctx: RouteContext, request: FastifyRequest): Promise<WorkspaceParts> {
+/**
+ * The content, git, search and live parts of the workspace this request is about.
+ *
+ * The store comes back wrapped so a private space somebody else owns is simply not there. Every
+ * route reads content through here, so the guard covers routes written later too; the raw store
+ * stays reachable through `ctx.workspaces` for the watcher and the git layer, which are not
+ * anybody's request.
+ */
+export async function partsOf(ctx: RouteContext, request: FastifyRequest): Promise<WorkspaceParts> {
+  const parts = await ctx.workspaces.of(request);
+  return { ...parts, store: guardPrivateSpaces(parts.store, viewerOf(request)) };
+}
+
+/** The same parts with nothing filtered out. Only for work that belongs to no one viewer. */
+export function rawPartsOf(ctx: RouteContext, request: FastifyRequest): Promise<WorkspaceParts> {
   return ctx.workspaces.of(request);
 }
 

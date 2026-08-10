@@ -1,4 +1,4 @@
-import { access, mkdir, readdir, writeFile } from 'node:fs/promises';
+import { access, mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { simpleGit, type SimpleGit } from 'simple-git';
 import {
@@ -213,6 +213,21 @@ async function isEmptyDir(target: string): Promise<boolean> {
   }
 }
 
+async function readTextOrEmpty(target: string): Promise<string> {
+  try {
+    return await readFile(target, 'utf8');
+  } catch {
+    return '';
+  }
+}
+
+/** Slash-joined plain directory names. A glob character or a `..` segment is refused. */
+function isSafeExcludePath(relDir: string): boolean {
+  const parts = relDir.split('/');
+  if (parts.length === 0 || parts.length > 4) return false;
+  return parts.every((part) => /^[A-Za-z0-9_][A-Za-z0-9._-]*$/.test(part) && part !== '..');
+}
+
 /**
  * Owns the content directory as a git repo: init or clone, commit, pull with rebase, push,
  * per-file history, and the debounced auto-commit that turns a burst of saves into one commit.
@@ -290,6 +305,36 @@ export class GitEngine {
   /** True when the content directory is already a git repo. */
   async isRepo(): Promise<boolean> {
     return pathExists(join(this.contentDir, '.git'));
+  }
+
+  /**
+   * Hide one directory from git for good. Used by private spaces: the line goes in before the
+   * directory exists, so git never sees the files at all.
+   *
+   * `.git/info/exclude` rather than a committed `.gitignore`, because the exclude file stays
+   * inside this clone. A `.gitignore` would push the slug names of every private space to the
+   * remote, which is a leak of its own. Idempotent, and safe on a repo that is not init'd yet.
+   */
+  async excludePath(relDir: string): Promise<void> {
+    if (!isSafeExcludePath(relDir)) throw validation(`Cannot exclude ${relDir}`);
+    await this.mutex.runExclusive(async () => {
+      const line = `/${relDir}/`;
+      const file = join(this.contentDir, '.git', 'info', 'exclude');
+      const current = (await readTextOrEmpty(file)).replace(/\r\n/g, '\n');
+      if (current.split('\n').includes(line)) return;
+      const head = current.length === 0 || current.endsWith('\n') ? current : `${current}\n`;
+      await mkdir(dirname(file), { recursive: true });
+      await writeFile(file, `${head}${line}\n`, 'utf8');
+    });
+  }
+
+  /** Every directory `.git/info/exclude` hides, as content-relative paths. */
+  async excludedPaths(): Promise<string[]> {
+    const raw = await readTextOrEmpty(join(this.contentDir, '.git', 'info', 'exclude'));
+    return raw
+      .split('\n')
+      .map((line) => /^\/(.+)\/$/.exec(line.trim())?.[1] ?? null)
+      .filter((name): name is string => name !== null);
   }
 
   /** Branch, ahead/behind against the remote-tracking ref, dirty files and the last commit. */

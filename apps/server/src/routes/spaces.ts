@@ -6,10 +6,12 @@ import {
   UpdateSpaceBodySchema,
   parseOrThrow,
   spaceFileRelPath,
+  unauthorized,
   type SpaceResponse,
   type SpacesResponse,
 } from '@tablinum/shared';
 import { API_PREFIX, partsOf, type RouteContext } from '../context.js';
+import { viewerOf } from '../private.js';
 
 const SlugParamsSchema = z.object({ slug: SpaceSlugSchema });
 
@@ -20,9 +22,21 @@ export function registerSpaceRoutes(app: FastifyInstance, ctx: RouteContext): vo
   });
 
   app.post(`${API_PREFIX}/spaces`, async (request): Promise<SpaceResponse> => {
-    const { store, wiring } = await partsOf(ctx, request);
+    const { store, git, live, wiring } = await partsOf(ctx, request);
     const body = parseOrThrow(CreateSpaceBodySchema, request.body, 'space');
-    const space = await store.createSpace(body);
+
+    const owner = body.private === true ? viewerOf(request) : null;
+    if (body.private === true && owner === null) {
+      throw unauthorized('Only a signed-in person can have a private space');
+    }
+    // The exclude line goes in first. Written afterwards, there would be a moment where the
+    // debounced autocommit could stage the space file and put the slug in the history for good.
+    if (owner !== null) await git.excludePath(body.slug);
+
+    const space = await store.createSpace(body, owner ?? undefined);
+    // The open sockets learn about the new space before its home page is announced on them.
+    if (owner !== null) await live.spacesChanged();
+
     // The store gives every new space a home page; index and commit it with the space file.
     const home = await store.getPageByPath(space.slug);
     await wiring.recordMutation({

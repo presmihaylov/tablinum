@@ -89,11 +89,18 @@ export const TreeNodeSchema: z.ZodType<TreeNode> = z.lazy(() =>
   }),
 );
 
+/**
+ * The user id of the one person a private space belongs to. An absent owner is a public
+ * space, which is what every space was before private spaces existed.
+ */
+export const SpaceOwnerSchema = z.string().min(1).max(64);
+
 export const SpaceSchema = z.object({
   slug: SpaceSlugSchema,
   name: z.string().min(1),
   icon: IconSchema.optional(),
   order: z.number().optional(),
+  owner: SpaceOwnerSchema.optional(),
 });
 
 /** Contents of a `_space.yml` file: everything about a space except its slug. */
@@ -101,6 +108,7 @@ export const SpaceFileSchema = z.object({
   name: z.string().min(1),
   icon: IconSchema.optional(),
   order: z.number().optional(),
+  owner: SpaceOwnerSchema.optional(),
 });
 
 export const SearchHitSchema = z.object({
@@ -201,6 +209,11 @@ export const CreateSpaceBodySchema = z.object({
   name: z.string().min(1),
   icon: IconSchema.optional(),
   order: z.number().optional(),
+  /**
+   * Ask for a space only the caller can see. The owner comes from the session, never from the
+   * body, so nobody can make a space in somebody else's name.
+   */
+  private: z.boolean().optional(),
 });
 
 export const UpdateSpaceBodySchema = z

@@ -11,6 +11,7 @@ import {
 import { isPublicRequest } from './auth.js';
 import type { ServerDeps } from './deps.js';
 import { LiveHub } from './live.js';
+import { privateSpacesOf } from './private.js';
 import { Wiring } from './wiring.js';
 
 /**
@@ -166,6 +167,7 @@ export class WorkspaceRegistry {
         return null;
       }
     });
+    live.useSpaces(() => privateSpacesOf(instance.store));
     live.start();
 
     const scoped: ServerDeps = { ...this.deps, ...instance };

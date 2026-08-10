@@ -151,6 +151,7 @@ function DateCell({ property, value, onChange }: CellProps) {
 
 function SelectCell({ property, value, onChange, onCreateOption, multi }: CellProps & { multi: boolean }) {
   const [open, setOpen] = useState(false);
+  const trigger = useRef<HTMLButtonElement | null>(null);
   const [query, setQuery] = useState('');
 
   const held = multi
@@ -186,6 +187,7 @@ function SelectCell({ property, value, onChange, onCreateOption, multi }: CellPr
   return (
     <>
       <button
+        ref={trigger}
         type="button"
         className="db-cell__button"
         aria-label={property.name}
@@ -198,7 +200,7 @@ function SelectCell({ property, value, onChange, onCreateOption, multi }: CellPr
         ))}
       </button>
       {open ? (
-        <Pop label={`${property.name} options`} onClose={() => setOpen(false)}>
+        <Pop label={`${property.name} options`} anchor={trigger} onClose={() => setOpen(false)}>
           <input
             className="input"
             autoFocus
@@ -249,6 +251,7 @@ function SelectCell({ property, value, onChange, onCreateOption, multi }: CellPr
 
 function PersonCell({ property, value, people, onChange }: CellProps) {
   const [open, setOpen] = useState(false);
+  const trigger = useRef<HTMLButtonElement | null>(null);
   const held = Array.isArray(value) ? value : [];
   const named = held.map((id) => people.find((person) => person.id === id)?.name ?? id);
 
@@ -260,6 +263,7 @@ function PersonCell({ property, value, people, onChange }: CellProps) {
   return (
     <>
       <button
+        ref={trigger}
         type="button"
         className="db-cell__button"
         aria-label={property.name}
@@ -274,7 +278,7 @@ function PersonCell({ property, value, people, onChange }: CellProps) {
         ))}
       </button>
       {open ? (
-        <Pop label={`${property.name} people`} onClose={() => setOpen(false)}>
+        <Pop label={`${property.name} people`} anchor={trigger} onClose={() => setOpen(false)}>
           <div className="db-pop__list">
             {people
               .filter((person) => !person.disabled)

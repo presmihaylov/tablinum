@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   PROPERTY_TYPES,
   type Database,
@@ -31,6 +31,7 @@ interface PropertyHeadProps {
 export function PropertyHead({ property, database, view, onDatabaseChange }: PropertyHeadProps) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(property.name);
+  const trigger = useRef<HTMLButtonElement | null>(null);
 
   const patchProperty = (patch: Partial<DbProperty>): void => {
     onDatabaseChange({
@@ -85,6 +86,7 @@ export function PropertyHead({ property, database, view, onDatabaseChange }: Pro
   return (
     <>
       <button
+        ref={trigger}
         type="button"
         className="db-table__head"
         aria-haspopup="menu"
@@ -98,7 +100,7 @@ export function PropertyHead({ property, database, view, onDatabaseChange }: Pro
         <span className="db-table__kind">{TYPE_LABEL[property.type]}</span>
       </button>
       {open ? (
-        <Pop label={`${property.name} column`} onClose={() => setOpen(false)}>
+        <Pop label={`${property.name} column`} anchor={trigger} onClose={() => setOpen(false)}>
           <input
             className="input"
             autoFocus

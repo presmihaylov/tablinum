@@ -133,6 +133,41 @@ test.describe('databases', () => {
     await expect.poll(async () => (await content.read(file)) ?? '').toContain('name: Doing');
   });
 
+  test('opens a column menu the grid cannot clip', async ({ page }) => {
+    await page.goto(`/p/${path}`);
+    await expect(grid(page)).toBeVisible();
+
+    // Enough columns to make the grid scroll sideways. The last one used to open a menu that
+    // the scroller cut in half, because the menu was drawn inside the scroller.
+    for (let n = 0; n < 6; n += 1) await grid(page).getByLabel('Add a property').click();
+    const last = grid(page).getByRole('columnheader').nth(-2).getByRole('button');
+    await expect(last).toBeVisible();
+    const scrolled = await grid(page).evaluate((node) => {
+      const scroller = node.closest('.db__scroll');
+      if (scroller === null) return 0;
+      scroller.scrollLeft = scroller.scrollWidth;
+      return scroller.scrollLeft;
+    });
+    // Without an overflow there is nothing to clip, so the rest of the test would prove nothing.
+    expect(scrolled).toBeGreaterThan(0);
+
+    await last.click();
+    const menu = page.getByRole('menu');
+    await expect(menu).toBeVisible();
+
+    // It hangs off the body, so no scroller of the grid owns it.
+    await expect(page.locator('.db__scroll').getByRole('menu')).toHaveCount(0);
+    const box = await menu.boundingBox();
+    const size = page.viewportSize();
+    expect(box).not.toBeNull();
+    expect(size).not.toBeNull();
+    if (box === null || size === null) return;
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.y).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(size.width);
+    expect(box.y + box.height).toBeLessThanOrEqual(size.height);
+  });
+
   test('renames a column and hides it from the view', async ({ page, content }) => {
     await page.goto(`/p/${path}`);
     await expect(grid(page)).toBeVisible();
@@ -206,6 +241,19 @@ test.describe('databases', () => {
 
     await panel.getByLabel('Notes').fill('Before Friday');
     await panel.getByLabel('Notes').press('Enter');
+
+    // The cell menus draw in a layer on the body now. The layer must sit over the panel, or
+    // nobody could pick anything from a cell opened here.
+    const status = panel.getByRole('button', { name: 'Status', exact: true });
+    await status.click();
+    const options = page.getByRole('menu', { name: 'Status options' });
+    await expect(options).toBeVisible();
+    await expect(page.locator('.modal').getByRole('menu')).toHaveCount(0);
+    await options.getByLabel('Search Status options').fill('Doing');
+    await options.getByRole('menuitem', { name: /Create/ }).click();
+    await expect(status).toContainText('Doing');
+
+    await page.keyboard.press('Escape');
     await page.keyboard.press('Escape');
 
     await expect(panel).toHaveCount(0);

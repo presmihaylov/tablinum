@@ -1,4 +1,4 @@
-import { useState, type DragEvent } from 'react';
+import { useRef, useState, type DragEvent } from 'react';
 import {
   boardGroups,
   boardProperty,
@@ -326,6 +326,7 @@ interface GroupMenuProps {
 function GroupMenu({ option, onRename, onRemove }: GroupMenuProps) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(option.name);
+  const trigger = useRef<HTMLButtonElement | null>(null);
 
   const commit = (): void => {
     const next = name.trim();
@@ -339,6 +340,7 @@ function GroupMenu({ option, onRename, onRemove }: GroupMenuProps) {
   return (
     <>
       <button
+        ref={trigger}
         type="button"
         className="db-board__group"
         aria-label={`Stack menu for ${option.name}`}
@@ -351,6 +353,7 @@ function GroupMenu({ option, onRename, onRemove }: GroupMenuProps) {
       {open ? (
         <Pop
           label={`Stack ${option.name}`}
+          anchor={trigger}
           onClose={() => {
             setOpen(false);
             setName(option.name);
@@ -470,6 +473,7 @@ function Card({
   onOpen,
 }: CardProps) {
   const [open, setOpen] = useState(false);
+  const trigger = useRef<HTMLButtonElement | null>(null);
   const filled = properties.filter((property) => (row.props[property.id] ?? null) !== null);
 
   return (
@@ -491,6 +495,7 @@ function Card({
           {row.title}
         </button>
         <button
+          ref={trigger}
           type="button"
           className="db-card__menu"
           aria-label={`Card menu for ${row.title}`}
@@ -501,7 +506,7 @@ function Card({
           ⋯
         </button>
         {open ? (
-          <Pop label="Card menu" onClose={() => setOpen(false)}>
+          <Pop label="Card menu" anchor={trigger} onClose={() => setOpen(false)}>
             <div className="db-pop__label">Move to</div>
             {groups.map((group) => (
               <button

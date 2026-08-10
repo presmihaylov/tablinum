@@ -276,13 +276,15 @@
   color: var(--text);
 }
 
+/* A layer on the body: the grid scroller used to clip it. Placed by Pop.tsx.
+   Above the modal, because a row opened on its own holds the same cells. */
 .db-pop {
-  position: absolute;
-  z-index: 40;
-  top: 100%;
-  left: 0;
+  position: fixed;
+  z-index: 90;
   min-width: 13rem;
   max-width: 20rem;
+  max-height: calc(100vh - 1rem);
+  overflow-y: auto;
   background: var(--bg-raised);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);

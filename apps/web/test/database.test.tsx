@@ -296,6 +296,19 @@ describe('the schema', () => {
     });
   });
 
+  // The grid scrolls sideways, so a menu drawn inside it was cut off at the right edge.
+  it('draws the column menu in a layer outside the grid', async () => {
+    const user = userEvent.setup();
+    mount();
+    const table = await screen.findByTestId('db-table');
+
+    await user.click(screen.getByRole('button', { name: /^Notes/ }));
+
+    const menu = await screen.findByRole('menu', { name: 'Notes column' });
+    expect(table.contains(menu)).toBe(false);
+    expect(menu.parentElement).toBe(document.body);
+  });
+
   it('renames a property from its header menu', async () => {
     const user = userEvent.setup();
     mount();

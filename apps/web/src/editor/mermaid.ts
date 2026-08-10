@@ -11,8 +11,11 @@ export const MERMAID_LANGUAGE = 'mermaid';
 export const MERMAID_STARTER =
   'graph TD\n  A[Start] --> B{Is it good?}\n  B -->|yes| C[Ship it]\n  B -->|no| A';
 
-/** Quiet period before a re-render. Parsing a diagram is not free. */
-export const MERMAID_DEBOUNCE_MS = 300;
+/**
+ * Quiet period before a re-render. Parsing a diagram is not free, and half-typed mermaid
+ * is invalid mermaid, so the check waits until the typing really stops.
+ */
+export const MERMAID_DEBOUNCE_MS = 700;
 
 export type MermaidTheme = 'light' | 'dark';
 

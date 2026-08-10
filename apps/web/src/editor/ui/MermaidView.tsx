@@ -27,6 +27,10 @@ export function MermaidView({ node, updateAttributes, editor, getPos }: NodeView
   const inside = useCaretInside(editor, getPos, node.nodeSize);
   const open = editor.isEditable && inside && !collapsed;
 
+  // An error belongs to the source it was raised for. While more keys are on the way the
+  // line would name a mistake in text nobody has finished writing, so it waits.
+  const shown = settled === source ? error : null;
+
   // The caret left, so the next visit opens the source again.
   useEffect(() => {
     if (!inside) setCollapsed(false);
@@ -123,17 +127,17 @@ export function MermaidView({ node, updateAttributes, editor, getPos }: NodeView
           // mermaid ran with `securityLevel: 'strict'`, which puts its own output through
           // DOMPurify before handing it back. Nothing else here is ever set as HTML.
           <div
-            className={`gd-editor-mermaid__figure${error === null ? '' : ' is-stale'}`}
+            className={`gd-editor-mermaid__figure${shown === null ? '' : ' is-stale'}`}
             dangerouslySetInnerHTML={{ __html: svg }}
           />
         ) : (
-          <p className="gd-editor-mermaid__note">{emptyNote(source, error)}</p>
+          <p className="gd-editor-mermaid__note">{emptyNote(source, shown)}</p>
         )}
       </div>
 
-      {error === null ? null : (
+      {shown === null ? null : (
         <p className="gd-editor-mermaid__error" contentEditable={false}>
-          {error}
+          {shown}
         </p>
       )}
     </NodeViewWrapper>

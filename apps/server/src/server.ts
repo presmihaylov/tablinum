@@ -176,6 +176,10 @@ class CoreGitAdapter implements GitEngine {
     return this.core.excludePath(relDir);
   }
 
+  excludedPaths(): Promise<string[]> {
+    return this.core.excludedPaths();
+  }
+
   status(): Promise<GitStatus> {
     return this.core.status();
   }

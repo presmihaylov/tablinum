@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   AuthResponseSchema,
   BacklinksResponseSchema,
+  DEFAULT_WORKSPACE_SLUG,
   ErrorBodySchema,
   InviteResponseSchema,
   PageListResponseSchema,
@@ -13,6 +14,7 @@ import {
   SpacesResponseSchema,
   TreeResponseSchema,
 } from '@tablinum/shared';
+import { readZip } from '../src/zip.js';
 import { bodyOf, makeHarness, seed, TEST_TOKEN, type Harness } from './support/harness.js';
 import { multipart } from './support/multipart.js';
 
@@ -319,6 +321,23 @@ describe('private spaces', () => {
     expect(harness.git.excluded).toContain(`_assets/${pageId}`);
     await harness.git.flush();
     expect((await gitLines(['ls-files'])).filter((file) => file.startsWith('_assets/'))).toEqual([]);
+  });
+
+  it('keeps a private space out of a workspace export', async () => {
+    const { owner } = await ownedSpace();
+
+    const exported = await harness.app.inject({
+      method: 'GET',
+      url: `/api/v1/workspaces/${DEFAULT_WORKSPACE_SLUG}/export`,
+      headers: { cookie: owner },
+    });
+    expect(exported.statusCode).toBe(200);
+
+    const names = readZip(exported.rawPayload).map((entry) => entry.name);
+    expect(names).toContain('eng/deploy.md');
+    expect(names.filter((name) => name.startsWith('notes'))).toEqual([]);
+    // The exclude file lists every private space, so the archive would leak the names alone.
+    expect(names).not.toContain('.git/info/exclude');
   });
 
   it('keeps the owner through a rename, so a patch cannot make the space public', async () => {

@@ -90,6 +90,10 @@ export class TestGitEngine implements GitEngine {
     await writeFile(file, `${head}${line}\n`, 'utf8');
   }
 
+  async excludedPaths(): Promise<string[]> {
+    return [...this.excluded];
+  }
+
   async init(): Promise<void> {
     if (existsSync(join(this.contentDir, '.git'))) return;
     try {

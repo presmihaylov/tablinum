@@ -93,6 +93,12 @@ export interface ZipEntry {
 export interface ZipOptions {
   /** Refuse an archive larger than this. Guards against zipping something enormous by mistake. */
   maxBytes?: number;
+
+  /**
+   * Called with each slash separated path, relative to the root, before it enters the archive.
+   * A directory that is skipped is not walked into. Private spaces stay out this way.
+   */
+  skip?: (relPath: string) => boolean;
 }
 
 export const DEFAULT_MAX_ZIP_BYTES = 512 * 1024 * 1024;
@@ -100,28 +106,36 @@ export const DEFAULT_MAX_ZIP_BYTES = 512 * 1024 * 1024;
 /** Names that must never be walked into, whatever the caller points at. */
 const SKIP_ALWAYS = new Set(['.DS_Store']);
 
-async function walk(root: string, dir: string, out: string[]): Promise<void> {
+async function walk(
+  root: string,
+  dir: string,
+  out: string[],
+  skip: (relPath: string) => boolean,
+): Promise<void> {
   const entries = await readdir(dir, { withFileTypes: true });
   for (const entry of entries.sort((a, b) => (a.name < b.name ? -1 : 1))) {
     if (SKIP_ALWAYS.has(entry.name)) continue;
     const absolute = join(dir, entry.name);
     // A symlink is not followed: an archive that can point outside itself is a trap.
     if (entry.isSymbolicLink()) continue;
+    const rel = relative(root, absolute).split(sep).join('/');
+    if (skip(rel)) continue;
     if (entry.isDirectory()) {
-      out.push(`${relative(root, absolute).split(sep).join('/')}/`);
-      await walk(root, absolute, out);
+      out.push(`${rel}/`);
+      await walk(root, absolute, out, skip);
       continue;
     }
     if (!entry.isFile()) continue;
-    out.push(relative(root, absolute).split(sep).join('/'));
+    out.push(rel);
   }
 }
 
 /** Zip a whole directory, dotfiles and `.git` included. */
 export async function zipDirectory(root: string, options: ZipOptions = {}): Promise<Buffer> {
   const maxBytes = options.maxBytes ?? DEFAULT_MAX_ZIP_BYTES;
+  const skip = options.skip ?? (() => false);
   const names: string[] = [];
-  await walk(root, root, names);
+  await walk(root, root, names, skip);
 
   const parts: Buffer[] = [];
   const entries: PendingEntry[] = [];

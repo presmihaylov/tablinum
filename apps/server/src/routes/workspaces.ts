@@ -260,7 +260,13 @@ export function registerWorkspaceRoutes(app: FastifyInstance, ctx: RouteContext)
     const parts = await ctx.workspaces.open(record);
     // Commit first, or the export would miss whatever the last few saves have not committed.
     await parts.git.commit(`Export workspace ${record.name}`);
-    const archive = await zipDirectory(parts.store.contentDir, { maxBytes: MAX_WORKSPACE_ZIP_BYTES });
+    // An archive leaves the machine, which is the one thing a private space must never do. The
+    // git exclude list is exactly that set, and it names every private space, so it goes too.
+    const hidden = new Set(await parts.git.excludedPaths());
+    const archive = await zipDirectory(parts.store.contentDir, {
+      maxBytes: MAX_WORKSPACE_ZIP_BYTES,
+      skip: (rel) => rel === '.git/info/exclude' || hidden.has(rel),
+    });
 
     return reply
       .header('content-type', 'application/zip')

@@ -142,6 +142,9 @@ export interface GitEngine {
   /** Hide one content-relative directory from git for good. Private spaces live behind it. */
   excludePath(relDir: string): Promise<void>;
 
+  /** Every directory the exclude list hides, as content-relative paths. */
+  excludedPaths(): Promise<string[]>;
+
   status(): Promise<GitStatus>;
   pull(): Promise<{ status: GitStatus; pulled: number; files: string[] }>;
   push(): Promise<{ status: GitStatus; pushed: boolean }>;

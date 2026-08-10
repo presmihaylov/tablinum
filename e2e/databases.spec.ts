@@ -82,8 +82,12 @@ test.describe('databases', () => {
     await page.goto(`/p/${path}`);
     await addRow(page, 'Ship it');
 
-    await expect.poll(async () => (await content.pageFileText(path)) ?? '').toContain('rows:');
-    expect((await content.pageFileText(path)) ?? '').toContain('title: Ship it');
+    // The row lands first and the typed title a moment later, so poll for the title itself.
+    await expect
+      .poll(async () => (await content.pageFileText(path)) ?? '', {
+        message: 'the row title never reached the database page',
+      })
+      .toContain('title: Ship it');
 
     const notes = (await rowOf(page, 'Ship it')).getByLabel('Notes');
     await notes.fill('Before Friday');

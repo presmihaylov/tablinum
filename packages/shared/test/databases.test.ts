@@ -3,6 +3,8 @@ import {
   DatabaseSchema,
   OPS_FOR_TYPE,
   applyView,
+  boardGroups,
+  boardProperty,
   coerceProps,
   coerceValue,
   compareValues,
@@ -341,5 +343,104 @@ describe('compareValues', () => {
 
   it('sorts an unchecked box before a checked one', () => {
     expect(compareValues(done, false, true)).toBeLessThan(0);
+  });
+});
+
+describe('boardProperty', () => {
+  const board: DbView = { ...view, id: newViewId(), name: 'Board', type: 'board' };
+
+  it('takes the property the view names', () => {
+    const other: DbProperty = { id: newPropertyId(), name: 'Stage', type: 'select', options: [] };
+    const wider: Database = { properties: [...database.properties, other], views: [board] };
+    expect(boardProperty(wider, { ...board, groupBy: other.id })?.id).toBe(other.id);
+  });
+
+  it('falls back to the first select property when the view names none', () => {
+    expect(boardProperty(database, board)?.id).toBe(status.id);
+  });
+
+  it('falls back when the view names a property that is gone', () => {
+    expect(boardProperty(database, { ...board, groupBy: newPropertyId() })?.id).toBe(status.id);
+  });
+
+  it('falls back when the view names a property that holds no options', () => {
+    expect(boardProperty(database, { ...board, groupBy: notes.id })?.id).toBe(status.id);
+  });
+
+  it('is null when the database has no select property at all', () => {
+    const plain: Database = { properties: [score, notes], views: [board] };
+    expect(boardProperty(plain, board)).toBeNull();
+  });
+});
+
+describe('boardGroups', () => {
+  const board: DbView = { ...view, id: newViewId(), name: 'Board', type: 'board' };
+  const rows = [
+    row('a', { [status.id]: DOING.id }),
+    row('b', {}),
+    row('c', { [status.id]: TODO.id }),
+    row('d', { [status.id]: DOING.id }),
+  ];
+
+  it('opens with the empty stack, then one stack for each option in order', () => {
+    const groups = boardGroups(database, board, rows);
+    expect(groups.map((group) => group.name)).toEqual(['No Status', 'Todo', 'Doing', 'Done']);
+    expect(groups[0]?.id).toBeNull();
+    expect(groups[1]?.id).toBe(TODO.id);
+  });
+
+  it('deals each row to the stack of its option', () => {
+    const groups = boardGroups(database, board, rows);
+    expect(groups.map((group) => group.rows.map((entry) => entry.id))).toEqual([
+      ['b'],
+      ['c'],
+      ['a', 'd'],
+      [],
+    ]);
+  });
+
+  it('carries the colour of the option, and gray for the empty stack', () => {
+    const groups = boardGroups(database, board, rows);
+    expect(groups[0]?.color).toBe('gray');
+    expect(groups[2]?.color).toBe('blue');
+  });
+
+  it('puts a card naming an option nobody kept on the empty stack', () => {
+    const stray = row('e', { [status.id]: newOptionId() });
+    const groups = boardGroups(database, board, [stray]);
+    expect(groups[0]?.rows.map((entry) => entry.id)).toEqual(['e']);
+  });
+
+  it('drops the cards the filters of the view drop', () => {
+    const filtered: DbView = {
+      ...board,
+      filters: [{ property: status.id, op: 'is', value: DOING.id }],
+    };
+    const groups = boardGroups(database, filtered, rows);
+    expect(groups.flatMap((group) => group.rows.map((entry) => entry.id))).toEqual(['a', 'd']);
+  });
+
+  it('stacks the cards in the order the sorts of the view give them', () => {
+    const scored = [
+      row('a', { [status.id]: DOING.id, [score.id]: 2 }),
+      row('d', { [status.id]: DOING.id, [score.id]: 1 }),
+    ];
+    const sorted: DbView = { ...board, sorts: [{ property: score.id, direction: 'asc' }] };
+    const groups = boardGroups(database, sorted, scored);
+    expect(groups[2]?.rows.map((entry) => entry.id)).toEqual(['d', 'a']);
+  });
+
+  it('gives one stack holding everything when no select property exists', () => {
+    const plain: Database = { properties: [score, notes], views: [board] };
+    const groups = boardGroups(plain, board, [row('a', {}), row('b', {})]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.name).toBe('All');
+    expect(groups[0]?.rows).toHaveLength(2);
+  });
+
+  it('names the empty stack after the property it groups by', () => {
+    const other: DbProperty = { id: newPropertyId(), name: 'Stage', type: 'select', options: [] };
+    const wider: Database = { properties: [other, ...database.properties], views: [board] };
+    expect(boardGroups(wider, board, [])[0]?.name).toBe('No Stage');
   });
 });

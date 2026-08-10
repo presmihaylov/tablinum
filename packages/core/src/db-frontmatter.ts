@@ -176,7 +176,11 @@ function readView(raw: unknown, seen: Set<string>): { value: DbView | null; exac
     hidden.push(entry);
   }
 
-  return { value: { id, name, type: raw['type'] as ViewType, filters, sorts, hidden }, exact };
+  const view: DbView = { id, name, type: raw['type'] as ViewType, filters, sorts, hidden };
+  if (isPropertyId(raw['groupBy'])) view.groupBy = raw['groupBy'];
+  if (raw['groupBy'] !== undefined && view.groupBy === undefined) exact = false;
+
+  return { value: view, exact };
 }
 
 /**
@@ -294,6 +298,7 @@ export function stringifyDatabase(database: Database): string {
     const at = `${INDENT}${INDENT}  `;
     lines.push(`${at}name: ${emitString(view.name)}`);
     lines.push(`${at}type: ${view.type}`);
+    if (view.groupBy !== undefined) lines.push(`${at}groupBy: ${view.groupBy}`);
     if (view.filters.length > 0) {
       lines.push(`${at}filters:`);
       for (const filter of view.filters) {
@@ -358,6 +363,7 @@ export function databaseEqual(a: Database | undefined, b: Database | undefined):
     x.id === y.id &&
     x.name === y.name &&
     x.type === y.type &&
+    (x.groupBy ?? null) === (y.groupBy ?? null) &&
     sameList(x.filters, y.filters, (f, g) => f.property === g.property && f.op === g.op && sameValue(f.value, g.value)) &&
     sameList(x.sorts, y.sorts, (s, t) => s.property === t.property && s.direction === t.direction) &&
     sameList(x.hidden, y.hidden, (h, i) => h === i);

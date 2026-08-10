@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   newOptionId,
@@ -8,6 +8,7 @@ import {
   type Account,
   type Database,
   type DbRow,
+  type DbView,
   type Page,
 } from '@tablinum/shared';
 import { DatabaseView } from '../src/components/Database/DatabaseView';
@@ -413,6 +414,7 @@ describe('views', () => {
     await screen.findByTestId('db-table');
 
     await user.click(screen.getByLabelText('Add a view'));
+    await user.click(await screen.findByRole('menuitem', { name: 'Table' }));
 
     await waitFor(() => {
       const saved = lastCall('PUT', '/database') as { database: Database } | null;
@@ -494,5 +496,328 @@ describe('rows', () => {
       name: 'Open',
     });
     expect(link.getAttribute('href')).toContain('eng/tasks/one');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// the board
+// ---------------------------------------------------------------------------
+
+function boardDatabase(overrides: Partial<DbView> = {}): Database {
+  const base = database();
+  return {
+    ...base,
+    views: [{ ...base.views[0]!, name: 'Board', type: 'board', groupBy: STATUS, ...overrides }],
+  };
+}
+
+/** A stack of the board, once the fetch behind it has landed. */
+async function column(optionId: string | null): Promise<HTMLElement> {
+  return waitFor(() => {
+    const found = document.querySelector(`[data-group="${optionId ?? 'none'}"]`);
+    if (found === null) throw new Error(`No stack for ${optionId ?? 'none'}`);
+    return found as HTMLElement;
+  });
+}
+
+/** The card of one record. */
+async function card(title: string): Promise<HTMLElement> {
+  const target = ROWS.find((entry) => entry.title === title);
+  if (target === undefined) throw new Error(`No row titled ${title}`);
+  return waitFor(() => {
+    const found = document.querySelector(`article[data-row-id="${target.id}"]`);
+    if (found === null) throw new Error(`No card rendered for ${title}`);
+    return found as HTMLElement;
+  });
+}
+
+/** A stand-in for the drag payload, which jsdom does not carry itself. */
+function dragPayload(): DataTransfer {
+  const store: Record<string, string> = {};
+  const payload = {
+    effectAllowed: 'move',
+    dropEffect: 'move',
+    get types(): string[] {
+      return Object.keys(store);
+    },
+    setData: (type: string, value: string) => {
+      store[type] = value;
+    },
+    getData: (type: string) => store[type] ?? '',
+  };
+  return payload as unknown as DataTransfer;
+}
+
+describe('the board', () => {
+  it('draws the empty stack first and then one stack per option', async () => {
+    mount({ db: boardDatabase() });
+
+    const board = await screen.findByTestId('db-board');
+    const names = [...board.querySelectorAll('.db-board__col')].map((col) =>
+      col.getAttribute('aria-label'),
+    );
+    expect(names).toEqual(['No Status', 'Todo', 'Done']);
+  });
+
+  it('deals every card to the stack of its option', async () => {
+    mount({ db: boardDatabase() });
+    await screen.findByTestId('db-board');
+
+    expect(within(await column(TODO)).getByText('Ship it')).toBeTruthy();
+    expect(within(await column(DONE)).getByText('Write it')).toBeTruthy();
+    expect((await column(null)).textContent).toContain('0');
+  });
+
+  it('counts the cards of each stack', async () => {
+    mount({ db: boardDatabase() });
+    await screen.findByTestId('db-board');
+
+    expect(within(await column(TODO)).getByText('1')).toBeTruthy();
+  });
+
+  it('shows the other values on the card and never the one it stacks by', async () => {
+    mount({ db: boardDatabase() });
+    await screen.findByTestId('db-board');
+
+    const first = await card('Ship it');
+    expect(first.textContent).toContain('first');
+    expect(first.querySelector(`[data-property="${STATUS}"]`)).toBeNull();
+  });
+
+  it('leaves out a property the view hides', async () => {
+    mount({ db: boardDatabase({ hidden: [NOTES] }) });
+    await screen.findByTestId('db-board');
+
+    expect((await card('Ship it')).textContent).not.toContain('first');
+  });
+
+  it('links a card to the page the row lives on', async () => {
+    mount({ db: boardDatabase() });
+    await screen.findByTestId('db-board');
+
+    const link = within(await card('Ship it')).getByRole('link', { name: 'Ship it' });
+    expect(link.getAttribute('href')).toBe('/p/eng/tasks/one');
+  });
+
+  it('moves a card dropped on another stack', async () => {
+    mount({
+      db: boardDatabase(),
+      routes: {
+        [`PATCH /api/v1/pages/${ROWS[0]!.id}/row`]: () => ({ row: ROWS[0]! }),
+      },
+    });
+    await screen.findByTestId('db-board');
+
+    const payload = dragPayload();
+    fireEvent.dragStart(await card('Ship it'), { dataTransfer: payload });
+    fireEvent.dragOver(await column(DONE), { dataTransfer: payload });
+    fireEvent.drop(await column(DONE), { dataTransfer: payload });
+
+    await waitFor(() => expect(lastCall('PATCH', '/row')).toEqual({ props: { [STATUS]: DONE } }));
+  });
+
+  it('clears the cell of a card dropped on the empty stack', async () => {
+    mount({
+      db: boardDatabase(),
+      routes: {
+        [`PATCH /api/v1/pages/${ROWS[0]!.id}/row`]: () => ({ row: ROWS[0]! }),
+      },
+    });
+    await screen.findByTestId('db-board');
+
+    const payload = dragPayload();
+    fireEvent.dragStart(await card('Ship it'), { dataTransfer: payload });
+    fireEvent.drop(await column(null), { dataTransfer: payload });
+
+    await waitFor(() => expect(lastCall('PATCH', '/row')).toEqual({ props: { [STATUS]: null } }));
+  });
+
+  it('says nothing to the server when a card lands on the stack it came from', async () => {
+    mount({ db: boardDatabase() });
+    await screen.findByTestId('db-board');
+
+    const payload = dragPayload();
+    fireEvent.dragStart(await card('Ship it'), { dataTransfer: payload });
+    fireEvent.drop(await column(TODO), { dataTransfer: payload });
+
+    expect(lastCall('PATCH', '/row')).toBeNull();
+  });
+
+  it('moves a card from its own menu', async () => {
+    const user = userEvent.setup();
+    mount({
+      db: boardDatabase(),
+      routes: {
+        [`PATCH /api/v1/pages/${ROWS[0]!.id}/row`]: () => ({ row: ROWS[0]! }),
+      },
+    });
+    await screen.findByTestId('db-board');
+
+    await user.click(within(await card('Ship it')).getByLabelText('Card menu for Ship it'));
+    await user.click(await screen.findByRole('menuitem', { name: 'Done' }));
+
+    await waitFor(() => expect(lastCall('PATCH', '/row')).toEqual({ props: { [STATUS]: DONE } }));
+  });
+
+  it('deletes a row from the card menu', async () => {
+    const user = userEvent.setup();
+    mount({
+      db: boardDatabase(),
+      routes: { [`DELETE /api/v1/pages/${ROWS[0]!.id}`]: () => ({ ok: true }) },
+    });
+    await screen.findByTestId('db-board');
+
+    await user.click(within(await card('Ship it')).getByLabelText('Card menu for Ship it'));
+    await user.click(await screen.findByRole('menuitem', { name: /Delete row/ }));
+
+    await waitFor(() =>
+      expect(
+        (server?.calls ?? []).some(
+          (call) => call.method === 'DELETE' && call.url.pathname.endsWith(ROWS[0]!.id),
+        ),
+      ).toBe(true),
+    );
+  });
+
+  it('creates a row already holding the option of its stack', async () => {
+    const user = userEvent.setup();
+    mount({ db: boardDatabase() });
+    await screen.findByTestId('db-board');
+
+    await user.click(screen.getByLabelText('New card in Done'));
+
+    await waitFor(() =>
+      expect(lastCall('POST', '/database/rows')).toEqual({ props: { [STATUS]: DONE } }),
+    );
+  });
+
+  it('creates a plain row from the empty stack', async () => {
+    const user = userEvent.setup();
+    mount({ db: boardDatabase() });
+    await screen.findByTestId('db-board');
+
+    await user.click(screen.getByLabelText('New card in No Status'));
+
+    await waitFor(() => expect(lastCall('POST', '/database/rows')).toEqual({}));
+  });
+
+  it('asks for a select column when the database has none', async () => {
+    const plain: Database = {
+      properties: [{ id: NOTES, name: 'Notes', type: 'text', options: [] }],
+      views: [{ id: VIEW, name: 'Board', type: 'board', filters: [], sorts: [], hidden: [] }],
+    };
+    mount({ db: plain, rows: [] });
+
+    expect(
+      await screen.findByText(/A board stacks its cards by a select column/),
+    ).toBeTruthy();
+  });
+
+  it('keeps the filters of the view', async () => {
+    mount({ db: boardDatabase({ filters: [{ property: STATUS, op: 'is', value: DONE }] }) });
+    await screen.findByTestId('db-board');
+
+    expect((await column(DONE)).textContent).toContain('Write it');
+    expect((await column(TODO)).textContent).not.toContain('Ship it');
+  });
+});
+
+describe('the view menu', () => {
+  it('turns a table into a board and names the column it stacks by', async () => {
+    const user = userEvent.setup();
+    mount();
+    await screen.findByTestId('db-table');
+
+    await user.click(screen.getByRole('tab', { name: 'Table' }));
+    await user.selectOptions(await screen.findByLabelText('View layout'), 'board');
+
+    await waitFor(() => {
+      const saved = lastCall('PUT', '/database') as { database: Database } | null;
+      expect(saved?.database.views[0]?.type).toBe('board');
+      expect(saved?.database.views[0]?.groupBy).toBe(STATUS);
+    });
+  });
+
+  it('renames the open view', async () => {
+    const user = userEvent.setup();
+    mount();
+    await screen.findByTestId('db-table');
+
+    await user.click(screen.getByRole('tab', { name: 'Table' }));
+    const input = await screen.findByLabelText('View name');
+    await user.clear(input);
+    await user.type(input, 'Everything{Enter}');
+
+    await waitFor(() => {
+      const saved = lastCall('PUT', '/database') as { database: Database } | null;
+      expect(saved?.database.views[0]?.name).toBe('Everything');
+    });
+  });
+
+  it('changes the column a board stacks by', async () => {
+    const user = userEvent.setup();
+    const second = newPropertyId();
+    const wider: Database = {
+      properties: [
+        ...database().properties,
+        { id: second, name: 'Stage', type: 'select', options: [] },
+      ],
+      views: boardDatabase().views,
+    };
+    mount({ db: wider });
+    await screen.findByTestId('db-board');
+
+    await user.click(screen.getByRole('tab', { name: 'Board' }));
+    await user.selectOptions(await screen.findByLabelText('Group by'), second);
+
+    await waitFor(() => {
+      const saved = lastCall('PUT', '/database') as { database: Database } | null;
+      expect(saved?.database.views[0]?.groupBy).toBe(second);
+    });
+  });
+
+  it('adds a board view that already knows what to stack by', async () => {
+    const user = userEvent.setup();
+    mount();
+    await screen.findByTestId('db-table');
+
+    await user.click(screen.getByLabelText('Add a view'));
+    await user.click(await screen.findByRole('menuitem', { name: 'Board' }));
+
+    await waitFor(() => {
+      const saved = lastCall('PUT', '/database') as { database: Database } | null;
+      expect(saved?.database.views[1]?.type).toBe('board');
+      expect(saved?.database.views[1]?.name).toBe('Board 2');
+      expect(saved?.database.views[1]?.groupBy).toBe(STATUS);
+    });
+  });
+
+  it('deletes a view once a second one exists', async () => {
+    const user = userEvent.setup();
+    const base = database();
+    const two: Database = {
+      ...base,
+      views: [base.views[0]!, { ...base.views[0]!, id: newViewId(), name: 'Board', type: 'board' }],
+    };
+    mount({ db: two });
+    await screen.findByTestId('db-table');
+
+    await user.click(screen.getByRole('tab', { name: 'Table' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Delete view' }));
+
+    await waitFor(() => {
+      const saved = lastCall('PUT', '/database') as { database: Database } | null;
+      expect(saved?.database.views).toHaveLength(1);
+      expect(saved?.database.views[0]?.name).toBe('Board');
+    });
+  });
+
+  it('keeps the only view, which the database cannot be drawn without', async () => {
+    const user = userEvent.setup();
+    mount();
+    await screen.findByTestId('db-table');
+
+    await user.click(screen.getByRole('tab', { name: 'Table' }));
+    expect(screen.queryByRole('menuitem', { name: 'Delete view' })).toBeNull();
   });
 });

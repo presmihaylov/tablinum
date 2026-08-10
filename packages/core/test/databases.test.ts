@@ -453,3 +453,69 @@ describe('a database page under ordinary edits', () => {
     expect(page.database?.views).toHaveLength(1);
   });
 });
+
+// ---------------------------------------------------------------------------
+// board views
+// ---------------------------------------------------------------------------
+
+describe('a board view in the file', () => {
+  function boardDatabase(): Database {
+    const database = sampleDatabase();
+    const view = database.views[0];
+    if (view === undefined) throw new Error('the sample lost its view');
+    view.type = 'board';
+    view.groupBy = SELECT;
+    return database;
+  }
+
+  it('survives a round trip with its layout and its group', () => {
+    const database = boardDatabase();
+    const raw = parse(`---\n${stringifyDatabase(database)}\n---\n\nbody\n`);
+    expect(raw.frontmatter.db).toEqual(database);
+  });
+
+  it('writes the group under the view it belongs to', () => {
+    expect(stringifyDatabase(boardDatabase())).toContain(`groupBy: ${SELECT}`);
+  });
+
+  it('leaves the key out of a view that names no group', () => {
+    expect(stringifyDatabase(sampleDatabase())).not.toContain('groupBy');
+  });
+
+  it('drops a group that is not a property id, and asks for a rewrite', () => {
+    const read = readDatabase({
+      properties: [],
+      views: [{ id: VIEW, name: 'Board', type: 'board', groupBy: 'Status' }],
+    });
+    expect(read.value?.views[0]?.groupBy).toBeUndefined();
+    expect(read.exact).toBe(false);
+  });
+
+  it('drops a view whose layout nobody knows', () => {
+    const read = readDatabase({
+      properties: [],
+      views: [{ id: VIEW, name: 'Gallery', type: 'gallery' }],
+    });
+    expect(read.value?.views[0]?.type).toBe('table');
+    expect(read.exact).toBe(false);
+  });
+
+  it('tells two views apart by the group alone', () => {
+    const a = boardDatabase();
+    const b = boardDatabase();
+    const view = b.views[0];
+    if (view === undefined) throw new Error('the sample lost its view');
+    view.groupBy = TEXT;
+    expect(databaseEqual(a, b)).toBe(false);
+  });
+
+  it('reaches the page file and comes back off it', async () => {
+    const page = await store.createPage({ path: 'docs/tasks', title: 'Tasks' });
+    await store.setDatabase(page.id as PageId, boardDatabase());
+
+    expect(await readFileAt(dir, 'docs/tasks.md')).toContain(`groupBy: ${SELECT}`);
+    const read = await store.getDatabase(page.id as PageId);
+    expect(read.database.views[0]?.type).toBe('board');
+    expect(read.database.views[0]?.groupBy).toBe(SELECT);
+  });
+});

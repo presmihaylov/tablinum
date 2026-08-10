@@ -354,6 +354,7 @@ interface ViewTabProps {
 function ViewTab({ database, view, onChange, onDelete }: ViewTabProps) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(view.name);
+  const trigger = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => setName(view.name), [view.name]);
 
@@ -381,6 +382,7 @@ function ViewTab({ database, view, onChange, onDelete }: ViewTabProps) {
   return (
     <>
       <button
+        ref={trigger}
         type="button"
         role="tab"
         className="db__view db__view--on"
@@ -392,7 +394,7 @@ function ViewTab({ database, view, onChange, onDelete }: ViewTabProps) {
         {view.name}
       </button>
       {open ? (
-        <Pop label="View menu" onClose={() => setOpen(false)}>
+        <Pop label="View menu" anchor={trigger} onClose={() => setOpen(false)}>
           <input
             className="input"
             autoFocus
@@ -459,10 +461,12 @@ function ViewTab({ database, view, onChange, onDelete }: ViewTabProps) {
 
 function AddView({ onAdd }: { onAdd: (type: ViewType) => void }) {
   const [open, setOpen] = useState(false);
+  const trigger = useRef<HTMLButtonElement | null>(null);
 
   return (
     <>
       <button
+        ref={trigger}
         type="button"
         className="db__view"
         aria-label="Add a view"
@@ -473,7 +477,7 @@ function AddView({ onAdd }: { onAdd: (type: ViewType) => void }) {
         <Plus size={12} />
       </button>
       {open ? (
-        <Pop label="New view" onClose={() => setOpen(false)}>
+        <Pop label="New view" anchor={trigger} onClose={() => setOpen(false)}>
           {(['table', 'board'] as const).map((type) => (
             <button
               key={type}

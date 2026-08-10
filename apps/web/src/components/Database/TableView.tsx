@@ -125,6 +125,7 @@ interface TitleCellProps {
 function TitleCell({ row, onTitleChange, onDelete, onOpen }: TitleCellProps) {
   const [draft, setDraft] = useState(row.title);
   const [open, setOpen] = useState(false);
+  const trigger = useRef<HTMLButtonElement | null>(null);
   const focused = useRef(false);
 
   useEffect(() => {
@@ -162,6 +163,7 @@ function TitleCell({ row, onTitleChange, onDelete, onOpen }: TitleCellProps) {
         Open
       </button>
       <button
+        ref={trigger}
         type="button"
         className="db-table__open"
         aria-label={`Row menu for ${row.title}`}
@@ -172,7 +174,7 @@ function TitleCell({ row, onTitleChange, onDelete, onOpen }: TitleCellProps) {
         ⋯
       </button>
       {open ? (
-        <Pop label="Row menu" onClose={() => setOpen(false)}>
+        <Pop label="Row menu" anchor={trigger} onClose={() => setOpen(false)}>
           <button
             type="button"
             role="menuitem"

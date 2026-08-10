@@ -17,6 +17,7 @@ import type { ServerDeps } from './deps.js';
 import { registerErrorHandler } from './errors.js';
 import { LiveHub, registerLiveRoutes } from './live.js';
 import { createMentionNotifier } from './mentions.js';
+import { privateSpacesOf } from './private.js';
 import { createSlackApi, type SlackApi } from './slack.js';
 import { registerAgentRoutes } from './routes/agents.js';
 import { registerAssetRoutes, MAX_ASSET_BYTES } from './routes/assets.js';
@@ -129,6 +130,7 @@ export async function buildApp(deps: ServerDeps): Promise<FastifyInstance> {
       return null;
     }
   });
+  live.useSpaces(() => privateSpacesOf(deps.store));
   live.start();
 
   // The configured content directory is the default workspace. An install that predates

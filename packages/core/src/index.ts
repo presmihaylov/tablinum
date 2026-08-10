@@ -7,6 +7,7 @@ export {
   type ContentStoreOptions,
   type CreatePageInput,
   type CreateRowInput,
+  type CreateSpaceOptions,
   type SpaceTree,
   type UpdatePageInput,
   type UpdateRowInput,

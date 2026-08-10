@@ -140,7 +140,7 @@ export function registerAssetRoutes(app: FastifyInstance, ctx: RouteContext): vo
   });
 
   app.post(`${API_PREFIX}/assets`, async (request): Promise<AssetResponse> => {
-    const { store, wiring } = await partsOf(ctx, request);
+    const { store, git, wiring } = await partsOf(ctx, request);
     if (!request.isMultipart()) {
       throw validation('Expected a multipart/form-data upload');
     }
@@ -168,6 +168,12 @@ export function registerAssetRoutes(app: FastifyInstance, ctx: RouteContext): vo
       const named = extension.length === 0 ? '(none)' : extension;
       throw validation(`Attachments of type ${named} are not accepted`);
     }
+
+    // Attachments live under `_assets/<pageId>/`, outside the space directory, so a private
+    // page's images need their own exclude line. Written before the directory, as for a space.
+    const spaces = await store.listSpaces();
+    const owned = spaces.find((space) => space.slug === page.space)?.owner !== undefined;
+    if (owned) await git.excludePath(`${ASSETS_DIR}/${page.id}`);
 
     const dir = join(store.contentDir, ASSETS_DIR, page.id);
     await mkdir(dir, { recursive: true });

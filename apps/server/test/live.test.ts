@@ -418,3 +418,84 @@ describe('client ids', () => {
     expect(clientOf(request({}, { 'x-tablinum-client': 'no spaces allowed' }))).toBeNull();
   });
 });
+
+/**
+ * A socket must not be a way around the REST guard. The hub keeps a snapshot of which spaces
+ * are private, and every message it sends about a page is checked against it.
+ */
+describe('LiveHub and private spaces', () => {
+  const PRIVATE_PAGE: Page = {
+    ...PAGE,
+    id: 'p_bbbbbbbbbbbbbbbbbbbbbbbb',
+    path: 'notes/salary',
+    space: 'notes',
+    title: 'Salary',
+    filePath: '/tmp/content/notes/salary.md',
+  };
+
+  /** A hub that knows `notes` belongs to u1. */
+  async function hubWithNotes(): Promise<LiveHub> {
+    const hub = new LiveHub(LOG);
+    hub.useSpaces(async () => new Map([['notes', 'u1']]));
+    await hub.spacesChanged();
+    return hub;
+  }
+
+  it('tells only the owner that a private page changed', async () => {
+    const hub = await hubWithNotes();
+    const mine = join(hub, 'tab-a', user('u1', 'Quiet Otter'));
+    const theirs = join(hub, 'tab-b', user('u2', 'Loud Badger'));
+    const token = join(hub, 'tab-c');
+
+    hub.pageChanged(PRIVATE_PAGE, 'disk', null);
+
+    expect(mine.socket.count('page')).toBe(1);
+    expect(theirs.socket.count('page')).toBe(0);
+    expect(token.socket.count('page')).toBe(0);
+  });
+
+  it('still tells everybody about a public page', async () => {
+    const hub = await hubWithNotes();
+    const theirs = join(hub, 'tab-b', user('u2', 'Loud Badger'));
+
+    hub.pageChanged(PAGE, 'disk', null);
+
+    expect(theirs.socket.count('page')).toBe(1);
+  });
+
+  it('names a deleted private page only to the owner', async () => {
+    const hub = await hubWithNotes();
+    const mine = join(hub, 'tab-a', user('u1', 'Quiet Otter'));
+    const theirs = join(hub, 'tab-b', user('u2', 'Loud Badger'));
+
+    hub.pagesRemoved(['notes/salary', 'eng/deploy']);
+
+    expect(mine.socket.last('removed')).toEqual({
+      type: 'removed',
+      paths: ['notes/salary', 'eng/deploy'],
+    });
+    expect(theirs.socket.last('removed')).toEqual({ type: 'removed', paths: ['eng/deploy'] });
+  });
+
+  it('sends no removed message at all when nothing visible went away', async () => {
+    const hub = await hubWithNotes();
+    const theirs = join(hub, 'tab-b', user('u2', 'Loud Badger'));
+
+    hub.pagesRemoved(['notes/salary']);
+
+    expect(theirs.socket.count('removed')).toBe(0);
+  });
+
+  it('ignores a watch on a private page, so presence never leaks either', async () => {
+    const hub = await hubWithNotes();
+    const mine = join(hub, 'tab-a', user('u1', 'Quiet Otter'));
+    const theirs = join(hub, 'tab-b', user('u2', 'Loud Badger'));
+
+    send(hub, theirs.client, { type: 'watch', path: 'notes/salary' });
+    expect(theirs.client.watching).toBeNull();
+
+    send(hub, mine.client, { type: 'watch', path: 'notes/salary' });
+    expect(mine.client.watching).toBe('notes/salary');
+    expect(theirs.socket.count('presence')).toBe(0);
+  });
+});

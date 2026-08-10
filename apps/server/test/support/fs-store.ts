@@ -153,13 +153,14 @@ export class FsContentStore implements ContentStore {
       };
       if (typeof record.icon === 'string') space.icon = record.icon;
       if (typeof record.order === 'number') space.order = record.order;
+      if (typeof record.owner === 'string') space.owner = record.owner;
       spaces.push(space);
     }
     spaces.sort((a, b) => compareByOrderThenTitle({ ...a, title: a.name }, { ...b, title: b.name }));
     return spaces;
   }
 
-  async createSpace(input: CreateSpaceBody): Promise<Space> {
+  async createSpace(input: CreateSpaceBody, owner?: string): Promise<Space> {
     const dir = join(this.contentDir, input.slug);
     if (existsSync(dir)) throw conflict(`Space ${input.slug} already exists`);
     await mkdir(dir, { recursive: true });
@@ -167,6 +168,7 @@ export class FsContentStore implements ContentStore {
     const descriptor: Record<string, Scalar> = { name: input.name };
     if (input.icon !== undefined) descriptor.icon = input.icon;
     if (input.order !== undefined) descriptor.order = input.order;
+    if (owner !== undefined) descriptor.owner = owner;
     await writeFile(
       join(this.contentDir, spaceFileRelPath(input.slug)),
       serializeFlatYaml(descriptor),
@@ -186,6 +188,7 @@ export class FsContentStore implements ContentStore {
     const space: Space = { slug: input.slug, name: input.name };
     if (input.icon !== undefined) space.icon = input.icon;
     if (input.order !== undefined) space.order = input.order;
+    if (owner !== undefined) space.owner = owner;
     return space;
   }
 
@@ -200,16 +203,19 @@ export class FsContentStore implements ContentStore {
     };
     if (typeof record.icon === 'string') current.icon = record.icon;
     if (typeof record.order === 'number') current.order = record.order;
+    if (typeof record.owner === 'string') current.owner = record.owner;
 
     const next: Space = { slug, name: patch.name ?? current.name };
     const icon = patch.icon === undefined ? current.icon : (patch.icon ?? undefined);
     if (icon !== undefined) next.icon = icon;
     const order = patch.order === undefined ? current.order : (patch.order ?? undefined);
     if (order !== undefined) next.order = order;
+    if (current.owner !== undefined) next.owner = current.owner;
 
     const descriptor: Record<string, Scalar> = { name: next.name };
     if (next.icon !== undefined) descriptor.icon = next.icon;
     if (next.order !== undefined) descriptor.order = next.order;
+    if (next.owner !== undefined) descriptor.owner = next.owner;
     await writeFile(file, serializeFlatYaml(descriptor), 'utf8');
     return next;
   }

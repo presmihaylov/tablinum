@@ -2,7 +2,7 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { FastifyBaseLogger } from 'fastify';
 import { AccountStore, defaultAccountsDbPath, type WorkspaceRecord } from '@tablinum/accounts';
-import { ContentStore as CoreContentStore, parse } from '@tablinum/core';
+import { ContentStore as CoreContentStore, parse, type CreateSpaceOptions } from '@tablinum/core';
 import { GitEngine as CoreGitEngine } from '@tablinum/git-sync';
 import { SearchIndex as CoreSearchIndex, defaultDbPath } from '@tablinum/search';
 import {
@@ -76,8 +76,12 @@ class CoreStoreAdapter implements ContentStore {
     return this.core.listSpaces();
   }
 
-  createSpace(input: CreateSpaceBody): Promise<Space> {
-    return this.core.createSpace(input.slug, input.name, input.icon, input.order);
+  createSpace(input: CreateSpaceBody, owner?: string): Promise<Space> {
+    const options: CreateSpaceOptions = {};
+    if (input.icon !== undefined) options.icon = input.icon;
+    if (input.order !== undefined) options.order = input.order;
+    if (owner !== undefined) options.owner = owner;
+    return this.core.createSpace(input.slug, input.name, options);
   }
 
   updateSpace(slug: string, patch: UpdateSpaceBody): Promise<Space> {
@@ -166,6 +170,10 @@ class CoreGitAdapter implements GitEngine {
 
   async init(): Promise<void> {
     await this.core.init();
+  }
+
+  excludePath(relDir: string): Promise<void> {
+    return this.core.excludePath(relDir);
   }
 
   status(): Promise<GitStatus> {

@@ -8,6 +8,8 @@ export interface Space {
   name: string;
   icon?: string;
   order?: number;
+  /** The account a private space belongs to. Absent on a public space. */
+  owner?: string;
 }
 
 export interface TreeNode {

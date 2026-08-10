@@ -63,7 +63,13 @@ export class ApiClient {
     return body.spaces;
   }
 
-  async createSpace(input: { slug: string; name?: string; icon?: string; order?: number }): Promise<Space> {
+  async createSpace(input: {
+    slug: string;
+    name?: string;
+    icon?: string;
+    order?: number;
+    private?: boolean;
+  }): Promise<Space> {
     const data = { name: input.slug, ...input };
     const body = await unwrap<{ space: Space }>(await this.request.post(`${PREFIX}/spaces`, { data }));
     return body.space;

@@ -159,6 +159,17 @@ interface SpaceHome {
   markdown: string;
 }
 
+/** Everything a new space carries besides its slug and its name. */
+export interface CreateSpaceOptions {
+  icon?: string;
+  order?: number;
+  /**
+   * The user id this space belongs to. A space with an owner is private: only that person sees
+   * it, and the git layer excludes its directory so the files never reach a remote.
+   */
+  owner?: string;
+}
+
 function compareSpaces(a: Space, b: Space): number {
   const left = a.order ?? Number.POSITIVE_INFINITY;
   const right = b.order ?? Number.POSITIVE_INFINITY;
@@ -301,7 +312,7 @@ export class ContentStore {
       if (!this.#starter || this.#index.size > 0) return;
       const slugs = await listSpaceSlugs(this.contentDir);
       if (slugs.length > 0) return;
-      await this.#createSpaceUnlocked(DEFAULT_SPACE_SLUG, DEFAULT_SPACE_NAME, undefined, undefined, {
+      await this.#createSpaceUnlocked(DEFAULT_SPACE_SLUG, DEFAULT_SPACE_NAME, {}, {
         title: WELCOME_TITLE,
         markdown: WELCOME_MARKDOWN,
       });
@@ -372,24 +383,25 @@ export class ContentStore {
     return parseSpaceFile(text, validSlug);
   }
 
-  async createSpace(slug: string, name: string, icon?: string, order?: number): Promise<Space> {
-    return this.#writes.runExclusive(() => this.#createSpaceUnlocked(slug, name, icon, order));
+  async createSpace(slug: string, name: string, options: CreateSpaceOptions = {}): Promise<Space> {
+    return this.#writes.runExclusive(() => this.#createSpaceUnlocked(slug, name, options));
   }
 
   async #createSpaceUnlocked(
     slug: string,
     name: string,
-    icon?: string,
-    order?: number,
+    options: CreateSpaceOptions = {},
     home?: SpaceHome,
   ): Promise<Space> {
+    const { icon, order, owner } = options;
     const validSlug = parseOrThrow(NewSpaceSlugSchema, slug, 'space slug');
-    const details = parseOrThrow(SpaceFileSchema, { name, icon, order }, 'space');
+    const details = parseOrThrow(SpaceFileSchema, { name, icon, order, owner }, 'space');
     const file = path.join(this.contentDir, spaceFileRelPath(validSlug));
     if (await pathExists(file)) throw conflict(`Space already exists: ${validSlug}`);
     const space: Space = { slug: validSlug, name: details.name };
     if (details.icon !== undefined) space.icon = details.icon;
     if (details.order !== undefined) space.order = details.order;
+    if (details.owner !== undefined) space.owner = details.owner;
     await writeText(file, serializeSpaceFile(space));
 
     // A space with no page cannot be opened, so it gets its home page in the same write.
@@ -416,6 +428,8 @@ export class ContentStore {
     if (icon !== undefined) next.icon = icon;
     const order = body.order === undefined ? current.order : (body.order ?? undefined);
     if (order !== undefined) next.order = order;
+    // Ownership is set once, at creation. A rename must never turn a private space public.
+    if (current.owner !== undefined) next.owner = current.owner;
 
     await writeText(path.join(this.contentDir, spaceFileRelPath(next.slug)), serializeSpaceFile(next));
     this.#index.markStale();

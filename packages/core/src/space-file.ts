@@ -18,6 +18,7 @@ export function parseSpaceFile(text: string | null, slug: string): Space {
   const space: Space = { slug, name: parsed.data.name };
   if (parsed.data.icon !== undefined) space.icon = parsed.data.icon;
   if (parsed.data.order !== undefined) space.order = parsed.data.order;
+  if (parsed.data.owner !== undefined) space.owner = parsed.data.owner;
   return space;
 }
 
@@ -29,6 +30,9 @@ export function serializeSpaceFile(space: Space): string {
   }
   if (space.order !== undefined && space.order !== null) {
     lines.push(`order: ${emitNumber(space.order)}`);
+  }
+  if (space.owner !== undefined && space.owner !== null && space.owner.length > 0) {
+    lines.push(`owner: ${emitString(space.owner)}`);
   }
   return `${lines.join('\n')}\n`;
 }

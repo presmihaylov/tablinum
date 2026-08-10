@@ -8,6 +8,7 @@ import {
   LIVE_PATH,
   LIVE_PING_MS,
   colorForId,
+  spaceOf,
   type ClientMessage,
   type DocBaseline,
   type DocResetReason,
@@ -25,6 +26,9 @@ import { DocRooms, writerOf, type DocRoom } from './docroom.js';
 
 /** Reads the markdown a new room starts from. Null when the page is gone. */
 export type BaselineLoader = (path: PagePath) => Promise<DocBaseline | null>;
+
+/** Reads which spaces are private, as slug -> owner user id. Public spaces are left out. */
+export type OwnerLoader = () => Promise<Map<string, string>>;
 
 type DocMessage = Extract<ClientMessage, { type: `doc-${string}` }>;
 
@@ -94,6 +98,9 @@ export class LiveHub {
   readonly #rooms = new DocRooms();
   #heartbeat: ReturnType<typeof setInterval> | null = null;
   #loadBaseline: BaselineLoader | null = null;
+  #loadOwners: OwnerLoader | null = null;
+  /** Slug -> owner for every private space. A slug that is absent is public. */
+  #owners = new Map<string, string>();
 
   constructor(private readonly log: FastifyBaseLogger) {}
 
@@ -108,6 +115,33 @@ export class LiveHub {
   /** Turn keystroke streaming on. Without a loader the hub only does presence and broadcasts. */
   useDocs(load: BaselineLoader): void {
     this.#loadBaseline = load;
+  }
+
+  /**
+   * Teach the hub which spaces are private, so a socket is not a way around the REST guard.
+   * The snapshot is kept rather than read per message, because every broadcast consults it.
+   */
+  useSpaces(load: OwnerLoader): void {
+    this.#loadOwners = load;
+    void this.spacesChanged();
+  }
+
+  /** Read the private spaces again. Called after one is made, and on every heartbeat. */
+  async spacesChanged(): Promise<void> {
+    if (this.#loadOwners === null) return;
+    try {
+      this.#owners = await this.#loadOwners();
+    } catch (err) {
+      // Keeping the last snapshot is the safe failure: it hides what it hid a moment ago.
+      this.log.debug({ err }, 'could not read the private spaces');
+    }
+  }
+
+  /** True when this tab may see a page. A space nobody owns is public. */
+  #canSee(client: LiveClient, path: PagePath): boolean {
+    const owner = this.#owners.get(spaceOf(path));
+    if (owner === undefined) return true;
+    return client.identity !== null && client.identity.id === owner;
   }
 
   /**
@@ -192,6 +226,8 @@ export class LiveHub {
       return;
     }
     if (message.type !== 'watch') return;
+    // A null path is a tab leaving every page, which needs no permission.
+    if (message.path !== null && !this.#canSee(client, message.path)) return;
 
     const previous = client.watching;
     if (previous === message.path) return;
@@ -235,16 +271,19 @@ export class LiveHub {
     by: string | null,
     agent: LiveAgent | null = null,
   ): void {
-    this.#broadcast({
-      type: 'page',
-      id: page.id,
-      path: page.path,
-      title: page.title,
-      rev: page.rev,
-      by,
-      agent,
-      source,
-    });
+    this.#broadcast(
+      {
+        type: 'page',
+        id: page.id,
+        path: page.path,
+        title: page.title,
+        rev: page.rev,
+        by,
+        agent,
+        source,
+      },
+      page.path,
+    );
 
     // The writer's own save is the one change a room already knows about. Anything else -
     // an agent, a text editor, a pull - moved the file under the room, so it starts again.
@@ -265,7 +304,11 @@ export class LiveHub {
   pagesRemoved(paths: PagePath[]): void {
     for (const path of paths) this.#resetRoom(path, 'gone');
     if (paths.length === 0) return;
-    this.#broadcast({ type: 'removed', paths });
+    // One delete can span spaces, so each tab hears about the paths it could see.
+    for (const client of this.#clients.values()) {
+      const visible = paths.filter((path) => this.#canSee(client, path));
+      if (visible.length > 0) this.#send(client, { type: 'removed', paths: visible });
+    }
   }
 
   gitChanged(status: GitStatus): void {
@@ -295,7 +338,10 @@ export class LiveHub {
   /** Start the heartbeat. Without it a browser that vanishes stays in the presence list. */
   start(intervalMs: number = LIVE_PING_MS): void {
     if (this.#heartbeat !== null) return;
-    this.#heartbeat = setInterval(() => this.sweep(), intervalMs);
+    this.#heartbeat = setInterval(() => {
+      this.sweep();
+      void this.spacesChanged();
+    }, intervalMs);
     this.#heartbeat.unref?.();
   }
 
@@ -379,6 +425,10 @@ export class LiveHub {
     const load = this.#loadBaseline;
     if (load === null) return;
 
+    // Before the cached baseline, or a space made since the last refresh would read as public.
+    await this.spacesChanged();
+    if (!this.#canSee(client, path)) return;
+
     const existing = this.#rooms.get(path);
     let baseline = existing?.baseline ?? null;
     if (baseline === null) {
@@ -444,8 +494,12 @@ export class LiveHub {
     }
   }
 
-  #broadcast(message: ServerMessage): void {
-    for (const client of this.#clients.values()) this.#send(client, message);
+  /** Send to every tab. With a `path`, only to the tabs that may see that page. */
+  #broadcast(message: ServerMessage, path: PagePath | null = null): void {
+    for (const client of this.#clients.values()) {
+      if (path !== null && !this.#canSee(client, path)) continue;
+      this.#send(client, message);
+    }
   }
 
   #send(client: LiveClient, message: ServerMessage): void {

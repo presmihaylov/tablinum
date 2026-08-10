@@ -6,7 +6,7 @@ import type { DropPosition } from '../../lib/treeMove';
 import { useContent } from '../../lib/content';
 import { EmojiGlyph } from '../ui/EmojiGlyph';
 import { ContextMenu, type MenuItem } from '../ui/Overlay';
-import { ChevronRight, Copy, DocIcon, Dots, Link, MoveTo, Pencil, Plus, Trash } from '../ui/Icon';
+import { ChevronRight, Copy, DocIcon, Dots, Link, MoveTo, Pencil, Plus, Star, Trash } from '../ui/Icon';
 
 const DRAG_MIME = 'application/x-tablinum-page';
 
@@ -31,8 +31,18 @@ interface MenuState {
 }
 
 export function PageTree({ nodes, expanded, currentPath, onToggle, onExpand, onOpen }: PageTreeProps) {
-  const { movePage, moveToSpace, newPage, renamePage, duplicatePage, deletePage, copyLink, editSpace } =
-    useContent();
+  const {
+    movePage,
+    moveToSpace,
+    newPage,
+    renamePage,
+    duplicatePage,
+    deletePage,
+    copyLink,
+    editSpace,
+    isFavorite,
+    toggleFavorite,
+  } = useContent();
   const [dragPath, setDragPath] = useState<PagePath | null>(null);
   const [drop, setDrop] = useState<DropState | null>(null);
   const [menu, setMenu] = useState<MenuState | null>(null);
@@ -50,7 +60,14 @@ export function PageTree({ nodes, expanded, currentPath, onToggle, onExpand, onO
 
   const menuItems = useCallback(
     (node: TreeNode): MenuItem[] => {
+      const pinned = isFavorite(node.id);
       const items: MenuItem[] = [
+        {
+          id: 'favorite',
+          label: pinned ? 'Remove from favorites' : 'Add to favorites',
+          icon: <Star filled={pinned} />,
+          onSelect: () => toggleFavorite(node),
+        },
         { id: 'new', label: 'New child page', icon: <Plus />, onSelect: () => newPage(node.path) },
         { id: 'rename', label: 'Rename', icon: <Pencil />, onSelect: () => renamePage(node) },
         { id: 'duplicate', label: 'Duplicate', icon: <Copy />, onSelect: () => duplicatePage(node) },
@@ -68,7 +85,17 @@ export function PageTree({ nodes, expanded, currentPath, onToggle, onExpand, onO
       );
       return items;
     },
-    [newPage, renamePage, duplicatePage, moveToSpace, editSpace, copyLink, deletePage],
+    [
+      isFavorite,
+      toggleFavorite,
+      newPage,
+      renamePage,
+      duplicatePage,
+      moveToSpace,
+      editSpace,
+      copyLink,
+      deletePage,
+    ],
   );
 
   return (

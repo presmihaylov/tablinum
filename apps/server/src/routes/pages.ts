@@ -204,11 +204,10 @@ export function registerPageRoutes(app: FastifyInstance, ctx: RouteContext): voi
     for (const victim of victims) wiring.markWritten(plannedFiles(victim.path));
     const deleted = await store.deletePage(id, query.recursive === true);
 
-    // Comments live in the account database, so no foreign key can take them with the file.
-    ctx.deps.accounts.deleteThreadsForPages(
-      record.id,
-      victims.map((victim) => victim.id),
-    );
+    // Comments and pins live in the account database, so no foreign key takes them with the file.
+    const victimIds = victims.map((victim) => victim.id);
+    ctx.deps.accounts.deleteThreadsForPages(record.id, victimIds);
+    ctx.deps.accounts.deleteFavoritesForPages(record.id, victimIds);
 
     const files = new Set<string>();
     for (const victim of victims) {

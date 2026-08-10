@@ -1,12 +1,12 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { PagePath } from '@tablinum/shared';
+import type { PagePath, TreeNode } from '@tablinum/shared';
 import { pageHref } from '../../lib/href';
 import { ancestorPaths, findNode } from '../../lib/tree';
 import { usePersistedState } from '../../lib/storage';
 import { useContent } from '../../lib/content';
 import { EmojiGlyph } from '../ui/EmojiGlyph';
-import { DocIcon, PanelLeft, Plus, Search } from '../ui/Icon';
+import { DocIcon, PanelLeft, Plus, Search, Star } from '../ui/Icon';
 import { AccountMenu } from '../Account/AccountMenu';
 import { GitStatusPill } from './GitStatusPill';
 import { PageTree } from './PageTree';
@@ -24,7 +24,8 @@ type SectionState = Record<string, boolean>;
 
 export function Sidebar({ onOpenPalette, onCollapse }: SidebarProps) {
   const navigate = useNavigate();
-  const { spaces, recents, currentPath, newPage, newSpace, isLoadingTree } = useContent();
+  const { spaces, recents, favorites, toggleFavorite, currentPath, newPage, newSpace, isLoadingTree } =
+    useContent();
   const [expanded, setExpanded] = usePersistedState<string[]>('tree.expanded', []);
   const [sections, setSections] = usePersistedState<SectionState>('ui.sections', {});
 
@@ -88,6 +89,34 @@ export function Sidebar({ onOpenPalette, onCollapse }: SidebarProps) {
         {isLoadingTree ? <p className="sidebar__hint">Loading…</p> : null}
 
         <SidebarSection
+          label="Favorites"
+          open={isSectionOpen('favorites')}
+          onToggle={() => toggleSection('favorites')}
+        >
+          {favorites.length === 0 ? <p className="sidebar__hint">No favorites yet.</p> : null}
+          <ul className="sidebar-list">
+            {favorites.map((node) => (
+              <li key={node.id}>
+                <PageRow node={node} currentPath={currentPath} onOpen={open}>
+                  <button
+                    type="button"
+                    className="sidebar-list__action"
+                    aria-label={`Remove ${node.title} from favorites`}
+                    title="Remove from favorites"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      toggleFavorite(node);
+                    }}
+                  >
+                    <Star size={12} filled />
+                  </button>
+                </PageRow>
+              </li>
+            ))}
+          </ul>
+        </SidebarSection>
+
+        <SidebarSection
           label="Spaces"
           open={isSectionOpen('spaces')}
           onToggle={() => toggleSection('spaces')}
@@ -116,18 +145,7 @@ export function Sidebar({ onOpenPalette, onCollapse }: SidebarProps) {
           <ul className="sidebar-list">
             {recentNodes.map((node) => (
               <li key={node.id}>
-                <button
-                  type="button"
-                  className={
-                    node.path === currentPath ? 'sidebar__row sidebar__row--current' : 'sidebar__row'
-                  }
-                  onClick={() => open(node.path)}
-                >
-                  <span className="sidebar__row-icon">
-                    {node.icon ? <EmojiGlyph value={node.icon} /> : <DocIcon size={13} />}
-                  </span>
-                  <span className="sidebar__row-title">{node.title}</span>
-                </button>
+                <PageRow node={node} currentPath={currentPath} onOpen={open} />
               </li>
             ))}
           </ul>
@@ -141,5 +159,29 @@ export function Sidebar({ onOpenPalette, onCollapse }: SidebarProps) {
 
       <GitStatusPill />
     </aside>
+  );
+}
+
+interface PageRowProps {
+  node: TreeNode;
+  currentPath: PagePath;
+  onOpen: (path: PagePath) => void;
+  /** A trailing control, shown on hover. The Favorites bucket puts its star here. */
+  children?: ReactNode;
+}
+
+/** One flat page row, as the Favorites and Recents buckets both draw it. */
+function PageRow({ node, currentPath, onOpen, children }: PageRowProps) {
+  const className = node.path === currentPath ? 'sidebar__row sidebar__row--current' : 'sidebar__row';
+  return (
+    <div className="sidebar-list__item">
+      <button type="button" className={className} onClick={() => onOpen(node.path)}>
+        <span className="sidebar__row-icon">
+          {node.icon ? <EmojiGlyph value={node.icon} /> : <DocIcon size={13} />}
+        </span>
+        <span className="sidebar__row-title">{node.title}</span>
+      </button>
+      {children}
+    </div>
   );
 }

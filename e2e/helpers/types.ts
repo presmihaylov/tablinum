@@ -23,6 +23,11 @@ export interface SpaceTree extends Space {
   tree: TreeNode[];
 }
 
+export interface Favorite {
+  pageId: string;
+  created: string;
+}
+
 export interface Page {
   id: string;
   path: string;

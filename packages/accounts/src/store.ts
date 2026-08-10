@@ -10,6 +10,7 @@ import {
   MAX_AVATAR_BYTES,
   MAX_COMMENT_LENGTH,
   MAX_CUSTOM_EMOJI_BYTES,
+  MAX_FAVORITES,
   MAX_SHORTCODE_LENGTH,
   colorForId,
   conflict,
@@ -35,6 +36,7 @@ import {
   type CommentAnchor,
   type CommentThread,
   type CustomEmoji,
+  type Favorite,
   type Invite,
   type Workspace,
   type WorkspaceRole,
@@ -48,7 +50,7 @@ type Db = Database.Database;
 export const ACCOUNTS_DB_FILENAME = 'accounts.db';
 
 /** Bumped when the schema below changes in a way an existing file cannot satisfy. */
-const SCHEMA_VERSION = 6;
+const SCHEMA_VERSION = 7;
 
 /** How long a signed-in browser stays signed in. */
 export const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -278,6 +280,11 @@ interface CustomEmojiRow {
 interface CustomEmojiImageRow {
   mime: string;
   bytes: Buffer;
+}
+
+interface FavoriteRow {
+  page_id: string;
+  created: number;
 }
 
 interface CountRow {
@@ -590,6 +597,15 @@ export class AccountStore {
         updated   INTEGER NOT NULL
       );
       CREATE INDEX IF NOT EXISTS comments_by_thread ON comments(thread_id);
+
+      CREATE TABLE IF NOT EXISTS favorites (
+        user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+        page_id      TEXT NOT NULL,
+        created      INTEGER NOT NULL,
+        PRIMARY KEY (user_id, workspace_id, page_id)
+      );
+      CREATE INDEX IF NOT EXISTS favorites_by_user ON favorites(user_id, workspace_id);
     `);
 
     // Version 1 predates mentions, so its accounts have no handle yet.
@@ -1629,6 +1645,92 @@ export class AccountStore {
     const thread = this.getThread(workspaceId, threadId);
     if (thread === null) throw notFound(`No comment thread with id ${threadId}`);
     return thread;
+  }
+
+  // -------------------------------------------------------------------------
+  // favorites
+  // -------------------------------------------------------------------------
+
+  /**
+   * A pin belongs to one person in one workspace, so every statement filters on both. The
+   * same page pinned by two people is two rows, and neither can read the other.
+   */
+
+  /** Everything this person pinned in this workspace, oldest pin first. */
+  listFavorites(workspaceId: string, userId: string): Favorite[] {
+    const rows = this.#handle
+      .prepare(
+        `SELECT page_id, created FROM favorites
+         WHERE workspace_id = ? AND user_id = ? ORDER BY created, page_id`,
+      )
+      .all(workspaceId, userId) as FavoriteRow[];
+    return rows.map((row) => ({ pageId: row.page_id, created: iso(row.created) }));
+  }
+
+  /** Pin a page. Pinning one that is already pinned keeps the stamp it already had. */
+  addFavorite(
+    workspaceId: string,
+    userId: string,
+    pageId: string,
+    now: number = Date.now(),
+  ): Favorite {
+    if (this.getWorkspace(workspaceId) === null) {
+      throw notFound(`No workspace with id ${workspaceId}`);
+    }
+    if (pageId.trim().length === 0) throw validation('A page id is required');
+
+    const existing = this.#getFavorite(workspaceId, userId, pageId);
+    if (existing !== null) return existing;
+
+    const count = this.#handle
+      .prepare('SELECT COUNT(*) AS total FROM favorites WHERE workspace_id = ? AND user_id = ?')
+      .get(workspaceId, userId) as CountRow;
+    if (count.total >= MAX_FAVORITES) {
+      throw validation(`You can pin at most ${MAX_FAVORITES} pages`);
+    }
+
+    this.#handle
+      .prepare(
+        `INSERT INTO favorites (user_id, workspace_id, page_id, created)
+         VALUES (@userId, @workspaceId, @pageId, @now)`,
+      )
+      .run({ userId, workspaceId, pageId, now });
+    return { pageId, created: iso(now) };
+  }
+
+  /** Take a pin off. Nothing happens when it was not pinned, so the route stays idempotent. */
+  removeFavorite(workspaceId: string, userId: string, pageId: string): boolean {
+    const info = this.#handle
+      .prepare('DELETE FROM favorites WHERE workspace_id = ? AND user_id = ? AND page_id = ?')
+      .run(workspaceId, userId, pageId);
+    return info.changes > 0;
+  }
+
+  /**
+   * Drop every pin on the given pages, for everybody. Pages live in git rather than in this
+   * database, so there is no foreign key to cascade: the page route calls this after a delete.
+   */
+  deleteFavoritesForPages(workspaceId: string, pageIds: readonly string[]): number {
+    if (pageIds.length === 0) return 0;
+    const statement = this.#handle.prepare(
+      'DELETE FROM favorites WHERE workspace_id = ? AND page_id = ?',
+    );
+    const remove = this.#handle.transaction(() => {
+      let removed = 0;
+      for (const pageId of pageIds) removed += statement.run(workspaceId, pageId).changes;
+      return removed;
+    });
+    return remove();
+  }
+
+  #getFavorite(workspaceId: string, userId: string, pageId: string): Favorite | null {
+    const row = this.#handle
+      .prepare(
+        `SELECT page_id, created FROM favorites
+         WHERE workspace_id = ? AND user_id = ? AND page_id = ?`,
+      )
+      .get(workspaceId, userId, pageId) as FavoriteRow | undefined;
+    return row === undefined ? null : { pageId: row.page_id, created: iso(row.created) };
   }
 }
 

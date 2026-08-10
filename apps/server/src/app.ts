@@ -24,6 +24,7 @@ import { registerAuthRoutes } from './routes/auth.js';
 import { registerCommentRoutes } from './routes/comments.js';
 import { registerDatabaseRoutes } from './routes/databases.js';
 import { registerEmojiRoutes } from './routes/emoji.js';
+import { registerFavoriteRoutes } from './routes/favorites.js';
 import { registerGitRoutes } from './routes/git.js';
 import { registerHealthRoutes } from './routes/health.js';
 import { registerInviteRoutes } from './routes/invites.js';
@@ -182,6 +183,7 @@ export async function buildApp(deps: ServerDeps): Promise<FastifyInstance> {
   registerTreeRoutes(app, ctx);
   registerPageRoutes(app, ctx);
   registerCommentRoutes(app, ctx);
+  registerFavoriteRoutes(app, ctx);
   registerDatabaseRoutes(app, ctx);
   registerSearchRoutes(app, ctx);
   registerGitRoutes(app, ctx);

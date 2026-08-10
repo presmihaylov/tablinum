@@ -20,6 +20,7 @@ export const qk = {
   search: (query: SearchQuery) => ['search', query.q, query.space ?? ''] as const,
   backlinks: (id: PageId) => ['backlinks', id] as const,
   comments: (id: PageId) => ['comments', id] as const,
+  favorites: ['favorites'] as const,
   database: (id: PageId) => ['database', id] as const,
   history: (id: PageId, limit?: number) => ['history', id, limit ?? 0] as const,
   revision: (id: PageId, sha: string) => ['revision', id, sha] as const,

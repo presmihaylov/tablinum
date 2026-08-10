@@ -212,6 +212,8 @@ describe('mutation audit', () => {
       method: 'DELETE',
       url: '/api/v1/pages/pg_00000000000000000000000000/database/rows/rw_00000000000000000000000000',
     },
+    { method: 'PUT', url: '/api/v1/favorites/pg_00000000000000000000000000' },
+    { method: 'DELETE', url: '/api/v1/favorites/pg_00000000000000000000000000' },
     { method: 'POST', url: '/api/v1/spaces' },
     { method: 'PATCH', url: '/api/v1/spaces/eng' },
     { method: 'POST', url: '/api/v1/assets' },

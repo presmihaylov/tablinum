@@ -48,6 +48,7 @@ function start(routes: MockRoutes = {}): MockServer {
     'GET /api/v1/workspaces': { workspaces: [], current: null },
     'GET /api/v1/tree': { spaces: TREE },
     'GET /api/v1/pages': { page: PAGE },
+    'GET /api/v1/favorites': { favorites: [] },
     [`GET /api/v1/pages/${PAGE_ID}/backlinks`]: { backlinks: [] },
     [`GET /api/v1/pages/${PAGE_ID}/history`]: { entries: [] },
     ...routes,
@@ -97,6 +98,7 @@ describe('the page menu', () => {
       expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
         'Backlinks',
         'History',
+        'Add to favorites',
         'Move to',
         'Delete',
       ]),
@@ -201,6 +203,37 @@ describe('the page menu', () => {
       const sent = mock.calls.find((call) => call.method === 'DELETE');
       expect(sent?.url.pathname).toBe(`/api/v1/pages/${PAGE_ID}`);
     });
+  });
+
+  it('pins the page with one PUT', async () => {
+    const mock = start({
+      [`PUT /api/v1/favorites/${PAGE_ID}`]: {
+        favorite: { pageId: PAGE_ID, created: '2026-01-03T00:00:00.000Z' },
+      },
+    });
+    const user = userEvent.setup();
+    renderApp(<Harness />, { route: '/p/notes/weekly' });
+
+    await openMenu();
+    await user.click(await screen.findByRole('menuitem', { name: 'Add to favorites' }));
+
+    await waitFor(() => {
+      const sent = mock.calls.find((call) => call.method === 'PUT');
+      expect(sent?.url.pathname).toBe(`/api/v1/favorites/${PAGE_ID}`);
+    });
+  });
+
+  it('offers to take the pin off a page that is already pinned', async () => {
+    start({
+      'GET /api/v1/favorites': {
+        favorites: [{ pageId: PAGE_ID, created: '2026-01-03T00:00:00.000Z' }],
+      },
+    });
+    renderApp(<Harness />, { route: '/p/notes/weekly' });
+
+    await openMenu();
+
+    expect(await screen.findByRole('menuitem', { name: 'Remove from favorites' })).toBeInTheDocument();
   });
 
   it('offers the other spaces to move the page to', async () => {

@@ -24,6 +24,8 @@ import type {
   DeletePageResponse,
   ErrorBody,
   ErrorCode,
+  FavoriteResponse,
+  FavoritesResponse,
   GitCommitBody,
   GitCommitResponse,
   GitConflictResponse,
@@ -386,6 +388,14 @@ export const api = {
 
   deleteComment: (commentId: string): Promise<DeleteCommentResponse> =>
     request(`/comments/${encodeURIComponent(commentId)}`, { method: 'DELETE' }),
+
+  favorites: (signal?: AbortSignal): Promise<FavoritesResponse> => request('/favorites', { signal }),
+
+  addFavorite: (id: PageId): Promise<FavoriteResponse> =>
+    request(`/favorites/${encodeURIComponent(id)}`, { method: 'PUT' }),
+
+  removeFavorite: (id: PageId): Promise<OkResponse> =>
+    request(`/favorites/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
   getDatabase: (id: PageId, signal?: AbortSignal): Promise<DatabaseResponse> =>
     request(`/pages/${encodeURIComponent(id)}/database`, { signal }),

@@ -33,6 +33,11 @@ function findInNodes(nodes: readonly TreeNode[], path: PagePath): TreeNode | nul
   return null;
 }
 
+/** The node with this id, wherever it sits. Favorites are stored by id, not by path. */
+export function findNodeById(spaces: readonly SpaceTree[], id: string): TreeNode | null {
+  return flattenTree(spaces).find((node) => node.id === id) ?? null;
+}
+
 /**
  * Children of a container path. A space slug with no page of its own still holds
  * the space's top-level nodes, so both shapes of tree resolve.

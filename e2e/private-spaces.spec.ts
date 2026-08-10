@@ -147,6 +147,25 @@ test.describe('private spaces', () => {
     expect((await content.trackedFiles()).filter((file) => file.startsWith(`${name}/`))).toEqual([]);
   });
 
+  test('New page follows the reader into the private space', async ({ api, content, page }) => {
+    const seeded = await seedPrivate(api, content);
+
+    await page.goto(`/p/${seeded.path}`);
+    await expect(page.getByRole('textbox', { name: 'Page title' })).toHaveValue('Salary');
+    // A step off the page onto the home route. The button used to fall back to the first space
+    // in the tree here, which is a public one, so private work landed where everybody reads it.
+    await page.goto('/');
+
+    await page.getByRole('button', { name: 'New page' }).click();
+    const dialog = page.getByRole('dialog', { name: 'New page' });
+    await dialog.getByLabel('Page title').fill('Bonus letter');
+    await dialog.getByRole('button', { name: 'Create' }).click();
+
+    await expect(page).toHaveURL(new RegExp(`/p/${seeded.slug}/`));
+    await expect(row(privateBucket(page), 'Bonus letter')).toBeVisible();
+    expect((await content.trackedFiles()).filter((file) => file.startsWith(`${seeded.slug}/`))).toEqual([]);
+  });
+
   test('asks before a page leaves the bucket, and git takes it over', async ({
     api,
     content,

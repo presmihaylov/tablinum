@@ -24,13 +24,18 @@ function start(routes: MockRoutes = {}): MockServer {
   return server;
 }
 
-async function showSidebar(): Promise<void> {
+async function showSidebarAt(route: string): Promise<void> {
   renderApp(
     <AuthProvider>
       <Sidebar onOpenPalette={vi.fn()} onCollapse={vi.fn()} />
     </AuthProvider>,
+    { route },
   );
   await waitFor(() => expect(screen.getByText('Deploy')).toBeTruthy());
+}
+
+async function showSidebar(): Promise<void> {
+  await showSidebarAt('/');
 }
 
 function bucket(label: string): HTMLElement {
@@ -130,6 +135,32 @@ describe('the private bucket', () => {
       const post = mock.calls.find((call) => call.method === 'POST');
       expect(post?.url.pathname).toBe('/api/v1/spaces');
       expect(post?.body).toEqual({ slug: 'vault', name: 'Vault', private: true });
+    });
+  });
+
+  it('remembers the private space of the page the reader opens', async () => {
+    start();
+    await showSidebarAt('/p/notes/secret');
+
+    await waitFor(() => expect(localStorage.getItem('tablinum.space')).toBe('"notes"'));
+  });
+
+  it('sends New page back to the space the reader was last in', async () => {
+    const mock = start({
+      'POST /api/v1/pages': { page: page({ path: 'notes/bonus-letter', title: 'Bonus letter' }) },
+    });
+    // The reader was in the private space, then stepped off the page. The button used to fall
+    // back to the first space in the tree, which is public, so private work landed in the open.
+    localStorage.setItem('tablinum.space', '"notes"');
+    await showSidebarAt('/');
+
+    fireEvent.click(screen.getByRole('button', { name: 'New page' }));
+    fireEvent.change(screen.getByLabelText('Page title'), { target: { value: 'Bonus letter' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+
+    await waitFor(() => {
+      const post = mock.calls.find((call) => call.method === 'POST');
+      expect(post?.body).toMatchObject({ path: 'notes/bonus-letter' });
     });
   });
 

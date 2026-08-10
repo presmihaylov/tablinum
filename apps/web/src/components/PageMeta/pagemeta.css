@@ -1,7 +1,6 @@
 .pagemeta {
   flex: none;
   width: var(--meta-width);
-  height: 100%;
   padding: var(--space-4) var(--space-4) var(--space-6);
   border-left: 1px solid var(--border);
   background: var(--bg);

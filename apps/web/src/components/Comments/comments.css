@@ -1,10 +1,11 @@
+/*
+ * No border and no background: the threads sit on the same canvas as the text, and the whole
+ * canvas scrolls as one. The cards below carry the only edges the eye needs.
+ */
 .comments {
   flex: none;
   width: var(--meta-width);
-  height: 100%;
-  padding: var(--space-4) var(--space-4) var(--space-6);
-  border-left: 1px solid var(--border);
-  background: var(--bg);
+  padding: var(--space-7) var(--space-4) var(--space-8);
   font-size: var(--text-sm);
 }
 

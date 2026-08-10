@@ -149,6 +149,8 @@ test.describe('comments', () => {
     await expect(panel(page).locator('.comment')).toHaveCount(2);
 
     await thread.getByRole('button', { name: 'Resolve' }).click();
+    // The card leaves the list on the spot. It used to stay, greyed out, until a reload.
+    await expect(panel(page).locator('[data-thread-id]')).toHaveCount(0);
     await expect(panel(page).locator('.comments__count')).toHaveText('0 open');
     await expect(commentsButton(page)).toHaveAttribute('aria-label', 'Comments, 0 open');
 
@@ -161,6 +163,35 @@ test.describe('comments', () => {
 
     await panel(page).getByRole('button', { name: 'Reopen' }).click();
     await expect(panel(page).locator('.comments__count')).toHaveText('1 open');
+  });
+
+  test('scrolls the page and its comments as one canvas', async ({ page, api }) => {
+    const long = `${LINE}\n\n${'A line of the plan.\n\n'.repeat(120)}`;
+    const seeded = await seedPage(api, 'canvas', long);
+
+    // The page is longer than the viewport, so `open` cannot assert the whole body here.
+    await page.goto(seeded.href);
+    await expect(editorBody(page)).toContainText(LINE);
+    await selectWord(page, LINE, 'pipeline');
+    await comment(page, 'Still Friday?');
+
+    // One scroller for the whole canvas: the page area no longer keeps a scrollbar of its own.
+    const layout = await page.evaluate(() => {
+      const content = document.querySelector('.app-content');
+      const body = document.querySelector('.app-body');
+      return {
+        content: content === null ? '' : getComputedStyle(content).overflowY,
+        bodyScrolls: body !== null && body.scrollHeight > body.clientHeight + 1,
+      };
+    });
+    expect(layout.content).toBe('visible');
+    expect(layout.bodyScrolls).toBe(true);
+
+    const before = await panel(page).boundingBox();
+    await page.evaluate(() => document.querySelector('.app-body')?.scrollBy(0, 600));
+    const after = await panel(page).boundingBox();
+    if (before === null || after === null) throw new Error('The panel has no layout');
+    expect(after.y).toBeLessThan(before.y - 100);
   });
 
   test('shows a comment written in one tab in another tab without a reload', async ({ page, api }) => {

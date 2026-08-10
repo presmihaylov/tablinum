@@ -324,7 +324,8 @@ describe('agents', () => {
     expect(agent.handle).toBe('doc.bot');
     expect(agent.identity).toBe('You keep the runbooks tidy.');
     expect(agent.workspaceId).toBe(main.id);
-    expect(agent.disabled).toBe(false);
+    expect(agent.avatarRev).toBeNull();
+    expect(agent.color).toMatch(/^#/);
     expect(agent.lastUsed).toBeNull();
     expect(token.startsWith('gda_')).toBe(true);
     expect(JSON.stringify(accounts.listAgents())).not.toContain(token);
@@ -359,7 +360,7 @@ describe('agents', () => {
     expect(accounts.getAgentByHandle('nobody')).toBeNull();
   });
 
-  it('resolves a token, and refuses an unknown one or a switched off agent', () => {
+  it('resolves a token, and refuses an unknown one', () => {
     const accounts = store();
     const main = workspace(accounts);
     const { agent, token } = accounts.createAgent({ name: 'Doc Bot', workspaceId: main.id });
@@ -367,11 +368,29 @@ describe('agents', () => {
     expect(accounts.resolveAgentToken(token)?.id).toBe(agent.id);
     expect(accounts.resolveAgentToken('gda_not-a-real-token')).toBeNull();
 
-    accounts.updateAgent(agent.id, { disabled: true });
+    // Deleting is how an agent is stopped, so its token dies with it.
+    accounts.deleteAgent(agent.id);
     expect(accounts.resolveAgentToken(token)).toBeNull();
+  });
 
-    accounts.updateAgent(agent.id, { disabled: false });
-    expect(accounts.resolveAgentToken(token)?.id).toBe(agent.id);
+  it('keeps a picture for an agent, apart from the pictures of the people', () => {
+    const accounts = store();
+    const main = workspace(accounts);
+    const { agent } = accounts.createAgent({ name: 'Doc Bot', workspaceId: main.id });
+    const person = accounts.createUser({ email: 'ada@example.com', name: 'Ada', password: PASSWORD });
+
+    const rev = accounts.setAvatar(agent.id, 'image/png', Buffer.from('agent-png'));
+    expect(accounts.getAgent(agent.id)?.avatarRev).toBe(rev);
+    expect(accounts.getAvatar(agent.id)?.bytes.toString()).toBe('agent-png');
+    // The person's own picture is untouched by the agent's.
+    expect(accounts.getAvatar(person.id)).toBeNull();
+
+    accounts.clearAvatar(agent.id);
+    expect(accounts.getAvatar(agent.id)).toBeNull();
+    expect(accounts.getAgent(agent.id)?.avatarRev).toBeNull();
+    expect(codeOf(() => accounts.setAvatar('ag_00000000000000000000000000', 'image/png', Buffer.from('x')))).toBe(
+      'NOT_FOUND',
+    );
   });
 
   it('stamps last use, but not on every single call', () => {

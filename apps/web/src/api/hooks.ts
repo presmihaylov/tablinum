@@ -786,6 +786,27 @@ export function useDeleteAgent(): UseMutationResult<OkResponse, ApiError, string
   });
 }
 
+export interface AgentAvatarVars {
+  id: string;
+  file: File;
+}
+
+export function useUploadAgentAvatar(): UseMutationResult<AvatarResponse, ApiError, AgentAvatarVars> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, file }: AgentAvatarVars) => api.uploadAgentAvatar(id, file),
+    onSuccess: () => void client.invalidateQueries({ queryKey: qk.agents }),
+  });
+}
+
+export function useRemoveAgentAvatar(): UseMutationResult<OkResponse, ApiError, string> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.removeAgentAvatar(id),
+    onSuccess: () => void client.invalidateQueries({ queryKey: qk.agents }),
+  });
+}
+
 export function useRotateAgentToken(): UseMutationResult<AgentTokenResponse, ApiError, string> {
   const client = useQueryClient();
   return useMutation({

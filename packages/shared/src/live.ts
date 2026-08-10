@@ -55,6 +55,8 @@ export interface LiveAgent {
   id: string;
   name: string;
   handle: string;
+  /** Revision of its picture, or null while it has none. See avatarUrl(). */
+  avatarRev: string | null;
 }
 
 export interface LivePresence extends LiveUser {

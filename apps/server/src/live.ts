@@ -75,7 +75,7 @@ export function readClientId(request: FastifyRequest): string {
 export function agentOf(request: FastifyRequest): LiveAgent | null {
   const agent = request.principal.agent;
   if (agent === null) return null;
-  return { id: agent.id, name: agent.name, handle: agent.handle };
+  return { id: agent.id, name: agent.name, handle: agent.handle, avatarRev: agent.avatarRev };
 }
 
 /** The tab that sent a REST request, from its `x-tablinum-client` header. */

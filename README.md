@@ -501,11 +501,13 @@ makes is a commit you can review with `git log` and revert with `git revert`.
 The server also speaks MCP over HTTP at `/api/v1/mcp`, so an agent needs no local process at all.
 Each agent gets its own credential and its own identity brief.
 
-1. Sign in as an admin, open the account menu, and choose **Agents**.
+1. Sign in as an admin, open **Settings**, and choose **Agents**.
 2. Give the agent a name and write its identity. The identity is the first thing the agent reads
    when it connects, so write it as instructions to the agent itself, for example: "You look after
    the engineering runbooks. Keep every step numbered."
 3. Copy the token. It is shown once and never again.
+4. Give the agent a picture if you want one. Open **Edit** on its row and upload a PNG, JPEG,
+   WebP or GIF of up to 512 KB. Until then it shows its initials, exactly like a person.
 
 Point any MCP client at the address the dialog shows:
 
@@ -531,11 +533,12 @@ claude mcp add --transport http tablinum http://localhost:4000/api/v1/mcp \
 The agent gets the same tools as the stdio server, plus its own brief in the handshake. It reads
 and writes pages, but it never administers the site: agent tokens are not admin credentials. Every
 agent has a `@handle`, taken from the same namespace as the people, so `@doc.bot` names one writer
-and one only. Pause an agent or issue it a new token from the same dialog; the old token stops
-working at once.
+and one only. Issue an agent a new token from the same page, and the old one stops working at once.
+There is no paused state: delete the agent to stop it, and its token dies with it.
 
-An agent at work is visible. When it reads or writes a page, a chip with a robot mark joins the
-presence strip on that page, next to the people already there. The chip pulses while the agent
+An agent at work is visible. When it reads or writes a page, a chip joins the presence strip on
+that page, next to the people already there. The chip shows the agent's picture, or a robot mark
+while it has none. The chip pulses while the agent
 writes, and it leaves about a minute after the agent's last tool call. An agent edit also arrives
 in the open editor as it happens: the text updates in place, your own unsaved edits are kept, and
 a small message names the agent that wrote.

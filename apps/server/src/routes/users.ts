@@ -1,10 +1,8 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import type {} from '@fastify/multipart';
 import { z } from 'zod';
 import {
   ChangePasswordBodySchema,
   ConnectSlackBodySchema,
-  MAX_AVATAR_BYTES,
   UpdateMeBodySchema,
   UpdateUserBodySchema,
   UserIdSchema,
@@ -13,7 +11,6 @@ import {
   notFound,
   parseOrThrow,
   unauthorized,
-  validation,
   type AvatarResponse,
   type MeResponse,
   type OkResponse,
@@ -22,36 +19,13 @@ import {
   type UsersResponse,
 } from '@tablinum/shared';
 import { requireAccount, requireAdmin, setAccountCookie } from '../auth.js';
+import { AvatarQuerySchema, readAvatarUpload, sendAvatar } from '../avatars.js';
 import { API_PREFIX, type RouteContext } from '../context.js';
 
 const UserParamsSchema = z.object({ id: UserIdSchema });
-const AvatarQuerySchema = z.object({ v: z.string().optional() });
-
-/** An avatar is addressed by its rev, so a hit on that URL can never be stale. */
-const IMMUTABLE_CACHE = 'private, max-age=31536000, immutable';
 
 function isSecureRequest(request: FastifyRequest): boolean {
   return request.protocol === 'https';
-}
-
-/** Read the single image part of a multipart avatar upload. */
-async function readAvatar(request: FastifyRequest): Promise<{ mime: string; bytes: Buffer }> {
-  if (!request.isMultipart()) throw validation('Expected a multipart/form-data upload');
-
-  let picked: { mime: string; bytes: Buffer } | null = null;
-  for await (const part of request.parts()) {
-    if (part.type === 'field') continue;
-    if (picked !== null) throw validation('Upload exactly one image per request');
-    const bytes = await part.toBuffer();
-    if (part.file.truncated) throw validation('That image is too large for an avatar');
-    picked = { mime: part.mimetype, bytes };
-  }
-
-  if (picked === null) throw validation('The upload contains no file part');
-  if (picked.bytes.length > MAX_AVATAR_BYTES) {
-    throw validation(`An avatar must be ${MAX_AVATAR_BYTES} bytes or smaller`);
-  }
-  return picked;
 }
 
 export function registerUserRoutes(app: FastifyInstance, ctx: RouteContext): void {
@@ -84,7 +58,7 @@ export function registerUserRoutes(app: FastifyInstance, ctx: RouteContext): voi
 
   app.post(`${API_PREFIX}/me/avatar`, async (request): Promise<AvatarResponse> => {
     const me = requireAccount(request);
-    const image = await readAvatar(request);
+    const image = await readAvatarUpload(request);
     const rev = accounts.setAvatar(me.id, image.mime, image.bytes);
     return { url: avatarUrl(me.id, rev), rev };
   });
@@ -144,11 +118,7 @@ export function registerUserRoutes(app: FastifyInstance, ctx: RouteContext): voi
     const query = parseOrThrow(AvatarQuerySchema, request.query, 'query');
     const avatar = accounts.getAvatar(id);
     if (avatar === null) throw notFound('That person has no avatar');
-
-    // Without the matching rev the answer must stay fresh, or a later upload is never seen.
-    const cache = query.v === avatar.rev ? IMMUTABLE_CACHE : 'private, no-cache';
-    return reply.type(avatar.mime).header('Cache-Control', cache).header('ETag', `"${avatar.rev}"`)
-      .send(avatar.bytes);
+    return sendAvatar(reply, avatar, query.v);
   });
 
   app.patch(`${API_PREFIX}/users/:id`, async (request): Promise<UserResponse> => {

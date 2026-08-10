@@ -54,7 +54,10 @@ export const AgentSchema = z.object({
   identity: z.string(),
   /** The one workspace this agent reads and writes. Its token reaches nothing else. */
   workspaceId: WorkspaceIdSchema,
-  disabled: z.boolean(),
+  /** Derived from the id, so an agent looks the same in every browser. */
+  color: z.string(),
+  /** Revision of its picture, or null while it has none. See avatarUrl(). */
+  avatarRev: z.string().nullable(),
   created: IsoDateSchema,
   updated: IsoDateSchema,
   /** When the token was last accepted, or null while the agent has never connected. */
@@ -76,7 +79,6 @@ export const UpdateAgentBodySchema = z
   .object({
     name: AgentNameSchema.optional(),
     identity: IdentitySchema.optional(),
-    disabled: z.boolean().optional(),
   })
   .refine((body) => Object.keys(body).length > 0, 'Provide at least one field to update');
 

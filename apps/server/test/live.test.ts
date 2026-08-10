@@ -310,7 +310,7 @@ describe('LiveHub', () => {
 });
 
 describe('agents on a page', () => {
-  const ADA: LiveAgent = { id: 'ag_01ADA', name: 'Ada', handle: 'ada' };
+  const ADA: LiveAgent = { id: 'ag_01ADA', name: 'Ada', handle: 'ada', avatarRev: null };
 
   /** A tab that says hello and watches `path`, which is what makes it hear presence. */
   function watcher(hub: LiveHub, id: string, path: string, now = 1_000) {

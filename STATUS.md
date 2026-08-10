@@ -320,24 +320,29 @@ unit tests only, not by a live stdio session.
 
 ### Agents and the remote MCP endpoint
 
-An admin adds an agent in the web UI (account menu, then **Agents**), writes its identity, and gets
-a `gda_` token that is shown once. The token names that agent on every request:
+An admin adds an agent in the web UI (**Settings**, then **Agents**), writes its identity, and gets
+a `gda_` token that is shown once. The token names that agent on every request. An agent is a
+writer like any other: it has a name, a `@handle` and a picture of its own, and it has no paused
+state, because deleting it is what stops it and its token dies with it:
 
-- `apps/server/test/agents.test.ts`, 9 tests: the handle, the one-time token, the MCP address, an
+- `apps/server/test/agents.test.ts`, 13 tests: the handle, the one-time token, the MCP address, an
   agent token that writes pages but gets 401 on the admin routes, the `lastUsed` stamp, an identity
-  change, a pause that blocks the token at once, a rotation that retires the old token, a delete,
-  and handles that stay unique across people and agents.
+  change, the picture upload and its immutable cache, a rotation that retires the old token, a
+  delete, and handles that stay unique across people and agents.
 - `apps/server/test/mcp.test.ts`, 9 tests: the handshake instructions carry the agent's own brief,
   another credential gets the shared guidance alone, `tools/list` lists the tablinum tools, a read
   tool and a write tool both run through the loopback client and the written page appears in REST,
-  a failing tool reports an error instead of crashing, no credential and a paused agent both give
+  a failing tool reports an error instead of crashing, no credential and a deleted agent both give
   401, `GET` gives 405, and a body that is not JSON-RPC gives 400.
 - `packages/accounts/test/store.test.ts`, 10 agent tests: creation, the shared handle namespace in
   both directions, lookup by id and by handle, token resolution, the once-a-minute `lastUsed`
-  write, an identity change that never moves the handle, rotation, and delete.
-- `apps/web/test/agents.test.tsx`, 10 tests: the add form, the token shown once, the listing, the
-  identity edit, the pause, the confirm before a rotation and before a delete, the empty state, and
-  the admin-only menu item.
+  write, an identity change that never moves the handle, the picture that is kept apart from the
+  pictures of the people, rotation, and delete.
+- `apps/web/test/agents.test.tsx`, 12 tests: the add form, the token shown once, the listing with
+  the name and the initials, the picture upload and removal, the identity edit, the absence of any
+  paused state, the confirm before a rotation and before a delete, and the empty state.
+- `e2e/agents.spec.ts`, 1 test: an admin adds an agent, reads its name and initials in the list,
+  uploads a picture, sees the image replace the initials, removes it, and deletes the agent.
 
 The endpoint is stateless on purpose. Every request carries its own credential, so nothing expires
 and a restart loses nothing. Its tools reach the REST layer through a loopback `fetch` built on

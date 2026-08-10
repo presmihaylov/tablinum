@@ -5,6 +5,7 @@ import {
   AgentTokenResponseSchema,
   AgentResponseSchema,
   AgentsResponseSchema,
+  AvatarResponseSchema,
   DEFAULT_WORKSPACE_SLUG,
   ErrorBodySchema,
   PageResponseSchema,
@@ -14,6 +15,13 @@ import {
 } from '@tablinum/shared';
 import { contextOf } from '../src/context.js';
 import { bodyOf, makeHarness, seed, type Harness } from './support/harness.js';
+import { multipart } from './support/multipart.js';
+
+/** A 1x1 png, small enough to be an avatar and real enough to have a mime type. */
+const PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64',
+);
 
 let harness: Harness;
 
@@ -121,8 +129,8 @@ describe('agents', () => {
     expect(found?.lastUsed).not.toBeNull();
   });
 
-  it('changes the identity and switches the agent off', async () => {
-    const { agent, token } = await addAgent();
+  it('changes the identity', async () => {
+    const { agent } = await addAgent();
 
     const patched = await harness.app.inject({
       method: 'PATCH',
@@ -132,18 +140,63 @@ describe('agents', () => {
     });
     expect(bodyOf(patched, AgentResponseSchema).agent.identity).toBe('You only write release notes.');
 
-    await harness.app.inject({
+    // There is no paused state to ask for, so a patch that only names one is rejected.
+    const refused = await harness.app.inject({
       method: 'PATCH',
       url: `/api/v1/agents/${agent.id}`,
       headers: harness.authHeaders(),
       payload: { disabled: true },
     });
-    const blocked = await harness.app.inject({
-      method: 'GET',
-      url: '/api/v1/spaces',
-      headers: { authorization: `Bearer ${token}` },
+    expect(refused.statusCode).toBe(400);
+  });
+
+  it('keeps a picture for an agent and serves it back to a signed in reader', async () => {
+    const { agent } = await addAgent();
+    expect(agent.avatarRev).toBeNull();
+
+    const form = multipart({ filename: 'bot.png', contentType: 'image/png', data: PNG });
+    const uploaded = await harness.app.inject({
+      method: 'POST',
+      url: `/api/v1/agents/${agent.id}/avatar`,
+      headers: { ...harness.authHeaders(), ...form.headers },
+      payload: form.payload,
     });
-    expect(blocked.statusCode).toBe(401);
+    expect(uploaded.statusCode).toBe(200);
+    const rev = bodyOf(uploaded, AvatarResponseSchema).rev;
+    expect(bodyOf(uploaded, AvatarResponseSchema).url).toBe(
+      `/api/v1/agents/${agent.id}/avatar?v=${rev}`,
+    );
+
+    const image = await harness.app.inject({
+      method: 'GET',
+      url: `/api/v1/agents/${agent.id}/avatar?v=${rev}`,
+      headers: harness.authHeaders(),
+    });
+    expect(image.statusCode).toBe(200);
+    expect(image.headers['content-type']).toBe('image/png');
+    expect(image.headers['cache-control']).toContain('immutable');
+
+    const listed = await harness.app.inject({
+      method: 'GET',
+      url: '/api/v1/agents',
+      headers: harness.authHeaders(),
+    });
+    const found = bodyOf(listed, AgentsResponseSchema).agents.find((one) => one.id === agent.id);
+    expect(found?.avatarRev).toBe(rev);
+
+    const removed = await harness.app.inject({
+      method: 'DELETE',
+      url: `/api/v1/agents/${agent.id}/avatar`,
+      headers: harness.authHeaders(),
+    });
+    expect(removed.statusCode).toBe(200);
+
+    const gone = await harness.app.inject({
+      method: 'GET',
+      url: `/api/v1/agents/${agent.id}/avatar`,
+      headers: harness.authHeaders(),
+    });
+    expect(gone.statusCode).toBe(404);
   });
 
   it('rotates the token, which retires the old one at once', async () => {
@@ -214,7 +267,7 @@ describe('agents', () => {
     expect(read.statusCode).toBe(200);
     const path = bodyOf(read, PageResponseSchema).page.path;
     // The live channel carries only what a chip needs, never the whole agent record.
-    const seated = { id: agent.id, name: 'Ada Writer', handle: 'ada.writer' };
+    const seated = { id: agent.id, name: 'Ada Writer', handle: 'ada.writer', avatarRev: null };
     expect(ctx.live.presence(path)).toEqual([
       { id: agent.id, name: 'Ada Writer', color: expect.any(String), editing: false, agent: seated },
     ]);

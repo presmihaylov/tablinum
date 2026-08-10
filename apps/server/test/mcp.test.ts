@@ -154,7 +154,7 @@ describe('remote MCP endpoint', () => {
     expect(parsed.result.content.map((part) => part.text ?? '').join('\n')).toContain('nope');
   });
 
-  it('refuses a disabled agent and a request with no credential', async () => {
+  it('refuses a deleted agent and a request with no credential', async () => {
     const anonymous = await harness.app.inject({
       method: 'POST',
       url: '/api/v1/mcp',
@@ -170,11 +170,11 @@ describe('remote MCP endpoint', () => {
       payload: { name: 'Idle Bot' },
     });
     const { agent, token } = bodyOf(created, AgentTokenResponseSchema);
+    // Deleting is what stops an agent, so its token stops working at the same moment.
     await harness.app.inject({
-      method: 'PATCH',
+      method: 'DELETE',
       url: `/api/v1/agents/${agent.id}`,
       headers: harness.authHeaders(),
-      payload: { disabled: true },
     });
 
     const blocked = await rpc('tools/list', {}, { authorization: `Bearer ${token}` });

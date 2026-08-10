@@ -14,10 +14,11 @@ import { NotFoundRoute } from './NotFoundRoute';
 
 interface PageRouteProps {
   panels: PanelState;
+  onClosePanels: () => void;
 }
 
 /** Centre pane plus the details panel. Autosave lives here, not in the editor. */
-export function PageRoute({ panels }: PageRouteProps) {
+export function PageRoute({ panels, onClosePanels }: PageRouteProps) {
   const params = useParams();
   const path = pathFromSplat(params['*']);
   const query = usePage(path);
@@ -76,7 +77,9 @@ export function PageRoute({ panels }: PageRouteProps) {
 
       <CommentsAside />
 
-      {anyPanelOpen(panels) ? <PageMeta page={page} panels={panels} /> : null}
+      {anyPanelOpen(panels) ? (
+        <PageMeta page={page} panels={panels} onClose={onClosePanels} />
+      ) : null}
 
       <ConflictDialog conflict={doc.conflict} onResolve={doc.resolveConflict} />
     </CommentsProvider>

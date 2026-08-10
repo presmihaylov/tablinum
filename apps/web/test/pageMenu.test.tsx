@@ -69,7 +69,9 @@ function Harness() {
         onTogglePanel={toggle}
         onOpenPalette={vi.fn()}
       />
-      {anyPanelOpen(panels) ? <PageMeta page={PAGE} panels={panels} /> : null}
+      {anyPanelOpen(panels) ? (
+        <PageMeta page={PAGE} panels={panels} onClose={() => setPanels(NO_PANELS)} />
+      ) : null}
     </>
   );
 }
@@ -137,6 +139,39 @@ describe('the page menu', () => {
     await user.click(await screen.findByRole('menuitem', { name: 'History' }));
 
     expect(await screen.findByRole('region', { name: 'History' })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Backlinks' })).toBeNull();
+  });
+
+  it('puts the rail away from the rail itself', async () => {
+    start();
+    const user = userEvent.setup();
+    renderApp(<Harness />, { route: '/p/notes/weekly' });
+
+    await openMenu();
+    await user.click(await screen.findByRole('menuitem', { name: 'History' }));
+    await screen.findByRole('complementary', { name: 'Page details' });
+
+    await user.click(screen.getByRole('button', { name: 'Hide the page details' }));
+
+    await waitFor(() => expect(screen.queryByRole('complementary', { name: 'Page details' })).toBeNull());
+  });
+
+  it('puts the rail away on Escape, and takes both panels with it', async () => {
+    start();
+    const user = userEvent.setup();
+    renderApp(<Harness />, { route: '/p/notes/weekly' });
+
+    await openMenu();
+    await user.click(await screen.findByRole('menuitem', { name: 'Backlinks' }));
+    await openMenu();
+    await user.click(await screen.findByRole('menuitem', { name: 'History' }));
+    await screen.findByRole('region', { name: 'History' });
+
+    // Escape is bound to the rail, so it only counts while the focus is inside it.
+    screen.getByRole('button', { name: 'Hide the page details' }).focus();
+    await user.keyboard('{Escape}');
+
+    await waitFor(() => expect(screen.queryByRole('complementary', { name: 'Page details' })).toBeNull());
     expect(screen.queryByRole('region', { name: 'Backlinks' })).toBeNull();
   });
 

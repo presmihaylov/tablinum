@@ -70,6 +70,8 @@ function AppShell() {
     [setPanels],
   );
 
+  const closePanels = useCallback(() => setPanels(NO_PANELS), [setPanels]);
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
       const meta = event.metaKey || event.ctrlKey;
@@ -114,7 +116,7 @@ function AppShell() {
         <div className="app-body scroll-y">
           <Routes>
             <Route path="/" element={<HomeRoute />} />
-            <Route path="/p/*" element={<PageRoute panels={panels} />} />
+            <Route path="/p/*" element={<PageRoute panels={panels} onClosePanels={closePanels} />} />
             <Route path="/settings" element={<SettingsRoute />} />
             <Route path="/settings/:section" element={<SettingsRoute />} />
             <Route path="*" element={<NotFoundRoute />} />

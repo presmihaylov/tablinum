@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { Stats } from 'node:fs';
-import { validation } from '@tablinum/shared';
+import { TEMP_FILE_PREFIX, validation } from '@tablinum/shared';
 
 const NULL_BYTE = String.fromCharCode(0);
 
@@ -54,10 +54,38 @@ export async function readTextOrNull(target: string): Promise<string | null> {
   }
 }
 
+let tempCounter = 0;
+
+function tempPathFor(target: string): string {
+  tempCounter += 1;
+  return path.join(path.dirname(target), `${TEMP_FILE_PREFIX}${process.pid}-${tempCounter}`);
+}
+
+/**
+ * Write the whole file, then move it over the target in one step. Whoever reads the file next
+ * gets either the old bytes or the new ones. Without this the autocommit, which runs on a timer
+ * of its own, can stage a page that is still half written.
+ */
+async function writeAtomic(target: string, data: string | Uint8Array): Promise<void> {
+  await ensureDir(path.dirname(target));
+  const temp = tempPathFor(target);
+  try {
+    await fs.writeFile(temp, data, 'utf8');
+    await fs.rename(temp, target);
+  } catch (error) {
+    await removeFile(temp);
+    throw error;
+  }
+}
+
 /** Write a file, creating any missing parent directory. */
 export async function writeText(target: string, content: string): Promise<void> {
-  await ensureDir(path.dirname(target));
-  await fs.writeFile(target, content, 'utf8');
+  await writeAtomic(target, content);
+}
+
+/** The same, for an attachment or any other file that is not text. */
+export async function writeBytes(target: string, data: Uint8Array): Promise<void> {
+  await writeAtomic(target, data);
 }
 
 export async function removeFile(target: string): Promise<void> {

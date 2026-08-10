@@ -8,6 +8,7 @@ import {
   DEFAULT_GIT_AUTHOR_EMAIL,
   DEFAULT_GIT_AUTHOR_NAME,
   DEFAULT_GIT_BRANCH,
+  TEMP_FILE_EXCLUDE_LINE,
   gitError,
   notFound,
   redactRemoteUrl,
@@ -317,15 +318,17 @@ export class GitEngine {
    */
   async excludePath(relDir: string): Promise<void> {
     if (!isSafeExcludePath(relDir)) throw validation(`Cannot exclude ${relDir}`);
-    await this.mutex.runExclusive(async () => {
-      const line = `/${relDir}/`;
-      const file = join(this.contentDir, '.git', 'info', 'exclude');
-      const current = (await readTextOrEmpty(file)).replace(/\r\n/g, '\n');
-      if (current.split('\n').includes(line)) return;
-      const head = current.length === 0 || current.endsWith('\n') ? current : `${current}\n`;
-      await mkdir(dirname(file), { recursive: true });
-      await writeFile(file, `${head}${line}\n`, 'utf8');
-    });
+    await this.mutex.runExclusive(() => this.appendExcludeLine(`/${relDir}/`));
+  }
+
+  /** Add one line to the exclude file if it is not already there. Call it under the mutex. */
+  private async appendExcludeLine(line: string): Promise<void> {
+    const file = join(this.contentDir, '.git', 'info', 'exclude');
+    const current = (await readTextOrEmpty(file)).replace(/\r\n/g, '\n');
+    if (current.split('\n').includes(line)) return;
+    const head = current.length === 0 || current.endsWith('\n') ? current : `${current}\n`;
+    await mkdir(dirname(file), { recursive: true });
+    await writeFile(file, `${head}${line}\n`, 'utf8');
   }
 
   /** Every directory `.git/info/exclude` hides, as content-relative paths. */
@@ -618,6 +621,9 @@ export class GitEngine {
 
     await this.applyLocalConfig(git);
     await this.ensureRemote(git);
+    // A save writes its bytes beside the page and renames them over it. `git add -A` runs on a
+    // timer of its own, so without this line it could stage one of those files by chance.
+    await this.appendExcludeLine(TEMP_FILE_EXCLUDE_LINE);
 
     const wroteAttributes = await this.ensureGitattributes();
 

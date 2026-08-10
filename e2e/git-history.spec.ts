@@ -11,6 +11,10 @@ const PAGE_TITLE = 'Release notes';
 /** The author the server commits as. See TABLINUM_GIT_AUTHOR_NAME in the config. */
 const AUTHOR = 'tablinum e2e';
 
+/** Named here rather than imported: the spec must see what the server really writes. */
+const TEMP_FILE_PREFIX = '.tablinum-tmp-';
+const TEMP_FILE_PATTERN = `${TEMP_FILE_PREFIX}*`;
+
 interface Seeded {
   path: string;
   /** Repo-relative markdown file behind the page. */
@@ -182,5 +186,16 @@ test.describe('git history and revisions', () => {
     // That commit is the newest one over this page file, and it carries the file.
     expect(await content.git('log', '-1', '--format=%H', '--', seeded.file)).toBe(full);
     expect(await content.git('show', '--format=', '--name-only', full)).toContain(seeded.file);
+  });
+
+  test('a save never commits the file it writes before the rename', async ({ api, content }) => {
+    const seeded = await seedPage(api, content);
+
+    // A save writes its bytes beside the page, then moves them over it. The autocommit runs on a
+    // timer of its own, so git must be told to skip whatever it finds mid-save.
+    expect(await content.read('.git/info/exclude')).toContain(TEMP_FILE_PATTERN);
+    const tracked = await content.trackedFiles();
+    expect(tracked).toContain(seeded.file);
+    expect(tracked.filter((file) => file.includes(TEMP_FILE_PREFIX))).toEqual([]);
   });
 });

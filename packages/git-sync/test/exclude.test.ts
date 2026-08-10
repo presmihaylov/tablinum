@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { AppError } from '@tablinum/shared';
+import { AppError, TEMP_FILE_PREFIX } from '@tablinum/shared';
 import {
   cleanupTempDirs,
   commitSubjects,
@@ -92,6 +92,25 @@ describe('excludePath', () => {
     for (const bad of ['../elsewhere', 'a/../b', '*', 'sec rets', '', '/absolute']) {
       await expect(engine.excludePath(bad)).rejects.toBeInstanceOf(AppError);
     }
+    expect(await engine.excludedPaths()).toEqual([]);
+  });
+
+  it('hides the file a save is still writing', async () => {
+    const dir = await tempDir();
+    const engine = makeEngine({ contentDir: dir });
+    await engine.init();
+
+    await writeFileIn(dir, 'docs/index.md', page('pg_01J0000000000000000000000E', 'Docs', 'Ship it.'));
+    // A save in flight: the bytes sit beside the page until the rename puts them over it.
+    await writeFileIn(dir, `docs/${TEMP_FILE_PREFIX}9-1`, 'half a page');
+
+    await engine.commitAll('docs: add a page');
+
+    const tracked = await gitLines(dir, 'ls-files');
+    expect(tracked).toContain('docs/index.md');
+    expect(tracked.filter((file) => file.includes(TEMP_FILE_PREFIX))).toEqual([]);
+    expect(await engine.status()).toMatchObject({ dirtyFiles: [] });
+    // A glob is not a directory, so the private space list is unchanged by it.
     expect(await engine.excludedPaths()).toEqual([]);
   });
 

@@ -69,7 +69,7 @@ export {
 
 export { consoleLogger, silentLogger, type Logger } from './logger.js';
 
-export { resolveInside } from './fs-utils.js';
+export { resolveInside, writeBytes, writeText } from './fs-utils.js';
 
 export { emitNumber, emitString, needsQuotes, quoteString } from './yaml-emit.js';
 

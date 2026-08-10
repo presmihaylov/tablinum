@@ -31,6 +31,7 @@ import type { MentionItem } from './mentionSuggestion';
 import { createPageEmbed } from './pageEmbed';
 import type { EmbeddedPage } from './pageEmbed';
 import { SlashMenuExtension } from './slashMenu';
+import type { DatabaseKind } from './slashMenu';
 import { TablinumTaskItem, TablinumTaskList } from './taskList';
 import { Wikilink } from './wikilink';
 import { WikilinkSuggestion } from './wikilinkSuggestion';
@@ -48,6 +49,8 @@ export interface EditorExtensionOptions {
   onPickPage: () => void;
   /** Opens a blank drawing canvas for the slash menu's diagram command. */
   onPickDiagram: () => void;
+  /** Makes a database on a new child page for the slash menu's database commands. */
+  onInsertDatabase: (kind: DatabaseKind) => void;
   /** Opens the drawing canvas on an existing diagram. */
   editDiagram: (request: DiagramRequest) => void;
   uploadImage: (file: File) => Promise<string | null>;
@@ -71,6 +74,7 @@ export const DEFAULT_EXTENSION_OPTIONS: EditorExtensionOptions = {
   onPickVideo: () => undefined,
   onPickPage: () => undefined,
   onPickDiagram: () => undefined,
+  onInsertDatabase: () => undefined,
   editDiagram: () => undefined,
   uploadImage: () => Promise.resolve(null),
   searchPages: () => Promise.resolve([]),
@@ -164,6 +168,7 @@ export function buildExtensions(overrides: Partial<EditorExtensionOptions> = {})
       onPickVideo: options.onPickVideo,
       onPickPage: options.onPickPage,
       onPickDiagram: options.onPickDiagram,
+      onInsertDatabase: options.onInsertDatabase,
     }),
     WikilinkSuggestion.configure({ search: options.searchPages }),
     MentionSuggestion.configure({ search: options.searchPeople }),
@@ -179,4 +184,4 @@ export type { MentionItem } from './mentionSuggestion';
 export type { EmbeddedPage } from './pageEmbed';
 export type { DiagramRequest } from './diagram';
 export { SLASH_COMMANDS, filterSlashCommands } from './slashMenu';
-export type { SlashCommandItem } from './slashMenu';
+export type { DatabaseKind, SlashCommandItem } from './slashMenu';

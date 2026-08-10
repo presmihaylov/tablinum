@@ -125,6 +125,19 @@ button.editor__icon:hover {
   min-height: 50vh;
 }
 
+/*
+ * A database follows the body, so the empty body must not claim half the viewport first.
+ * Its click target shrinks to a line, which is all a description above a table needs.
+ */
+.page-shell--database .editor__canvas {
+  flex: none;
+  min-height: 0;
+}
+
+.page-shell--database .gd-editor-surface {
+  padding-bottom: 0;
+}
+
 .editor__file {
   display: none;
 }
@@ -861,6 +874,33 @@ button.editor__icon:hover {
   border-bottom-style: dashed;
   color: var(--text-muted);
   text-decoration: line-through;
+}
+
+/* An embedded database draws the grid here, so it needs the block, not the link chrome. */
+.gd-editor-pageembed__db {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: var(--space-4) 0;
+}
+
+.gd-editor-pageembed__open {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-strong);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+}
+
+.gd-editor-pageembed__open:hover {
+  color: var(--accent);
 }
 
 /* ------------------------------------------------------------------ */

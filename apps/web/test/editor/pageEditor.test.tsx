@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
-import type { Page } from '@tablinum/shared';
+import { starterDatabase, type Page } from '@tablinum/shared';
 import { PageEditor } from '../../src/editor';
 import { fakeId, node, page, space } from '../fixtures';
 import { installFetch, type MockServer, type Routes } from '../mockFetch';
@@ -277,6 +277,33 @@ describe('PageEditor', () => {
     await waitFor(() =>
       expect(screen.getByTestId('location').textContent).toBe('/p/eng/deploy'),
     );
+  });
+
+  it('draws the grid in place when the embedded page is a database', async () => {
+    const db = starterDatabase(1000);
+    const embedded = page({
+      id: fakeId('tasks'),
+      path: 'eng/tasks',
+      title: 'Tasks',
+      database: db,
+    });
+    await mount(page({ path: 'eng/plan', markdown: '![[eng/tasks]]\n' }), {
+      'GET /api/v1/pages': () => ({ page: embedded }),
+      [`GET /api/v1/pages/${embedded.id}/database`]: () => ({ database: db, rows: [] }),
+      'GET /api/v1/users': () => ({ users: [] }),
+    });
+
+    await waitFor(() =>
+      expect(document.querySelector('.gd-editor-pageembed__db')).not.toBeNull(),
+    );
+    // The grid itself, not the title-only card a plain page gets.
+    await waitFor(() =>
+      expect(document.querySelector('.gd-editor-pageembed__db thead')?.textContent).toContain(
+        'Status',
+      ),
+    );
+    expect(document.querySelector('.gd-editor-pageembed__link')).toBeNull();
+    expect(document.querySelector('.gd-editor-pageembed__open')?.textContent).toContain('Tasks');
   });
 
   it('marks a target with no page behind it', async () => {

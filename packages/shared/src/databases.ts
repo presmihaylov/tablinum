@@ -447,6 +447,18 @@ export function compareValues(property: DbProperty, left: PropValue, right: Prop
 
 export const DEFAULT_BOARD_NAME = 'Board';
 
+/** The same starter database, drawn as a board from the first moment. `/Board view` makes this. */
+export function starterBoard(now?: number): Database {
+  const database = starterDatabase(now);
+  const status = database.properties.find((entry) => entry.type === 'select');
+  const [view] = database.views;
+  if (view === undefined) return database;
+
+  const board: DbView = { ...view, name: DEFAULT_BOARD_NAME, type: 'board' };
+  if (status !== undefined) board.groupBy = status.id;
+  return { ...database, views: [board] };
+}
+
 /** One stack of cards on a board. `option` is null for the cards that hold no value. */
 export interface BoardGroup {
   id: string | null;

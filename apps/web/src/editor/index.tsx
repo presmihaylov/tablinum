@@ -5,9 +5,9 @@ import { useQueryClient } from '@tanstack/react-query';
 import { EditorContent, useEditor } from '@tiptap/react';
 import type { Editor } from '@tiptap/core';
 import type { Transaction } from '@tiptap/pm/state';
-import { DIAGRAM_EXT, parseAssetUrl, type Page } from '@tablinum/shared';
+import { DIAGRAM_EXT, parseAssetUrl, starterBoard, type Page } from '@tablinum/shared';
 import { api } from '../api/client';
-import { useCreatePage, useTree, useUploadAsset, useUsers } from '../api/hooks';
+import { useCreatePage, useSetDatabase, useTree, useUploadAsset, useUsers } from '../api/hooks';
 import { qk } from '../api/keys';
 import { useComments } from '../lib/comments';
 import { pageHref } from '../lib/href';
@@ -25,6 +25,7 @@ import { EMBED_PROVIDERS, embedHtml, resolveEmbed } from './embeds';
 import { buildExtensions, insertEmoji, DRAFT_SPAN_ID } from './extensions';
 import type {
   CommentSpan,
+  DatabaseKind,
   DiagramRequest,
   EmbeddedPage,
   MentionItem,
@@ -83,6 +84,7 @@ interface Handlers {
   pickVideo: () => void;
   pickPage: () => void;
   pickDiagram: () => void;
+  insertDatabase: (kind: DatabaseKind) => void;
   editDiagram: (request: DiagramRequest) => void;
   insertVideo: (url: string) => void;
   upload: (file: File) => Promise<string | null>;
@@ -132,6 +134,7 @@ export function PageEditor({
   const comments = useComments();
   const uploadAsset = useUploadAsset();
   const createPage = useCreatePage();
+  const setDatabase = useSetDatabase();
   const tree = useTree();
   const spaces = useMemo(() => tree.data?.spaces ?? [], [tree.data]);
   const users = useUsers();
@@ -204,12 +207,7 @@ export function PageEditor({
           queryFn: ({ signal }) => api.getPageByPath(target, signal),
           staleTime: 5_000,
         });
-        return {
-          path: data.page.path,
-          title: data.page.title,
-          icon: data.page.icon ?? null,
-          markdown: data.page.markdown,
-        };
+        return data.page;
       } catch {
         return null;
       }
@@ -242,6 +240,41 @@ export function PageEditor({
     [toast],
   );
 
+  /**
+   * A database is always a page, so all three commands make a child page and turn it into one.
+   * Inline and board embed that page, and the embed draws the grid here. A full page only links
+   * to it and opens it, exactly as Notion does.
+   */
+  const insertDatabase = useCallback(
+    (kind: DatabaseKind): void => {
+      const title = kind === 'board' ? 'Board' : 'Database';
+      createPage.mutate(
+        { path: childPathFor(spaces, page.path, title), title },
+        {
+          onSuccess: (data) => {
+            const child = data.page;
+            setDatabase.mutate(
+              { pageId: child.id, database: kind === 'board' ? starterBoard() : undefined },
+              {
+                onSuccess: () => {
+                  if (kind === 'page') {
+                    editorRef.current?.chain().focus().insertWikilink({ target: child.path }).run();
+                    navigate(pageHref(child.path));
+                    return;
+                  }
+                  editorRef.current?.chain().focus().insertPageEmbed(child.path).run();
+                },
+                onError: (error) => toast.pushError(error, 'The database could not be created'),
+              },
+            );
+          },
+          onError: (error) => toast.pushError(error, 'The page could not be created'),
+        },
+      );
+    },
+    [createPage, setDatabase, spaces, page.path, navigate, toast],
+  );
+
   // The embed points at a page, so the page has to exist before the node goes in.
   const createAndEmbed = useCallback(
     (title: string): void => {
@@ -271,6 +304,7 @@ export function PageEditor({
     pickVideo: () => undefined,
     pickPage: () => undefined,
     pickDiagram: () => undefined,
+    insertDatabase: () => undefined,
     editDiagram: () => undefined,
     insertVideo: () => undefined,
     upload: () => Promise.resolve(null),
@@ -290,6 +324,7 @@ export function PageEditor({
         src: null,
         onSave: (url) => editorRef.current?.chain().focus().insertDiagram(url).run(),
       }),
+    insertDatabase,
     editDiagram: setDiagram,
     insertVideo,
     upload: uploadImage,
@@ -309,6 +344,7 @@ export function PageEditor({
         onPickVideo: () => handlers.current.pickVideo(),
         onPickPage: () => handlers.current.pickPage(),
         onPickDiagram: () => handlers.current.pickDiagram(),
+        onInsertDatabase: (kind) => handlers.current.insertDatabase(kind),
         editDiagram: (request) => handlers.current.editDiagram(request),
         uploadImage: (file) => handlers.current.upload(file),
         searchPages: (query) => handlers.current.search(query),

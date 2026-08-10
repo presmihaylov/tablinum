@@ -68,6 +68,7 @@ function pick(editor: Editor, id: string): void {
     onPickVideo: () => undefined,
     onPickPage: () => undefined,
     onPickDiagram: () => undefined,
+    onInsertDatabase: () => undefined,
   });
 }
 

@@ -136,6 +136,44 @@ test.describe('authentication and session', () => {
     }
   });
 
+  test('naming the first workspace keeps the new admin in it', async ({ browser }) => {
+    test.setTimeout(120_000);
+
+    const server = await startUnclaimedServer();
+    const context = await browser.newContext({ baseURL: server.url });
+    const page = await context.newPage();
+
+    try {
+      await page.goto('/');
+      await page.getByLabel('Email').fill('second-owner@example.com');
+      await page.getByLabel('Your name').fill('Second Owner');
+      await page.getByLabel('Password').fill('second-owner-1234');
+      await page.getByRole('button', { name: 'Create account' }).click();
+
+      await expect(page.getByText('Name your first workspace. You can add more at any time.')).toBeVisible();
+      await page.getByLabel('Workspace name').fill('Head Office');
+      await page.getByRole('button', { name: 'Create workspace' }).click();
+
+      // Naming it changes the slug. The tab used to hold the old slug, the server refused the next
+      // request with a 401, and the shell dropped the new admin back on the login card.
+      await expect(page.getByRole('navigation', { name: 'Pages' })).toBeVisible();
+      await expect(page.getByRole('treeitem', { name: 'Welcome' })).toBeVisible();
+      await expect(page.getByText(CLAIM_LEDE)).toHaveCount(0);
+      await expect(page.getByText(LOGIN_LEDE)).toHaveCount(0);
+      await expect(page.getByRole('button', { name: 'Workspace', exact: true })).toContainText(
+        'Head Office',
+      );
+
+      // A reload reads the stored key back, so a stale one would only show up here.
+      await page.reload();
+      await expect(page.getByRole('treeitem', { name: 'Welcome' })).toBeVisible();
+      await expect(page.getByText(LOGIN_LEDE)).toHaveCount(0);
+    } finally {
+      await context.close();
+      await server.stop();
+    }
+  });
+
   test('the right password signs you in', async ({ signedOutPage }) => {
     await signedOutPage.goto('/');
     await expect(signedOutPage.getByText(LOGIN_LEDE)).toBeVisible();

@@ -2,13 +2,40 @@ import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { SearchHit } from '@tablinum/shared';
+import type { Account, SearchHit } from '@tablinum/shared';
 import { CommandPalette } from '../src/components/CommandPalette/CommandPalette';
+import { AuthProvider } from '../src/lib/auth';
 import { filterActions, scoreMatch } from '../src/lib/palette';
 import { useDebouncedValue } from '../src/lib/useDebouncedValue';
-import { installFetch, type MockServer } from './mockFetch';
+import { installFetch, type MockServer, type Routes as MockRoutes } from './mockFetch';
 import { fakeId, node, space } from './fixtures';
 import { renderApp } from './render';
+
+const ADA: Account = {
+  id: 'us_00000000000000000000000001',
+  email: 'ada@example.com',
+  name: 'Ada Lovelace',
+  handle: 'ada.lovelace',
+  role: 'admin',
+  color: '#3b82f6',
+  avatarRev: null,
+  disabled: false,
+  created: '2026-01-01T00:00:00.000Z',
+  updated: '2026-01-01T00:00:00.000Z',
+};
+
+/** The rows an anybody sees on the home route: no page is open and nobody is signed in. */
+const BASE_ROWS = [
+  'New page',
+  'New space',
+  'New private space',
+  'Sync with git',
+  'Toggle theme',
+  'Go home',
+  'My account',
+  'Custom emoji',
+  'Workspace settings',
+];
 
 const HITS: SearchHit[] = [
   { id: fakeId('deploy'), path: 'eng/runbooks/deploy', title: 'Deploy runbook', snippet: 'How to ship', score: 1 },
@@ -23,11 +50,13 @@ const HITS: SearchHit[] = [
 
 let server: MockServer | null = null;
 
-function startServer(): MockServer {
+function startServer(routes: MockRoutes = {}): MockServer {
   server = installFetch({
     'GET /api/v1/tree': {
       spaces: [space('eng', [node('eng/runbooks', { title: 'Runbooks' })])],
     },
+    'GET /api/v1/favorites': { favorites: [] },
+    ...routes,
     'GET /api/v1/search': (url) => {
       const q = (url.searchParams.get('q') ?? '').toLowerCase();
       return { hits: HITS.filter((hit) => hit.title.toLowerCase().includes(q)) };
@@ -47,9 +76,17 @@ function selectedLabel(): string | null {
   return row?.querySelector('.palette__label')?.textContent ?? null;
 }
 
-async function openPalette(onClose: () => void = vi.fn()): Promise<{ user: ReturnType<typeof userEvent.setup>; input: HTMLElement }> {
+async function openPalette(
+  onClose: () => void = vi.fn(),
+  route = '/',
+): Promise<{ user: ReturnType<typeof userEvent.setup>; input: HTMLElement }> {
   const user = userEvent.setup();
-  renderApp(<CommandPalette open onClose={onClose} />);
+  renderApp(
+    <AuthProvider>
+      <CommandPalette open onClose={onClose} />
+    </AuthProvider>,
+    { route },
+  );
   const input = await screen.findByRole('combobox');
   await waitFor(() => expect(input).toHaveFocus());
   return { user, input };
@@ -63,7 +100,9 @@ function Toggler() {
       <button type="button" onClick={() => setOpen((current) => !current)}>
         Toggle the palette
       </button>
-      <CommandPalette open={open} onClose={() => setOpen(false)} />
+      <AuthProvider>
+        <CommandPalette open={open} onClose={() => setOpen(false)} />
+      </AuthProvider>
     </>
   );
 }
@@ -142,7 +181,54 @@ describe('CommandPalette', () => {
     await openPalette();
 
     expect(screen.getByRole('dialog', { name: 'Command palette' })).toBeInTheDocument();
-    expect(rowLabels()).toEqual(['New page', 'Sync with git', 'Toggle theme']);
+    expect(rowLabels()).toEqual(BASE_ROWS);
+  });
+
+  it('offers the page actions while a page is open, and not before', async () => {
+    startServer();
+    await openPalette(vi.fn(), '/p/eng/runbooks');
+
+    await waitFor(() =>
+      expect(rowLabels()).toContain('Copy link to the page'),
+    );
+    expect(rowLabels()).toEqual([
+      'New page',
+      'New space',
+      'New private space',
+      'Sync with git',
+      'Toggle theme',
+      'Add to favorites',
+      'Copy link to the page',
+      'Rename the page',
+      'Duplicate the page',
+      'Move the page to another space',
+      'Delete the page',
+      'Go home',
+      'My account',
+      'Custom emoji',
+      'Workspace settings',
+    ]);
+  });
+
+  it('keeps the admin sections away from everybody else', async () => {
+    startServer({ 'GET /api/v1/auth/state': { setupRequired: false, user: ADA } });
+    const { user, input } = await openPalette();
+
+    await user.type(input, 'invites');
+
+    await waitFor(() => expect(rowLabels()).toEqual(['People and invites']));
+  });
+
+  it('runs a page action on the page that is open', async () => {
+    startServer();
+    const { user, input } = await openPalette(vi.fn(), '/p/eng/runbooks');
+    await waitFor(() => expect(rowLabels()).toContain('Rename the page'));
+
+    await user.type(input, 'rename');
+    await waitFor(() => expect(rowLabels()).toEqual(['Rename the page']));
+    await user.click(screen.getByRole('option', { name: /Rename the page/ }));
+
+    expect(await screen.findByRole('dialog', { name: 'Rename page' })).toBeInTheDocument();
   });
 
   it('filters the quick actions as the user types', async () => {
@@ -192,9 +278,9 @@ describe('CommandPalette', () => {
 
     expect(selectedLabel()).toBe('New page');
     await user.keyboard('{ArrowDown}');
-    expect(selectedLabel()).toBe('Sync with git');
+    expect(selectedLabel()).toBe('New space');
     await user.keyboard('{ArrowUp}{ArrowUp}');
-    expect(selectedLabel()).toBe('Toggle theme');
+    expect(selectedLabel()).toBe(BASE_ROWS.at(-1));
   });
 
   it('opens the highlighted page on Enter and closes itself', async () => {
@@ -223,7 +309,11 @@ describe('CommandPalette', () => {
 
   it('renders nothing while closed', () => {
     startServer();
-    renderApp(<CommandPalette open={false} onClose={vi.fn()} />);
+    renderApp(
+      <AuthProvider>
+        <CommandPalette open={false} onClose={vi.fn()} />
+      </AuthProvider>,
+    );
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
@@ -242,6 +332,6 @@ describe('CommandPalette', () => {
     await user.click(toggle);
 
     expect(await screen.findByRole('combobox')).toHaveValue('');
-    await waitFor(() => expect(rowLabels()).toEqual(['New page', 'Sync with git', 'Toggle theme']));
+    await waitFor(() => expect(rowLabels()).toEqual(BASE_ROWS));
   });
 });

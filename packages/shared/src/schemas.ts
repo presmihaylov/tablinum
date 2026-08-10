@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { DatabaseSchema, PropertyIdSchema, PropValueSchema, RowPropsSchema } from './databases.js';
 import { validation } from './errors.js';
 import { isPageId } from './ids.js';
 import { isValidPagePath } from './paths.js';
@@ -46,6 +47,8 @@ export const FrontmatterSchema = z.object({
   order: z.number().optional(),
   created: IsoDateSchema,
   updated: IsoDateSchema,
+  db: DatabaseSchema.optional(),
+  props: RowPropsSchema.optional(),
 });
 
 export const PageSummarySchema = z.object({
@@ -64,6 +67,21 @@ export const PageSummarySchema = z.object({
 export const PageSchema = PageSummarySchema.extend({
   markdown: z.string(),
   rev: z.string().min(1),
+  /** Present when the page is a database. */
+  database: DatabaseSchema.optional(),
+  /** Present when the page is a row of a database. */
+  props: RowPropsSchema.optional(),
+});
+
+/** One row of a database: the page behind it, and its cells. */
+export const DbRowSchema = z.object({
+  id: PageIdSchema,
+  path: PagePathSchema,
+  title: z.string(),
+  icon: IconSchema.optional(),
+  created: IsoDateSchema,
+  updated: IsoDateSchema,
+  props: RowPropsSchema,
 });
 
 export const TreeNodeSchema: z.ZodType<TreeNode> = z.lazy(() =>
@@ -267,6 +285,33 @@ export const TreeResponseSchema = z.object({
   spaces: z.array(SpaceSchema.extend({ tree: z.array(TreeNodeSchema) })),
 });
 
+// ---------------------------------------------------------------------------
+// databases
+// ---------------------------------------------------------------------------
+
+export const SetDatabaseBodySchema = z.object({ database: DatabaseSchema });
+
+export const CreateRowBodySchema = z.object({
+  title: z.string().min(1).max(200).optional(),
+  props: RowPropsSchema.optional(),
+});
+
+/**
+ * A patch over one row. A property that is absent keeps its value; `null` clears it.
+ * The property must exist on the database, which the server checks against the schema.
+ */
+export const UpdateRowBodySchema = z.object({
+  // Both are optional: a rename touches no cell, and a cell edit leaves the title alone.
+  props: z.record(PropertyIdSchema, PropValueSchema).optional(),
+  title: z.string().min(1).max(200).optional(),
+});
+
+export const DatabaseResponseSchema = z.object({
+  database: DatabaseSchema,
+  rows: z.array(DbRowSchema),
+});
+export const RowResponseSchema = z.object({ row: DbRowSchema });
+
 export const PageResponseSchema = z.object({ page: PageSchema });
 export const PageListResponseSchema = z.object({ pages: z.array(PageSummarySchema) });
 export const DeletePageResponseSchema = z.object({ deleted: z.array(PagePathSchema) });
@@ -309,6 +354,11 @@ export type CreateSpaceBody = z.infer<typeof CreateSpaceBodySchema>;
 export type UpdateSpaceBody = z.infer<typeof UpdateSpaceBodySchema>;
 export type CreatePageBody = z.infer<typeof CreatePageBodySchema>;
 export type UpdatePageBody = z.infer<typeof UpdatePageBodySchema>;
+export type SetDatabaseBody = z.infer<typeof SetDatabaseBodySchema>;
+export type CreateRowBody = z.infer<typeof CreateRowBodySchema>;
+export type UpdateRowBody = z.infer<typeof UpdateRowBodySchema>;
+export type DatabaseResponse = z.infer<typeof DatabaseResponseSchema>;
+export type RowResponse = z.infer<typeof RowResponseSchema>;
 export type GitCommitBody = z.infer<typeof GitCommitBodySchema>;
 export type GitResolveBody = z.infer<typeof GitResolveBodySchema>;
 
@@ -352,7 +402,13 @@ function formatIssues(error: z.ZodError): string {
 }
 
 /** Validate `data`, or throw a VALIDATION AppError listing every issue. */
-export function parseOrThrow<T>(schema: z.ZodType<T>, data: unknown, label = 'input'): T {
+// Generic over the schema, not over its output: a schema with a `.default()` has an input type
+// that differs from its output, and `z.ZodType<T>` forces the two together and picks the input.
+export function parseOrThrow<S extends z.ZodTypeAny>(
+  schema: S,
+  data: unknown,
+  label = 'input',
+): z.output<S> {
   const result = schema.safeParse(data);
   if (result.success) return result.data;
   throw validation(`Invalid ${label} - ${formatIssues(result.error)}`, result.error.issues);

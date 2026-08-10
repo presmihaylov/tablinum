@@ -22,6 +22,7 @@ import { registerAgentRoutes } from './routes/agents.js';
 import { registerAssetRoutes, MAX_ASSET_BYTES } from './routes/assets.js';
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerCommentRoutes } from './routes/comments.js';
+import { registerDatabaseRoutes } from './routes/databases.js';
 import { registerEmojiRoutes } from './routes/emoji.js';
 import { registerGitRoutes } from './routes/git.js';
 import { registerHealthRoutes } from './routes/health.js';
@@ -152,6 +153,7 @@ export async function buildApp(deps: ServerDeps): Promise<FastifyInstance> {
   registerTreeRoutes(app, ctx);
   registerPageRoutes(app, ctx);
   registerCommentRoutes(app, ctx);
+  registerDatabaseRoutes(app, ctx);
   registerSearchRoutes(app, ctx);
   registerGitRoutes(app, ctx);
   registerAssetRoutes(app, ctx);

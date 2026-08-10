@@ -7,6 +7,14 @@ import {
   type Frontmatter,
   type PageId,
 } from '@tablinum/shared';
+import {
+  databaseEqual,
+  readDatabase,
+  readRowProps,
+  rowPropsEqual,
+  stringifyDatabase,
+  stringifyRowProps,
+} from './db-frontmatter.js';
 import { emitNumber, emitString, emitTimestamp } from './yaml-emit.js';
 
 const BOM = String.fromCharCode(0xfeff);
@@ -310,9 +318,17 @@ function buildFrontmatter(
   const created = createdResult.iso ?? updatedResult.iso ?? nowIso;
   const updated = updatedResult.iso ?? created;
 
+  const database = readDatabase(data['db'], hints.now?.getTime());
+  if (!database.exact) repaired = true;
+
+  const props = readRowProps(data['props']);
+  if (!props.exact) repaired = true;
+
   const frontmatter: Frontmatter = { id, title: title.value, created, updated };
   if (icon.value !== null) frontmatter.icon = icon.value;
   if (order.value !== null) frontmatter.order = order.value;
+  if (database.value !== null) frontmatter.db = database.value;
+  if (props.value !== null) frontmatter.props = props.value;
 
   if (FrontmatterSchema.safeParse(frontmatter).success) return { frontmatter, repaired };
   return {
@@ -382,6 +398,12 @@ export function stringifyFrontmatter(frontmatter: Frontmatter): string {
   }
   lines.push(`created: ${emitTimestamp(frontmatter.created)}`);
   lines.push(`updated: ${emitTimestamp(frontmatter.updated)}`);
+  if (frontmatter.props !== undefined) {
+    const block = stringifyRowProps(frontmatter.props);
+    if (block.length > 0) lines.push(block);
+  }
+  // Last, because it is by far the longest block and the short keys stay readable above it.
+  if (frontmatter.db !== undefined) lines.push(stringifyDatabase(frontmatter.db));
   return lines.join('\n');
 }
 
@@ -420,5 +442,7 @@ export function frontmatterEqual(a: Frontmatter, b: Frontmatter): boolean {
   if ((a.icon ?? null) !== (b.icon ?? null)) return false;
   if ((a.order ?? null) !== (b.order ?? null)) return false;
   if (a.created !== b.created) return false;
-  return a.updated === b.updated;
+  if (a.updated !== b.updated) return false;
+  if (!databaseEqual(a.db, b.db)) return false;
+  return rowPropsEqual(a.props, b.props);
 }

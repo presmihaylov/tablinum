@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { CursorDesk } from './cursors.js';
 import type { ServerDeps } from './deps.js';
 import type { LiveHub } from './live.js';
 import type { MentionNotifier } from './mentions.js';
@@ -16,6 +17,8 @@ export interface RouteContext {
   wiring: Wiring;
   /** Open browser tabs in the default workspace. */
   live: LiveHub;
+  /** Where each caller left its caret. An agent has nowhere else to keep one. */
+  cursors: CursorDesk;
   /** Tells people they were named on a page. Delivery is off without a Slack token. */
   mentions: MentionNotifier;
   /** Null when no Slack bot token is configured. */

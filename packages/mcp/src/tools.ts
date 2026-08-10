@@ -2,17 +2,35 @@ import {
   IconSchema,
   PagePathSchema,
   assertValidPagePath,
+  collapsed,
+  cursorAt,
   notFound,
   parseOrThrow,
   validation,
   type CreatePageBody,
+  type Cursor,
+  type Span,
   type UpdatePageBody,
 } from '@tablinum/shared';
 import type { ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { TablinumClient } from './client.js';
 import {
+  blockSpan,
+  findSpan,
+  isCollapsed,
+  moveCaret,
+  openDesk,
+  pageSpan,
+  replaceSpan,
+  selected,
+  selection,
+  type Desk,
+} from './editing.js';
+import {
+  formatBlocks,
   formatComments,
+  formatCursorState,
   formatGitStatus,
   formatHistory,
   formatPage,
@@ -124,8 +142,9 @@ const getPageTool = defineTool({
   description: [
     'Read one page in full. Give either "path" or "id"; giving neither is an error.',
     'The result is a metadata header (path, id, title, icon, order, timestamps) followed by',
-    'the markdown body, verbatim and unchanged. Always read a page with this tool before you rewrite it,',
-    'so you know the exact current body.',
+    'the markdown body, verbatim and unchanged. Use this to read a page.',
+    'To CHANGE a page, open it with tablinum_open_page instead: that prints the same text as numbered',
+    'blocks and puts your caret on it, which is what the editing tools work from.',
   ].join(' '),
   annotations: { readOnlyHint: true, openWorldHint: false, title: 'Read a page' },
   inputShape: pageRefShape,
@@ -205,24 +224,16 @@ const updatePageTool = defineTool({
   name: 'tablinum_update_page',
   title: 'Update a page',
   description: [
-    'Update an existing page. Identify it with "id" or "path".',
-    'EVERY CONTENT FIELD IS OPTIONAL AND ONLY THE FIELDS YOU SEND ARE CHANGED.',
-    'If you omit "markdown" the body is left exactly as it is and only the metadata changes, so this is the',
-    'safe way to set a title, an icon or an order without touching the text.',
-    'Send "markdown" only when you hold the COMPLETE new body; it replaces the whole body. To add text to',
-    'the end of a page use tablinum_append_page instead, and to move a page use tablinum_move_page.',
+    'Change the title, icon or sort order of a page. It never touches the body.',
+    'Identify the page with "id" or "path", and send only the fields you want changed.',
+    'To change the text of a page, open it with tablinum_open_page and edit it with',
+    'tablinum_select, tablinum_type and tablinum_erase. To move a page use tablinum_move_page.',
     'Pass icon: null or order: null to clear that field.',
   ].join(' '),
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, title: 'Update a page' },
   inputShape: {
     ...pageRefShape,
     title: z.string().min(1).optional().describe('New title. Omit to keep the current title.'),
-    markdown: z
-      .string()
-      .optional()
-      .describe(
-        'Complete replacement body, without frontmatter. OMIT THIS FIELD to leave the body untouched.',
-      ),
     icon: IconSchema.nullable()
       .optional()
       .describe(
@@ -238,13 +249,10 @@ const updatePageTool = defineTool({
   run: async (client, args) => {
     const patch: UpdatePageBody = {};
     if (args.title !== undefined) patch.title = args.title;
-    if (args.markdown !== undefined) patch.markdown = args.markdown;
     if (args.icon !== undefined) patch.icon = args.icon;
     if (args.order !== undefined) patch.order = args.order;
     if (Object.keys(patch).length === 0) {
-      throw validation(
-        'Nothing to update. Send at least one of "title", "markdown", "icon" or "order".',
-      );
+      throw validation('Nothing to update. Send at least one of "title", "icon" or "order".');
     }
     const id = await resolvePageId(client, args);
     const page = await client.updatePage(id, patch);
@@ -253,41 +261,282 @@ const updatePageTool = defineTool({
   },
 });
 
-const appendPageTool = defineTool({
-  name: 'tablinum_append_page',
-  title: 'Append to a page',
+// ---------------------------------------------------------------------------
+// editing a page the way a person does
+// ---------------------------------------------------------------------------
+
+const findArg = z
+  .string()
+  .min(1)
+  .optional()
+  .describe(
+    'Text to look for in the page, matched exactly, including case and punctuation. Copy it out of ' +
+      'the block listing tablinum_open_page printed.',
+  );
+
+const occurrenceArg = z
+  .number()
+  .int()
+  .min(1)
+  .optional()
+  .describe('Which appearance of "find" to use, counting from 1. Default 1, the first one.');
+
+const blockArg = z
+  .number()
+  .int()
+  .min(0)
+  .optional()
+  .describe('A block number from the listing tablinum_open_page printed, counting from 0.');
+
+const openPageTool = defineTool({
+  name: 'tablinum_open_page',
+  title: 'Open a page for editing',
   description: [
-    'Add markdown to the END of a page without resending the text you are not changing.',
-    'The current body is read, a blank line is inserted, and your markdown is written after it.',
-    'Use this for a new section, a log entry, a decision record or a note, and prefer it over',
-    'tablinum_update_page whenever you are only adding content: it cannot blank the page by accident.',
-    'Identify the page with "id" or "path".',
+    'Open a page to work on it, the way a person opens one before typing. Identify it with "id" or "path".',
+    'It prints the page as NUMBERED BLOCKS: one paragraph, heading, list or code fence per number.',
+    'Those numbers are the addresses tablinum_place_cursor and tablinum_select take, so open a page before',
+    'you edit it, and open it again after somebody else has changed it. It also puts your caret on the page,',
+    'which shows your name to the people reading it.',
+    'Use tablinum_get_page instead when you only want the raw markdown to read.',
   ].join(' '),
-  annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, title: 'Append to a page' },
-  inputShape: {
-    ...pageRefShape,
-    markdown: z
-      .string()
-      .min(1)
-      .describe(
-        'Markdown to add at the end of the page. No frontmatter. Start a new section with a "##" heading.',
-      ),
-  },
+  annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, title: 'Open a page for editing' },
+  inputShape: pageRefShape,
   run: async (client, args) => {
-    const addition = args.markdown.replace(/^\n+/, '').trimEnd();
-    if (addition.length === 0) {
-      throw validation('"markdown" is empty after trimming, so there is nothing to append.');
-    }
-    const page = await resolvePage(client, args);
-    const base = page.markdown.trimEnd();
-    const next = base.length === 0 ? `${addition}\n` : `${base}\n\n${addition}\n`;
-    const updated = await client.updatePage(page.id, { markdown: next });
+    const desk = await openDesk(client, args);
+    const cursor = await moveCaret(client, desk, desk.span);
+    const blocks = desk.blocks.length;
     return [
-      `Appended ${addition.length} characters to ${updated.path}. The body is now ${next.length} characters.`,
-      formatPageLine(updated),
+      `Opened ${desk.page.path} (${desk.page.id}): ${blocks} block${blocks === 1 ? '' : 's'}, ${desk.page.markdown.length} characters.`,
+      formatCursorState(cursor, desk.page.markdown),
+      '',
+      formatBlocks(desk.blocks),
     ].join('\n');
   },
 });
+
+const placeCursorTool = defineTool({
+  name: 'tablinum_place_cursor',
+  title: 'Move the caret',
+  description: [
+    'Move your caret on a page without changing any text, the way a person clicks somewhere.',
+    'Give exactly ONE of: "find" (put the caret at that text), "block" (with an optional "offset"),',
+    'or "where" ("start" or "end" of the page).',
+    'The caret stays where you leave it, so the next tablinum_type writes there. It also selects nothing:',
+    'to replace text rather than insert it, use tablinum_select first.',
+  ].join(' '),
+  annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, title: 'Move the caret' },
+  inputShape: {
+    ...pageRefShape,
+    find: findArg,
+    occurrence: occurrenceArg,
+    side: z
+      .enum(['before', 'after'])
+      .optional()
+      .describe('With "find": put the caret before the text or after it. Default "before".'),
+    block: blockArg,
+    offset: z
+      .number()
+      .int()
+      .min(0)
+      .optional()
+      .describe('With "block": how many characters into that block. Default 0, its first character.'),
+    where: z
+      .enum(['start', 'end'])
+      .optional()
+      .describe('Jump to the very start or the very end of the page.'),
+  },
+  run: async (client, args) => {
+    const desk = await openDesk(client, args);
+    const at = caretFor(desk, args);
+    const cursor = await moveCaret(client, desk, collapsed(at));
+    return [
+      `Moved the caret on ${desk.page.path}.`,
+      formatCursorState(cursor, desk.page.markdown),
+    ].join('\n');
+  },
+});
+
+/** What tablinum_place_cursor was given. Every field is one of three ways to say the same thing. */
+interface PlaceArgs {
+  find?: string | undefined;
+  occurrence?: number | undefined;
+  side?: 'before' | 'after' | undefined;
+  block?: number | undefined;
+  offset?: number | undefined;
+  where?: 'start' | 'end' | undefined;
+}
+
+/** Work out where tablinum_place_cursor was asked to put the caret. */
+function caretFor(desk: Desk, args: PlaceArgs): Cursor {
+  const asked = [args.find !== undefined, args.block !== undefined, args.where !== undefined];
+  const given = asked.filter(Boolean).length;
+  if (given === 0) {
+    throw validation('Say where to put the caret: give "find", "block" or "where".');
+  }
+  if (given > 1) {
+    throw validation('Give only one of "find", "block" and "where"; they are three ways to say the same thing.');
+  }
+
+  if (args.find !== undefined) {
+    const span = findSpan(desk, args.find, args.occurrence ?? 1);
+    return args.side === 'after' ? span.head : span.anchor;
+  }
+  if (args.block !== undefined) {
+    return { block: args.block, offset: args.offset ?? 0 };
+  }
+  if (args.where === 'start') return { block: 0, offset: 0 };
+  return pageSpan(desk).head;
+}
+
+const selectTool = defineTool({
+  name: 'tablinum_select',
+  title: 'Select text',
+  description: [
+    'Select text on a page, the way a person drags over it. Nothing is changed: the selection is what the',
+    'next tablinum_type replaces and what the next tablinum_erase deletes.',
+    'Give exactly ONE of: "find" (select that text), "block" (select a whole block, and "throughBlock" to',
+    'select a run of them), or all: true (select the whole page, which is how you rewrite it outright).',
+    'The tool prints the text it selected, so you can check you have hold of the right words.',
+  ].join(' '),
+  annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, title: 'Select text' },
+  inputShape: {
+    ...pageRefShape,
+    find: findArg,
+    occurrence: occurrenceArg,
+    block: blockArg,
+    throughBlock: z
+      .number()
+      .int()
+      .min(0)
+      .optional()
+      .describe('With "block": select every block from "block" through this one, inclusive.'),
+    all: z.boolean().optional().describe('Set true to select the whole page.'),
+  },
+  run: async (client, args) => {
+    const desk = await openDesk(client, args);
+    const span = spanFor(desk, args);
+    const cursor = await moveCaret(client, desk, span);
+    const text = selected({ ...desk, span });
+    return [
+      `Selected ${text.length} character${text.length === 1 ? '' : 's'} in ${desk.page.path}:`,
+      JSON.stringify(text),
+      '',
+      'tablinum_type replaces this text; tablinum_erase deletes it.',
+      formatCursorState(cursor, desk.page.markdown),
+    ].join('\n');
+  },
+});
+
+/** What tablinum_select was given. */
+interface SelectArgs {
+  find?: string | undefined;
+  occurrence?: number | undefined;
+  block?: number | undefined;
+  throughBlock?: number | undefined;
+  all?: boolean | undefined;
+}
+
+/** Work out what tablinum_select was asked to take hold of. */
+function spanFor(desk: Desk, args: SelectArgs): Span {
+  const asked = [args.find !== undefined, args.block !== undefined, args.all === true];
+  const given = asked.filter(Boolean).length;
+  if (given === 0) {
+    throw validation('Say what to select: give "find", "block" or all: true.');
+  }
+  if (given > 1) {
+    throw validation('Give only one of "find", "block" and "all"; they are three ways to say the same thing.');
+  }
+
+  if (args.find !== undefined) return findSpan(desk, args.find, args.occurrence ?? 1);
+  if (args.block !== undefined) return blockSpan(desk, args.block, args.throughBlock ?? args.block);
+  return pageSpan(desk);
+}
+
+const typeTool = defineTool({
+  name: 'tablinum_type',
+  title: 'Type at the caret',
+  description: [
+    'Type markdown into a page at your caret, exactly as a person typing there would.',
+    'IF TEXT IS SELECTED IT IS REPLACED, so tablinum_select then tablinum_type is how you rewrite a sentence,',
+    'a block or a whole page. With nothing selected the text is inserted and nothing is lost.',
+    'The caret ends up after what you typed, so several calls in a row build up text in order.',
+    'Write plain markdown, no frontmatter. Separate one block from the next with a blank line ("\\n\\n").',
+    'Open the page first with tablinum_open_page, or you are typing where you last were rather than where you think.',
+  ].join(' '),
+  annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, title: 'Type at the caret' },
+  inputShape: {
+    ...pageRefShape,
+    text: z
+      .string()
+      .min(1)
+      .describe('The markdown to type. Use "\\n\\n" to start a new block and "\\n" for a new line inside one.'),
+  },
+  run: async (client, args) => {
+    const desk = await openDesk(client, args);
+    const written = await replaceSpan(client, desk, desk.span, args.text);
+    const what =
+      written.removed.length === 0
+        ? `Typed ${written.added.length} characters into ${written.page.path}.`
+        : `Replaced ${written.removed.length} characters with ${written.added.length} in ${written.page.path}.`;
+    return [what, formatCursorState(written.cursor, written.page.markdown), formatPageLine(written.page)].join('\n');
+  },
+});
+
+const eraseTool = defineTool({
+  name: 'tablinum_erase',
+  title: 'Erase text',
+  description: [
+    'Delete text from a page. With text selected, and no other argument, it deletes the selection, which is',
+    'the ordinary way to remove a sentence or a block: tablinum_select, then tablinum_erase.',
+    'Pass "before" to remove that many characters before the caret, the way backspace works, or "after" to',
+    'remove that many characters after the caret, the way the delete key works.',
+    'The caret is left where the text used to be.',
+  ].join(' '),
+  annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, title: 'Erase text' },
+  inputShape: {
+    ...pageRefShape,
+    before: z
+      .number()
+      .int()
+      .min(1)
+      .optional()
+      .describe('Remove this many characters before the caret, the way backspace does.'),
+    after: z
+      .number()
+      .int()
+      .min(1)
+      .optional()
+      .describe('Remove this many characters after the caret, the way the delete key does.'),
+  },
+  run: async (client, args) => {
+    const desk = await openDesk(client, args);
+    const span = eraseSpan(desk, args);
+    const written = await replaceSpan(client, desk, span, '');
+    return [
+      `Erased ${written.removed.length} character${written.removed.length === 1 ? '' : 's'} from ${written.page.path}: ${JSON.stringify(written.removed)}`,
+      formatCursorState(written.cursor, written.page.markdown),
+      formatPageLine(written.page),
+    ].join('\n');
+  },
+});
+
+/** What tablinum_erase was asked to take out: the selection, or a count of characters. */
+function eraseSpan(desk: Desk, args: { before?: number; after?: number }): Span {
+  const counted = args.before !== undefined || args.after !== undefined;
+  if (!counted && isCollapsed(desk)) {
+    throw validation(
+      'Nothing is selected and no character count was given, so there is nothing to erase. ' +
+        'Call tablinum_select first, or pass "before" or "after".',
+    );
+  }
+  if (!counted) return desk.span;
+
+  const { from, to } = selection(desk);
+  return {
+    anchor: cursorAt(desk.blocks, from - (args.before ?? 0)),
+    head: cursorAt(desk.blocks, to + (args.after ?? 0)),
+  };
+}
 
 const movePageTool = defineTool({
   name: 'tablinum_move_page',
@@ -446,8 +695,12 @@ export const TOOL_SPECS: readonly ToolSpec[] = [
   getPageTool,
   listTreeTool,
   createPageTool,
+  openPageTool,
+  placeCursorTool,
+  selectTool,
+  typeTool,
+  eraseTool,
   updatePageTool,
-  appendPageTool,
   movePageTool,
   deletePageTool,
   listCommentsTool,

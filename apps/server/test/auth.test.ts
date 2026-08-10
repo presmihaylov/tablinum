@@ -201,6 +201,7 @@ describe('mutation audit', () => {
     { method: 'PATCH', url: '/api/v1/comment-threads/ct_00000000000000000000000000' },
     { method: 'PATCH', url: '/api/v1/comments/cm_00000000000000000000000000' },
     { method: 'DELETE', url: '/api/v1/comments/cm_00000000000000000000000000' },
+    { method: 'PUT', url: '/api/v1/pages/pg_00000000000000000000000000/cursor' },
     { method: 'PUT', url: '/api/v1/pages/pg_00000000000000000000000000/database' },
     { method: 'DELETE', url: '/api/v1/pages/pg_00000000000000000000000000/database' },
     { method: 'POST', url: '/api/v1/pages/pg_00000000000000000000000000/database/rows' },

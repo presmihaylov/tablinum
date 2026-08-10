@@ -34,10 +34,13 @@ the same pages in a block editor in the browser. Write so that both stay readabl
 
 ## Working safely next to humans
 - Search before you create. A near duplicate page is worse than a longer existing page.
-- Read a page with tablinum_get_page before you rewrite it.
-- To add a section, use tablinum_append_page. Never resend a whole body just to add to the end.
-- To change only metadata, call tablinum_update_page WITHOUT \`markdown\`. Sending an empty
-  \`markdown\` blanks the page.
+- Open a page with tablinum_open_page before you change anything in it. It prints the numbered
+  blocks the other editing tools address, and it shows your caret to everyone reading the page.
+- Edit the way a person does: tablinum_place_cursor to move, tablinum_select to take hold of text,
+  then tablinum_type or tablinum_erase. tablinum_type replaces whatever is selected.
+- To add a section, put the caret at the end with tablinum_place_cursor where: "end" and type it.
+  Never select the whole page just to add to the end of it.
+- To change only metadata, call tablinum_update_page. It never touches the body.
 - Rename with tablinum_move_page, never by deleting and recreating: that would lose the page id,
   its history and every incoming link.
 - Call tablinum_git_sync after a batch of edits so other people and other agents see them.`;

@@ -6,6 +6,7 @@ import {
   HistoryQuerySchema,
   PagesQuerySchema,
   SPACE_FILE,
+  SetCursorBodySchema,
   UpdatePageBodySchema,
   assertValidPagePath,
   isDescendantOf,
@@ -14,6 +15,7 @@ import {
   parseOrThrow,
   replacePathPrefix,
   segments,
+  type CursorResponse,
   type PagePath,
   type BacklinksResponse,
   type DeletePageResponse,
@@ -25,6 +27,7 @@ import {
   type RevisionContentResponse,
 } from '@tablinum/shared';
 import { API_PREFIX, partsOf, type RouteContext } from '../context.js';
+import { clampedTo, ownerKey } from '../cursors.js';
 import { agentOf, clientOf, type LiveHub } from '../live.js';
 import type { ContentStore } from '../deps.js';
 import { contentRelPath, pageFileVariants } from '../wiring.js';
@@ -208,6 +211,7 @@ export function registerPageRoutes(app: FastifyInstance, ctx: RouteContext): voi
     const victimIds = victims.map((victim) => victim.id);
     ctx.deps.accounts.deleteThreadsForPages(record.id, victimIds);
     ctx.deps.accounts.deleteFavoritesForPages(record.id, victimIds);
+    for (const victimId of victimIds) ctx.cursors.clearPage(request.workspace.id, victimId);
 
     const files = new Set<string>();
     for (const victim of victims) {
@@ -240,6 +244,37 @@ export function registerPageRoutes(app: FastifyInstance, ctx: RouteContext): voi
     if (caller !== null) live.dropAgent(caller.id);
 
     return { deleted };
+  });
+
+  app.get(`${API_PREFIX}/pages/:id/cursor`, async (request): Promise<CursorResponse> => {
+    const { store } = await partsOf(ctx, request);
+    const { id } = parseOrThrow(IdParamsSchema, request.params, 'params');
+    const page = await requirePageIn(store, id);
+    const held = ctx.cursors.get(ownerKey(request.principal), request.workspace.id, page.id);
+    return { cursor: held === null ? null : clampedTo(held, page.markdown) };
+  });
+
+  app.put(`${API_PREFIX}/pages/:id/cursor`, async (request): Promise<CursorResponse> => {
+    const { store, live } = await partsOf(ctx, request);
+    const { id } = parseOrThrow(IdParamsSchema, request.params, 'params');
+    const body = parseOrThrow(SetCursorBodySchema, request.body, 'cursor');
+    const page = await requirePageIn(store, id);
+
+    ctx.cursors.sweep();
+    const cursor = ctx.cursors.set(
+      ownerKey(request.principal),
+      request.workspace.id,
+      page,
+      { anchor: body.anchor, head: body.head ?? body.anchor },
+    );
+
+    // A caret on screen is the point of this: people watch an agent work rather than find out
+    // afterwards. Seating it first keeps the presence chip and the caret in step.
+    seatAgent(live, request, page.path, false);
+    const agent = agentOf(request);
+    if (agent !== null) live.agentCaret(agent, page.path, cursor.anchor, cursor.head);
+
+    return { cursor };
   });
 
   app.get(`${API_PREFIX}/pages/:id/backlinks`, async (request): Promise<BacklinksResponse> => {

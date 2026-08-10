@@ -1,7 +1,9 @@
 import type {
+  Cursor,
   DocBaseline,
   DocResetReason,
   DocStep,
+  LiveAgent,
   LiveUser,
   PagePath,
   ServerMessage,
@@ -25,10 +27,20 @@ export interface RemoteCaret {
   head: number;
 }
 
+/** An agent's caret. It counts blocks and characters of markdown, not document positions. */
+export interface AgentCaret {
+  client: string;
+  user: LiveUser;
+  agent: LiveAgent;
+  anchor: Cursor;
+  head: Cursor;
+}
+
 export interface DocRoomHandlers {
   onInit?: (init: DocInit) => void;
   onSteps?: (steps: DocStep[]) => void;
   onCaret?: (caret: RemoteCaret) => void;
+  onAgentCaret?: (caret: AgentCaret) => void;
   onLeft?: (client: string) => void;
   onWriter?: (writer: string | null) => void;
   /** The shared document is gone. Reload the page and rejoin. */
@@ -144,6 +156,17 @@ export class DocRoom {
         head: message.head,
       };
       this.#emit((handlers) => handlers.onCaret?.(caret));
+      return;
+    }
+    if (message.type === 'doc-agent-caret') {
+      const caret: AgentCaret = {
+        client: message.client,
+        user: message.user,
+        agent: message.agent,
+        anchor: message.anchor,
+        head: message.head,
+      };
+      this.#emit((handlers) => handlers.onAgentCaret?.(caret));
       return;
     }
     if (message.type === 'doc-left') {

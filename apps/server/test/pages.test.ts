@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   BacklinksResponseSchema,
+  CursorResponseSchema,
   DeletePageResponseSchema,
   ErrorBodySchema,
   PageListResponseSchema,
@@ -286,5 +287,95 @@ describe('backlinks', () => {
     expect(response.statusCode).toBe(200);
     const { backlinks } = bodyOf(response, BacklinksResponseSchema);
     expect(backlinks.map((link) => link.path)).toEqual(['eng/index-of-runbooks']);
+  });
+});
+
+describe('the caret an agent leaves on a page', () => {
+  /** A page with three blocks, which is what the cursor arithmetic addresses. */
+  async function pageWithBlocks() {
+    await seed(harness);
+    const created = await createPage({
+      path: 'eng/release',
+      title: 'Release',
+      markdown: '# Deploy\n\nRun the pipeline from main.\n\n- build\n- ship\n',
+    });
+    return bodyOf(created, PageResponseSchema).page;
+  }
+
+  async function readCursor(id: string) {
+    return harness.app.inject({ method: 'GET', url: `/api/v1/pages/${id}/cursor`, headers: headers() });
+  }
+
+  async function writeCursor(id: string, payload: Record<string, unknown>) {
+    return harness.app.inject({
+      method: 'PUT',
+      url: `/api/v1/pages/${id}/cursor`,
+      headers: headers(),
+      payload,
+    });
+  }
+
+  it('has no caret until one is put there, then hands the same one back', async () => {
+    const page = await pageWithBlocks();
+
+    const empty = await readCursor(page.id);
+    expect(empty.statusCode).toBe(200);
+    expect(bodyOf(empty, CursorResponseSchema).cursor).toBeNull();
+
+    const put = await writeCursor(page.id, {
+      anchor: { block: 1, offset: 4 },
+      head: { block: 1, offset: 16 },
+    });
+    expect(put.statusCode).toBe(200);
+    const written = bodyOf(put, CursorResponseSchema).cursor;
+    expect(written?.anchor).toEqual({ block: 1, offset: 4 });
+    expect(written?.head).toEqual({ block: 1, offset: 16 });
+    expect(written?.path).toBe('eng/release');
+
+    const again = await readCursor(page.id);
+    expect(bodyOf(again, CursorResponseSchema).cursor?.head).toEqual({ block: 1, offset: 16 });
+  });
+
+  it('leaves the caret where the anchor is when no head is given', async () => {
+    const page = await pageWithBlocks();
+    const put = await writeCursor(page.id, { anchor: { block: 2, offset: 7 } });
+    const cursor = bodyOf(put, CursorResponseSchema).cursor;
+    expect(cursor?.head).toEqual({ block: 2, offset: 7 });
+  });
+
+  it('moves a caret past the end back onto text that exists', async () => {
+    const page = await pageWithBlocks();
+    const put = await writeCursor(page.id, { anchor: { block: 99, offset: 900 } });
+    expect(bodyOf(put, CursorResponseSchema).cursor?.anchor).toEqual({ block: 2, offset: 14 });
+  });
+
+  it('keeps a caret on a page that has since been cut short, inside the text left', async () => {
+    const page = await pageWithBlocks();
+    await writeCursor(page.id, { anchor: { block: 2, offset: 14 } });
+
+    await harness.app.inject({
+      method: 'PATCH',
+      url: `/api/v1/pages/${page.id}`,
+      headers: headers(),
+      payload: { markdown: 'Just one line now.\n' },
+    });
+
+    const after = await readCursor(page.id);
+    expect(bodyOf(after, CursorResponseSchema).cursor?.anchor).toEqual({ block: 0, offset: 14 });
+  });
+
+  it('refuses a caret on a page that does not exist', async () => {
+    await seed(harness);
+    const missing = await writeCursor('pg_00000000000000000000000000', {
+      anchor: { block: 0, offset: 0 },
+    });
+    expect(missing.statusCode).toBe(404);
+  });
+
+  it('rejects a caret with a negative block', async () => {
+    const page = await pageWithBlocks();
+    const bad = await writeCursor(page.id, { anchor: { block: -1, offset: 0 } });
+    expect(bad.statusCode).toBe(400);
+    expect(bodyOf(bad, ErrorBodySchema).error.code).toBe('VALIDATION');
   });
 });

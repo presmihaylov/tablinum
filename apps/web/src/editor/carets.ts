@@ -39,6 +39,23 @@ function clamp(position: number, size: number): number {
   return Math.min(position, size);
 }
 
+/**
+ * Where a block-and-offset caret sits in this document.
+ *
+ * An agent addresses text as markdown, so it counts blocks and characters of markdown. A block
+ * is a top-level node here, which lines the two up. Inside a block the count drifts by whatever
+ * markdown syntax the block carries, e.g. the "# " of a heading, so the caret is exact in a
+ * paragraph and a character or two out in a heading or a list. That is close enough to draw.
+ */
+export function positionOfCursor(doc: ProseNode, cursor: { block: number; offset: number }): number {
+  if (doc.childCount === 0) return 0;
+  const index = Math.min(Math.max(Math.trunc(cursor.block), 0), doc.childCount - 1);
+  let start = 0;
+  for (let at = 0; at < index; at += 1) start += doc.child(at).nodeSize;
+  const node = doc.child(index);
+  return start + 1 + clamp(Math.trunc(cursor.offset), node.content.size);
+}
+
 /** How long a name tag stays up after its caret moves. */
 const NAME_MS = 1_600;
 

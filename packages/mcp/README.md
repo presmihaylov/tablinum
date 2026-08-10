@@ -135,8 +135,12 @@ instructions carry the shared tool guidance alone.
 | `tablinum_get_page` | `path?`, `id?` | A metadata header plus the markdown body, verbatim. |
 | `tablinum_list_tree` | `space?` | The page tree as an indented outline, one line per page. |
 | `tablinum_create_page` | `path`, `title`, `markdown`, `icon?`, `order?` | The new page as a one line summary. |
-| `tablinum_update_page` | `id?`/`path?`, `title?`, `markdown?`, `icon?`, `order?` | Which fields changed, plus the page summary. |
-| `tablinum_append_page` | `id?`/`path?`, `markdown` | How much was appended, plus the page summary. |
+| `tablinum_update_page` | `id?`/`path?`, `title?`, `icon?`, `order?` | Which fields changed, plus the page summary. |
+| `tablinum_open_page` | `id?`/`path?` | The page as numbered blocks, and the caret it just put on it. |
+| `tablinum_place_cursor` | `id?`/`path?`, one of `find`/`block`/`where` | Where the caret now is. |
+| `tablinum_select` | `id?`/`path?`, one of `find`/`block`/`all` | The text it took hold of. |
+| `tablinum_type` | `id?`/`path?`, `text` | What it replaced or inserted, the caret, and the page summary. |
+| `tablinum_erase` | `id?`/`path?`, `before?`, `after?` | What it took out, the caret, and the page summary. |
 | `tablinum_move_page` | `id?`/`path?`, `newPath` | The new path, plus the page summary. |
 | `tablinum_delete_page` | `id?`/`path?`, `recursive?` | Every deleted path. |
 | `tablinum_page_history` | `id?`/`path?`, `limit?` | Short sha, date, author and subject per commit. |
@@ -148,11 +152,14 @@ Design rules that make these usable by a model:
   it. Passing neither returns a `VALIDATION` error that names both options and tells the model to
   call `tablinum_list_tree` or `tablinum_search` first. Passing a path in the `id` field is detected
   and named.
-- **Partial updates are safe.** `tablinum_update_page` sends only the fields the model supplied. If
-  `markdown` is omitted, no `markdown` key reaches the API and the body stays exactly as it was,
-  so a metadata-only edit can never blank a page.
-- **Appending never rewrites.** `tablinum_append_page` reads the current body, adds a blank line and
-  writes the addition after it, so a model can add a section without holding the whole page.
+- **A body is never replaced in one call.** There is no tool that takes a whole markdown body for an
+  existing page, so a model has to look at the text before it changes any of it.
+  `tablinum_update_page` carries the title, the icon and the order alone and can never blank a page.
+- **A caret, the way a person has one.** `tablinum_open_page` prints the page as numbered blocks and
+  puts the caret on it; `tablinum_place_cursor` and `tablinum_select` move it; `tablinum_type` and
+  `tablinum_erase` change the text under it. The server holds one caret per credential per page, so
+  a model can read, think, and come back to the same place. Everyone reading the page in a browser
+  sees that caret move, with the agent's name on it.
 - **Compact text, not JSON dumps.** Search results, the tree and history come back as short
   lines a model can read cheaply. Only `tablinum_get_page` returns the full markdown, byte for byte.
 - **Errors are actionable.** Every API error becomes `CODE: message` followed by `What to do: ...`,

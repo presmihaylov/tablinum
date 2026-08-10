@@ -44,8 +44,12 @@ describe('tool catalogue', () => {
       'tablinum_get_page',
       'tablinum_list_tree',
       'tablinum_create_page',
+      'tablinum_open_page',
+      'tablinum_place_cursor',
+      'tablinum_select',
+      'tablinum_type',
+      'tablinum_erase',
       'tablinum_update_page',
-      'tablinum_append_page',
       'tablinum_move_page',
       'tablinum_delete_page',
       'tablinum_list_comments',
@@ -220,13 +224,13 @@ describe('tablinum_update_page partial body', () => {
     expect(mock.last().body).toEqual({ icon: '🚀', order: 4 });
   });
 
-  it('sends markdown when it is explicitly given, even an empty string', async () => {
+  it('never touches the body, even when a markdown field is passed', async () => {
     const page = makePage();
     const { run, mock } = harness({ [`PATCH /api/v1/pages/${page.id}`]: { page } });
 
-    await run('tablinum_update_page', { id: page.id, markdown: '' });
+    await run('tablinum_update_page', { id: page.id, title: 'T', markdown: 'ignored' });
 
-    expect(mock.last().body).toEqual({ markdown: '' });
+    expect(mock.last().body).toEqual({ title: 'T' });
   });
 
   it('passes null through to clear the icon and the order', async () => {
@@ -269,54 +273,202 @@ describe('tablinum_update_page partial body', () => {
   });
 });
 
-describe('tablinum_append_page', () => {
-  it('appends after a blank line and sends only markdown', async () => {
-    const page = makePage({ markdown: 'Intro paragraph.\n' });
-    const { run, mock } = harness({
+describe('editing a page like a person', () => {
+  const PAGE_MD = '# Deploy\n\nRun the pipeline from main.\n\n- build\n- ship\n';
+
+  interface Held {
+    anchor: { block: number; offset: number };
+    head?: { block: number; offset: number };
+  }
+
+  /** A page with three blocks, plus routes for reading it and for its caret. */
+  function desk(options: { markdown?: string; at?: Held; extra?: Routes } = {}) {
+    const page = makePage({ markdown: options.markdown ?? PAGE_MD });
+    const at = options.at;
+    const cursor =
+      at === undefined
+        ? null
+        : {
+            pageId: page.id,
+            path: page.path,
+            anchor: at.anchor,
+            head: at.head ?? at.anchor,
+            updated: '2026-01-01T00:00:00.000Z',
+          };
+    const routes: Routes = {
+      [`GET /api/v1/pages/${page.id}`]: { page },
       'GET /api/v1/pages': { page },
-      [`PATCH /api/v1/pages/${page.id}`]: { page },
-    });
+      [`GET /api/v1/pages/${page.id}/cursor`]: { cursor },
+      // The real server clamps and defaults `head`; this stands in for exactly that much.
+      [`PUT /api/v1/pages/${page.id}/cursor`]: (call) => {
+        const sent = call.body as { anchor: unknown; head?: unknown };
+        return {
+          cursor: {
+            pageId: page.id,
+            path: page.path,
+            updated: '2026-01-01T00:00:00.000Z',
+            anchor: sent.anchor,
+            head: sent.head ?? sent.anchor,
+          },
+        };
+      },
+      [`PATCH /api/v1/pages/${page.id}`]: (call) => ({
+        page: { ...page, ...(call.body as Record<string, unknown>) },
+      }),
+      ...(options.extra ?? {}),
+    };
+    return { page, ...harness(routes) };
+  }
 
-    await run('tablinum_append_page', { path: page.path, markdown: '## New section\n\nDetails.' });
+  it('opens a page as numbered blocks and puts the caret at the top', async () => {
+    const { page, run, mock } = desk();
+    const text = await run('tablinum_open_page', { path: page.path });
 
-    const body = mock.last().body as Record<string, unknown>;
-    expect(Object.keys(body)).toEqual(['markdown']);
-    expect(body['markdown']).toBe('Intro paragraph.\n\n## New section\n\nDetails.\n');
+    expect(text).toContain('3 blocks');
+    expect(text).toContain('  0 | # Deploy');
+    expect(text).toContain('  1 | Run the pipeline from main.');
+    expect(text).toContain('  2 | - build');
+    expect(text).toContain('    | - ship');
+    expect(text).toContain('Nothing is selected.');
+    expect(mock.last().body).toEqual({ anchor: { block: 0, offset: 0 }, head: { block: 0, offset: 0 } });
   });
 
-  it('does not add a leading blank line to an empty page', async () => {
-    const page = makePage({ markdown: '' });
-    const { run, mock } = harness({
-      [`GET /api/v1/pages/${page.id}`]: { page },
-      [`PATCH /api/v1/pages/${page.id}`]: { page },
+  it('puts the caret at a phrase, before it or after it', async () => {
+    const { page, run, mock } = desk();
+
+    await run('tablinum_place_cursor', { id: page.id, find: 'pipeline' });
+    expect(mock.last().body).toEqual({
+      anchor: { block: 1, offset: 8 },
+      head: { block: 1, offset: 8 },
     });
 
-    await run('tablinum_append_page', { id: page.id, markdown: 'First line.' });
-
-    expect((mock.last().body as Record<string, unknown>)['markdown']).toBe('First line.\n');
-  });
-
-  it('keeps indentation inside the appended block', async () => {
-    const page = makePage({ markdown: 'Intro.' });
-    const { run, mock } = harness({
-      [`GET /api/v1/pages/${page.id}`]: { page },
-      [`PATCH /api/v1/pages/${page.id}`]: { page },
+    await run('tablinum_place_cursor', { id: page.id, find: 'pipeline', side: 'after' });
+    expect(mock.last().body).toEqual({
+      anchor: { block: 1, offset: 16 },
+      head: { block: 1, offset: 16 },
     });
-
-    await run('tablinum_append_page', { id: page.id, markdown: '\n- one\n  - nested\n' });
-
-    expect((mock.last().body as Record<string, unknown>)['markdown']).toBe(
-      'Intro.\n\n- one\n  - nested\n',
-    );
   });
 
-  it('rejects whitespace-only markdown before any request', async () => {
-    const { run, mock } = harness({});
+  it('jumps to the end of the page', async () => {
+    const { page, run, mock } = desk();
+    await run('tablinum_place_cursor', { id: page.id, where: 'end' });
+    expect(mock.last().body).toEqual({
+      anchor: { block: 2, offset: 14 },
+      head: { block: 2, offset: 14 },
+    });
+  });
+
+  it('refuses two ways of saying where the caret goes', async () => {
+    const { page, run } = desk();
     const error = await expectError(() =>
-      run('tablinum_append_page', { id: newPageId(), markdown: '   \n ' }),
+      run('tablinum_place_cursor', { id: page.id, find: 'ship', block: 0 }),
     );
     expect(error.code).toBe('VALIDATION');
-    expect(mock.calls).toHaveLength(0);
+    expect(error.message).toContain('only one');
+  });
+
+  it('says so when the text to find is not on the page', async () => {
+    const { page, run } = desk();
+    const error = await expectError(() => run('tablinum_place_cursor', { id: page.id, find: 'rollback' }));
+    expect(error.code).toBe('VALIDATION');
+    expect(error.message).toContain('does not appear');
+  });
+
+  it('selects a phrase and reports the exact text it has hold of', async () => {
+    const { page, run, mock } = desk();
+    const text = await run('tablinum_select', { id: page.id, find: 'the pipeline' });
+
+    expect(text).toContain('"the pipeline"');
+    expect(mock.last().body).toEqual({
+      anchor: { block: 1, offset: 4 },
+      head: { block: 1, offset: 16 },
+    });
+  });
+
+  it('selects a run of blocks, and the whole page', async () => {
+    const { page, run, mock } = desk();
+
+    await run('tablinum_select', { id: page.id, block: 1, throughBlock: 2 });
+    expect(mock.last().body).toEqual({
+      anchor: { block: 1, offset: 0 },
+      head: { block: 2, offset: 14 },
+    });
+
+    await run('tablinum_select', { id: page.id, all: true });
+    expect(mock.last().body).toEqual({
+      anchor: { block: 0, offset: 0 },
+      head: { block: 2, offset: 14 },
+    });
+  });
+
+  it('types over the selection and leaves the caret after the new text', async () => {
+    const { page, run, mock } = desk({
+      at: { anchor: { block: 1, offset: 8 }, head: { block: 1, offset: 16 } },
+    });
+
+    const text = await run('tablinum_type', { id: page.id, text: 'release' });
+
+    const patch = mock.matching(`PATCH /api/v1/pages/${page.id}`)[0];
+    expect((patch?.body as Record<string, unknown>)['markdown']).toBe(
+      '# Deploy\n\nRun the release from main.\n\n- build\n- ship\n',
+    );
+    expect(text).toContain('Replaced 8 characters with 7');
+    expect(mock.last().body).toEqual({ anchor: { block: 1, offset: 15 } });
+  });
+
+  it('inserts at a caret that has nothing selected', async () => {
+    const { page, run, mock } = desk({ at: { anchor: { block: 2, offset: 14 } } });
+
+    await run('tablinum_type', { id: page.id, text: '\n- verify' });
+
+    const patch = mock.matching(`PATCH /api/v1/pages/${page.id}`)[0];
+    expect((patch?.body as Record<string, unknown>)['markdown']).toBe(
+      '# Deploy\n\nRun the pipeline from main.\n\n- build\n- ship\n- verify\n',
+    );
+  });
+
+  it('erases the selection', async () => {
+    const { page, run, mock } = desk({
+      at: { anchor: { block: 2, offset: 7 }, head: { block: 2, offset: 14 } },
+    });
+
+    const text = await run('tablinum_erase', { id: page.id });
+
+    const patch = mock.matching(`PATCH /api/v1/pages/${page.id}`)[0];
+    expect((patch?.body as Record<string, unknown>)['markdown']).toBe(
+      '# Deploy\n\nRun the pipeline from main.\n\n- build\n',
+    );
+    expect(text).toContain('Erased 7 characters');
+  });
+
+  it('backspaces a count of characters from in front of the caret', async () => {
+    const { page, run, mock } = desk({ at: { anchor: { block: 2, offset: 14 } } });
+
+    await run('tablinum_erase', { id: page.id, before: 4 });
+
+    const patch = mock.matching(`PATCH /api/v1/pages/${page.id}`)[0];
+    expect((patch?.body as Record<string, unknown>)['markdown']).toBe(
+      '# Deploy\n\nRun the pipeline from main.\n\n- build\n- \n',
+    );
+  });
+
+  it('refuses to erase when nothing is selected and no count is given', async () => {
+    const { page, run, mock } = desk();
+    const error = await expectError(() => run('tablinum_erase', { id: page.id }));
+
+    expect(error.code).toBe('VALIDATION');
+    expect(mock.matching(`PATCH /api/v1/pages/${page.id}`)).toHaveLength(0);
+  });
+
+  it('refuses an edit that would change nothing', async () => {
+    const { page, run, mock } = desk({
+      at: { anchor: { block: 1, offset: 8 }, head: { block: 1, offset: 16 } },
+    });
+
+    const error = await expectError(() => run('tablinum_type', { id: page.id, text: 'pipeline' }));
+
+    expect(error.code).toBe('VALIDATION');
+    expect(mock.matching(`PATCH /api/v1/pages/${page.id}`)).toHaveLength(0);
   });
 });
 

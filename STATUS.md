@@ -13,11 +13,11 @@ REST API, the MCP server (stdio or remote), or the files themselves.
 | Gate | Command | Result |
 | --- | --- | --- |
 | Typecheck | `pnpm -r typecheck` | PASS — 8 projects, strict + `noUncheckedIndexedAccess`, 0 errors |
-| Build | `pnpm -r build` | PASS — 8 dist outputs, Vite bundle 1,192 kB (383 kB gzip) |
-| Test | `pnpm -r test` | PASS — **1597 tests**, 0 failures |
+| Build | `pnpm -r build` | PASS — 8 dist outputs, Vite bundle 1,284 kB (410 kB gzip) |
+| Test | `pnpm -r test` | PASS — **2284 tests**, 0 failures |
 
-Per-package tests: shared 195, core 166, accounts 75, git-sync 67, search 92, mcp 102, server 218,
-web 682.
+Per-package tests: shared 272, core 260, accounts 106, git-sync 97, search 96, mcp 120, server 369,
+web 964.
 
 `packages/git-sync` cleans a temp repo at the end of every case and occasionally loses a race with
 git's own file handles (`ENOTEMPTY ... rmdir .git`). It passes on a re-run. It is a test-teardown
@@ -313,10 +313,11 @@ page is drawn, so the content repo stays a tree of markdown.
 ### MCP server
 
 `packages/mcp/dist/cli.js` was spawned over stdio by a real MCP `Client` against the live API
-earlier in the project: `tools/list` returned all 11 tools, `tablinum_list_tree` rendered the
-outline, `tablinum_create_page` created a page that REST search then found, and a missing path
-returned a readable tool error. The final verification run covered the MCP package by its 102
-unit tests only, not by a live stdio session.
+earlier in the project, when the catalogue held 11 tools; it now holds 15. `tools/list` returned
+every one of them, `tablinum_list_tree` rendered the outline, `tablinum_create_page` created a page
+that REST search then found, and a missing path returned a readable tool error. The later runs
+covered the MCP package by its 120 unit tests, plus `e2e/agent-editing.spec.ts` over the remote
+endpoint; there has been no second live stdio session.
 
 ### Agents and the remote MCP endpoint
 
@@ -348,6 +349,47 @@ The endpoint is stateless on purpose. Every request carries its own credential, 
 and a restart loses nothing. Its tools reach the REST layer through a loopback `fetch` built on
 `app.inject()`, so an agent gets the same validation, indexing and git commits as the editor, and
 exactly the authority the auth hook already granted it.
+
+### An agent edits a page like a person
+
+An agent no longer replaces a page in one call. `tablinum_append_page` is gone and
+`tablinum_update_page` now changes the title, the icon and the order only, so every change to the
+body goes through a caret:
+
+- `tablinum_open_page` prints the page as numbered blocks and puts the caret on it.
+- `tablinum_place_cursor` moves the caret to a phrase, to a block and offset, or to the start or
+  the end of the page.
+- `tablinum_select` selects a phrase, a block, a run of blocks, or the whole page.
+- `tablinum_type` types text over whatever is selected, exactly like a keyboard.
+- `tablinum_erase` erases the selection, or a number of characters each side of the caret.
+
+A block is one top-level markdown block: a run of lines with a blank line on each side. A blank
+line inside a fence separates nothing, so a code block is always one block. Block indexes line up
+with the top-level nodes of the editor's document, which is what lets a browser draw the caret.
+
+The caret lives on the server (`apps/server/src/cursors.ts`), because the remote MCP endpoint
+builds a new server for every request and has nowhere of its own to keep one. It is keyed by
+credential, workspace and page, so two agents never share a caret and two workspaces never collide
+on a page id. It is forgotten after 30 minutes without a move, and it goes when the page goes.
+
+Every tab reading the page sees the caret. `PUT /api/v1/pages/:id/cursor` seats the agent and then
+broadcasts `doc-agent-caret` with blocks and offsets; the tab maps that onto a position in its own
+document and draws the same marker it draws for another person. Inside a block the count drifts by
+whatever markdown syntax the block carries, so the caret is exact in a paragraph and a character
+or two out in a heading, which is close enough to show.
+
+- `packages/shared/test/editing.test.ts`, 14 tests: the block split, a fence that holds a blank
+  line, clamping, offsets both ways, spans, the splice, and finding every occurrence.
+- `apps/server/test/cursors.test.ts`, 13 tests: the round trip, clamping onto a page that shrank,
+  two callers, two workspaces, the 30-minute expiry, the sweep, and a page that was deleted.
+- `apps/server/test/pages.test.ts`, 5 caret tests: no caret to start with, a caret that comes back,
+  the clamp on read, one per credential, and a caret that dies with its page.
+- `packages/mcp/test/tools.test.ts`, 14 editing tests: open, place by a phrase and by a block,
+  select, type over a selection, erase both ways, and the refusals for a phrase that is not there.
+- `apps/web/test/editor/carets.test.ts`, 6 tests: a block and offset mapped onto a document, with
+  the clamps at both ends.
+- `apps/web/test/editor/docStream.test.tsx`, 2 tests: an agent caret drawn where it points, and
+  taken away when the agent leaves.
 
 ### An agent at work on an open page
 

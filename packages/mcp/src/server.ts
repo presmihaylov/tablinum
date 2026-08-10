@@ -21,8 +21,12 @@ const INSTRUCTIONS = [
   'inside a git repository, and people edit the same pages in a browser editor.',
   'Start with tablinum_search or tablinum_list_tree to find the real path of a page; every other tool',
   'accepts either that path or the stable page id.',
-  'Read a page with tablinum_get_page before you rewrite it. Use tablinum_append_page to add to the end',
-  'of a page, and call tablinum_update_page without "markdown" when you only change metadata.',
+  'You edit a page the way a person does, never by replacing it in one call. Open it with',
+  'tablinum_open_page, which prints it as numbered blocks and puts your caret on it. Then move the caret',
+  'with tablinum_place_cursor, take hold of text with tablinum_select, and change it with tablinum_type or',
+  'tablinum_erase. tablinum_type replaces whatever is selected, so select then type is how you rewrite a',
+  'sentence, a block or a whole page. tablinum_update_page changes the title, the icon and the order only.',
+  'Everyone reading the page sees your caret while you work, so open a page before you change it.',
   'Read the tablinum_style_guide prompt before you write your first page.',
 ].join(' ');
 

@@ -4,9 +4,9 @@ import { TablinumClient, createTablinumMcpServer, type FetchLike } from '@tablin
 import { MCP_ENDPOINT, type Agent } from '@tablinum/shared';
 
 /** Verbs the loopback client uses. Anything else never reaches app.inject(). */
-type LoopbackMethod = 'GET' | 'POST' | 'PATCH' | 'DELETE';
+type LoopbackMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
-const LOOPBACK_METHODS: LoopbackMethod[] = ['GET', 'POST', 'PATCH', 'DELETE'];
+const LOOPBACK_METHODS: LoopbackMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
 
 function loopbackMethod(value: string | undefined): LoopbackMethod {
   const upper = (value ?? 'GET').toUpperCase();

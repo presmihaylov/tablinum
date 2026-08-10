@@ -2,6 +2,7 @@ import {
   AppError,
   BacklinksResponseSchema,
   CommentThreadsResponseSchema,
+  CursorResponseSchema,
   DeletePageResponseSchema,
   ErrorBodySchema,
   GitCommitResponseSchema,
@@ -21,6 +22,7 @@ import {
   type Backlink,
   type CommentThread,
   type CreatePageBody,
+  type CursorState,
   type ErrorCode,
   type GitPullResponse,
   type GitPushResponse,
@@ -33,6 +35,7 @@ import {
   type Revision,
   type RevisionContentResponse,
   type SearchHit,
+  type SetCursorBody,
   type Space,
   type TreeNode,
   type UpdatePageBody,
@@ -260,6 +263,30 @@ export class TablinumClient {
       DeletePageResponseSchema,
     );
     return body.deleted;
+  }
+
+  /** Where this credential last left its caret on a page, or null when it has never been there. */
+  async getCursor(id: PageId): Promise<CursorState | null> {
+    const body = await this.request(
+      'GET',
+      `/api/v1/pages/${encodeURIComponent(id)}/cursor`,
+      CursorResponseSchema,
+    );
+    return body.cursor;
+  }
+
+  /** Put the caret somewhere on a page. The server clamps it onto text that really exists. */
+  async setCursor(id: PageId, span: SetCursorBody): Promise<CursorState> {
+    const body = await this.request(
+      'PUT',
+      `/api/v1/pages/${encodeURIComponent(id)}/cursor`,
+      CursorResponseSchema,
+      span,
+    );
+    if (body.cursor === null) {
+      throw new AppError('INTERNAL', 'The tablinum server did not return the caret it just set.');
+    }
+    return body.cursor;
   }
 
   async search(params: SearchParams): Promise<SearchHit[]> {

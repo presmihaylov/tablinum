@@ -391,6 +391,28 @@ export interface CommentThread {
 
 Helper in the same file: `unresolvedCount(threads)`, the number the comments button shows.
 
+`packages/shared/src/editing.ts` — how an agent addresses the text of a page:
+
+```ts
+/** A top-level markdown block: a run of lines with a blank line on each side. */
+export interface Block { index: number; start: number; end: number; text: string }
+
+/** A point in the markdown, counted the way a person reads it. */
+export interface Cursor { block: number; offset: number }
+
+/** Two points. Equal ends are a plain caret; different ends are a selection. */
+export interface Span { anchor: Cursor; head: Cursor }
+
+/** A caret the server is holding for one credential. */
+export interface CursorState { pageId: PageId; path: PagePath; anchor: Cursor; head: Cursor; updated: string }
+```
+
+A blank line inside a fenced code block separates nothing, and a fence is closed only by its own
+kind, so a code block is always one block. Block indexes line up with the top-level nodes of the
+editor's document, which is what lets a browser draw an agent's caret. Helpers in the same file:
+`splitBlocks`, `clampCursor`, `offsetOf`, `cursorAt`, `spanOffsets`, `spanText`, `collapsed`,
+`splice`, `findAll`, `wholePage`.
+
 COMMENTS ARE NOT PAGE CONTENT. Bodies live in `accounts.db`, keyed by workspace and page id, so a
 markdown file read on a git remote carries no comment id, no highlight span and no discussion. The
 browser looks the `quote` up again in the document on every load and draws the highlight as a
@@ -537,6 +559,12 @@ PATCH  /api/v1/pages/:id                       body { title?, markdown?, icon?, 
                                                 error.info = { markdown, rev, updated })
 DELETE /api/v1/pages/:id                       ?recursive=true -> { deleted: PagePath[] }
 
+GET    /api/v1/pages/:id/cursor                -> { cursor: CursorState | null }
+PUT    /api/v1/pages/:id/cursor                body { anchor: Cursor, head?: Cursor }
+                                               -> { cursor: CursorState }
+                                               (one caret per credential per page; the server clamps
+                                                it onto text that exists and forgets it after 30 min)
+
 GET    /api/v1/search                          ?q=&space=&tag=&limit= -> { hits: SearchHit[] }
 GET    /api/v1/pages/:id/backlinks             -> { backlinks: Backlink[] }
 GET    /api/v1/pages/:id/history               ?limit= -> { revisions: Revision[] }
@@ -646,6 +674,8 @@ type ServerMessage =
   | { type: 'doc-steps'; path: PagePath; version: number; steps: DocStep[] }
   | { type: 'doc-caret'; path: PagePath; client: string; user: LiveUser;
       anchor: number; head: number }
+  | { type: 'doc-agent-caret'; path: PagePath; client: string; user: LiveUser;
+      agent: LiveAgent; anchor: Cursor; head: Cursor }   // blocks and offsets, not positions
   | { type: 'doc-writer'; path: PagePath; writer: string | null }
   | { type: 'doc-reset'; path: PagePath; reason: 'disk' | 'overflow' | 'gone' }
   | { type: 'doc-left'; path: PagePath; client: string };
@@ -659,7 +689,10 @@ AGENTS ON A PAGE: an agent has no socket, so the REST layer seats it. Every page
 made with an agent token puts that agent on the page it touched, and takes it off the page it was
 on before. A write also sets `editing`, which makes the chip pulse. One agent holds one seat. The
 seat lapses `AGENT_PRESENCE_MS` (60s) after the last tool call and the sweep announces the empty
-page; deleting the agent takes the seat away at once. A write by an agent also names it in the
+page; deleting the agent takes the seat away at once. An agent that moves its caret also gets one
+drawn on every open tab: it travels as `doc-agent-caret` in blocks and offsets, because an agent
+has never seen the tab's document, and the tab turns it into a position of its own. The caret goes
+away with the seat, as a `doc-left`. A write by an agent also names it in the
 `page` broadcast, so an open tab pulls the new bytes and says who wrote them.
 
 COLLABORATION: one room per open page. The server orders steps and relays them; it never reads

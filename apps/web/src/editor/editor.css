@@ -924,16 +924,19 @@ button.editor__icon:hover {
 /* block handles                                                       */
 /* ------------------------------------------------------------------ */
 
+/* The opacity sits on the buttons, not here: on the group it would make a stacking
+   context and bury the menu under the editable box. */
 .gd-editor-handles {
   position: absolute;
   left: calc(var(--space-6) * -1 - var(--space-2));
+  z-index: 5;
   display: flex;
   gap: 2px;
   padding-top: 2px;
-  opacity: 0.75;
 }
 
 .gd-editor-handles__btn {
+  opacity: 0.75;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -957,6 +960,42 @@ button.editor__icon:hover {
 
 .gd-editor-handles__btn--grip {
   cursor: grab;
+}
+
+/* Hangs off the grip, which is the button that opened it. */
+.gd-editor-blockmenu {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-width: 9rem;
+  padding: var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-lg);
+}
+
+.gd-editor-blockmenu__item {
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.gd-editor-blockmenu__item:hover {
+  background: var(--bg-hover);
+}
+
+.gd-editor-blockmenu__item--danger:hover {
+  color: var(--danger);
 }
 
 /* A table hangs its own row grips 11px off its left edge, right where the second

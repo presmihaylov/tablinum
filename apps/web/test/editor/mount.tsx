@@ -7,6 +7,7 @@ import type { Transaction } from '@tiptap/pm/state';
 import { buildExtensions } from '../../src/editor/extensions';
 import type { DiagramRequest, MentionItem, WikilinkItem } from '../../src/editor/extensions';
 import { ThemeProvider } from '../../src/lib/theme';
+import { BlockHandles } from '../../src/editor/ui/BlockHandles';
 import { MarkMenu } from '../../src/editor/ui/MarkMenu';
 import { TableControls } from '../../src/editor/ui/TableControls';
 import { TableMenu } from '../../src/editor/ui/TableMenu';
@@ -34,6 +35,8 @@ export interface MountOptions {
   onPickVideo?: () => void;
   onPickPage?: () => void;
   editDiagram?: (request: DiagramRequest) => void;
+  /** Given only when the page holds comments, exactly as the real shell does it. */
+  onComment?: () => void;
   /** False mounts the editor the way a reader sees it. Defaults to true. */
   editable?: boolean;
 }
@@ -65,6 +68,13 @@ function Harness({
   return (
     <div className="editor__canvas" ref={canvas}>
       <EditorContent editor={editor} />
+      {editor ? (
+        <BlockHandles
+          editor={editor}
+          canvas={canvas}
+          {...(options.onComment ? { onComment: options.onComment } : {})}
+        />
+      ) : null}
       {editor ? <TableControls editor={editor} canvas={canvas} /> : null}
       {editor ? <MarkMenu editor={editor} /> : null}
       {editor ? <TableMenu editor={editor} /> : null}

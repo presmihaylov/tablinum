@@ -11,6 +11,7 @@ export * from './accounts.js';
 export * from './emoji.js';
 export * from './agents.js';
 export * from './comments.js';
+export * from './favorites.js';
 export * from './workspaces.js';
 export * from './mentions.js';
 export * from './slack.js';

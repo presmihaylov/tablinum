@@ -29,6 +29,8 @@ import type {
   DatabaseResponse,
   DeleteCommentResponse,
   DeletePageResponse,
+  FavoriteResponse,
+  FavoritesResponse,
   GitCommitBody,
   GitCommitResponse,
   GitPullResponse,
@@ -251,7 +253,11 @@ export function useDeletePage(): UseMutationResult<DeletePageResponse, ApiError,
   const client = useQueryClient();
   return useMutation({
     mutationFn: ({ id, recursive }: DeletePageVars) => api.deletePage(id, recursive ?? false),
-    onSuccess: () => invalidateContent(client),
+    onSuccess: () => {
+      invalidateContent(client);
+      // The server drops the pins of a deleted page, so the bucket has to read them again.
+      void client.invalidateQueries({ queryKey: qk.favorites });
+    },
   });
 }
 
@@ -410,6 +416,31 @@ export function useDeleteComment(): UseMutationResult<DeleteCommentResponse, Api
   return useMutation({
     mutationFn: ({ commentId }: DeleteCommentVars) => api.deleteComment(commentId),
     onSuccess: (_data, vars) => void client.invalidateQueries({ queryKey: qk.comments(vars.pageId) }),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// favorites
+// ---------------------------------------------------------------------------
+
+/** Every page this person pinned in this workspace, oldest pin first. */
+export function useFavorites(): UseQueryResult<FavoritesResponse, ApiError> {
+  return useQuery({ queryKey: qk.favorites, queryFn: ({ signal }) => api.favorites(signal) });
+}
+
+export function useAddFavorite(): UseMutationResult<FavoriteResponse, ApiError, PageId> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: PageId) => api.addFavorite(id),
+    onSuccess: () => void client.invalidateQueries({ queryKey: qk.favorites }),
+  });
+}
+
+export function useRemoveFavorite(): UseMutationResult<OkResponse, ApiError, PageId> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: PageId) => api.removeFavorite(id),
+    onSuccess: () => void client.invalidateQueries({ queryKey: qk.favorites }),
   });
 }
 

@@ -4,9 +4,12 @@ import { depth, isDescendantOf, parentPath, segments, slugify, spaceOf } from '@
 import type { PagePath, TreeNode } from '@tablinum/shared';
 import { api } from '../api/client';
 import {
+  useAddFavorite,
   useCreatePage,
   useCreateSpace,
   useDeletePage,
+  useFavorites,
+  useRemoveFavorite,
   useTree,
   useUpdatePage,
   useUpdateSpace,
@@ -29,7 +32,7 @@ import {
   type DropPosition,
   type MovePatch,
 } from './treeMove';
-import { childrenOf, type SpaceTree } from './tree';
+import { childrenOf, findNodeById, type SpaceTree } from './tree';
 import { useToast } from './toast';
 
 const SPACE_KEY = 'space';
@@ -43,6 +46,10 @@ interface ContentValue {
   isLoadingTree: boolean;
   /** Pages opened on this device, newest first. */
   recents: PagePath[];
+  /** Pages this person pinned in this workspace, oldest pin first. */
+  favorites: TreeNode[];
+  isFavorite: (id: string) => boolean;
+  toggleFavorite: (node: TreeNode) => void;
   currentPath: PagePath;
   currentSpace: string;
   setCurrentSpace: (slug: string) => void;
@@ -75,6 +82,9 @@ export function ContentProvider({ children }: { children: ReactNode }) {
   const updatePage = useUpdatePage();
   const updateSpaceMutation = useUpdateSpace();
   const deletePageMutation = useDeletePage();
+  const favoritesQuery = useFavorites();
+  const addFavorite = useAddFavorite();
+  const removeFavorite = useRemoveFavorite();
 
   const [prompt, setPrompt] = useState<PromptRequest | null>(null);
   const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
@@ -111,6 +121,37 @@ export function ContentProvider({ children }: { children: ReactNode }) {
       return next;
     });
   }, [currentPath]);
+
+  const favoriteIds = useMemo(
+    () => new Set((favoritesQuery.data?.favorites ?? []).map((favorite) => favorite.pageId)),
+    [favoritesQuery.data],
+  );
+
+  // A pinned page that was deleted stays in the list until the server drops it, so resolve each.
+  const favorites = useMemo(
+    () =>
+      (favoritesQuery.data?.favorites ?? [])
+        .map((favorite) => findNodeById(spaces, favorite.pageId))
+        .filter((node) => node !== null),
+    [favoritesQuery.data, spaces],
+  );
+
+  const isFavorite = useCallback((id: string) => favoriteIds.has(id), [favoriteIds]);
+
+  const toggleFavorite = useCallback(
+    (node: TreeNode) => {
+      if (favoriteIds.has(node.id)) {
+        removeFavorite.mutate(node.id, {
+          onError: (error) => pushError(error, 'Could not remove the favorite.'),
+        });
+        return;
+      }
+      addFavorite.mutate(node.id, {
+        onError: (error) => pushError(error, 'Could not add the favorite.'),
+      });
+    },
+    [favoriteIds, addFavorite, removeFavorite, pushError],
+  );
 
   const newPage = useCallback(
     (parent: PagePath | null) => {
@@ -341,6 +382,9 @@ export function ContentProvider({ children }: { children: ReactNode }) {
       spaces,
       isLoadingTree: tree.isLoading,
       recents,
+      favorites,
+      isFavorite,
+      toggleFavorite,
       currentPath,
       currentSpace,
       setCurrentSpace,
@@ -358,6 +402,9 @@ export function ContentProvider({ children }: { children: ReactNode }) {
       spaces,
       tree.isLoading,
       recents,
+      favorites,
+      isFavorite,
+      toggleFavorite,
       currentPath,
       currentSpace,
       setCurrentSpace,

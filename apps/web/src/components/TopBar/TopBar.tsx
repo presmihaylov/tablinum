@@ -8,7 +8,7 @@ import { useContent } from '../../lib/content';
 import type { PanelId, PanelState } from '../../lib/panels';
 import { Presence } from '../Presence/Presence';
 import { ContextMenu, type MenuItem } from '../ui/Overlay';
-import { Check, Dots, Moon, MoveTo, PanelLeft, Search, Sun, Trash } from '../ui/Icon';
+import { Check, Dots, Moon, MoveTo, PanelLeft, Search, Star, Sun, Trash } from '../ui/Icon';
 import './topbar.css';
 
 /** The nominal width of a context menu, so the menu hangs off the right edge of its button. */
@@ -84,7 +84,7 @@ interface PageMenuProps {
 
 /** Everything a whole page can do, out of sight until it is asked for. */
 function PageMenu({ panels, onTogglePanel }: PageMenuProps) {
-  const { spaces, currentPath, moveToSpace, deletePage } = useContent();
+  const { spaces, currentPath, isFavorite, toggleFavorite, moveToSpace, deletePage } = useContent();
   const [open, setOpen] = useState(false);
   const [menuAt, setMenuAt] = useState({ x: 0, y: 0 });
   const buttonRef = useRef<HTMLButtonElement | null>(null);
@@ -109,6 +109,13 @@ function PageMenu({ panels, onTogglePanel }: PageMenuProps) {
   const actions: MenuItem[] = [];
 
   if (node !== null) {
+    const pinned = isFavorite(node.id);
+    actions.push({
+      id: 'favorite',
+      label: pinned ? 'Remove from favorites' : 'Add to favorites',
+      icon: <Star filled={pinned} />,
+      onSelect: () => toggleFavorite(node),
+    });
     // A space home page owns its space, so it can never move into another one.
     if (pathDepth(node.path) > 1) {
       actions.push({ id: 'move', label: 'Move to', icon: <MoveTo />, onSelect: () => moveToSpace(node) });

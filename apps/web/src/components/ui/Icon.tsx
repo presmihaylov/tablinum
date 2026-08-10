@@ -152,6 +152,13 @@ export const Check = (props: IconProps) => (
   </Svg>
 );
 
+/** `filled` paints the star in, which is how a pinned page reads at a glance. */
+export const Star = ({ filled = false, ...props }: IconProps & { filled?: boolean }) => (
+  <Svg {...props} fill={filled ? 'currentColor' : 'none'}>
+    <path d="M8 2.2 9.8 6l4.1.5-3 2.8.8 4.1L8 11.4l-3.7 2 .8-4.1-3-2.8L6.2 6z" />
+  </Svg>
+);
+
 export const Table = (props: IconProps) => (
   <Svg {...props}>
     <rect x="2.5" y="3" width="11" height="10" rx="1.5" />

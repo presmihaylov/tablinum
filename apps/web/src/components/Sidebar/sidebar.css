@@ -182,6 +182,39 @@
   flex-direction: column;
 }
 
+.sidebar-list__item {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.sidebar-list__action {
+  position: absolute;
+  right: var(--space-1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 1.15rem;
+  height: 1.15rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--accent);
+  opacity: 0;
+  cursor: pointer;
+}
+
+.sidebar-list__item:hover .sidebar-list__action,
+.sidebar-list__action:focus-visible {
+  opacity: 1;
+}
+
+.sidebar-list__action:hover {
+  background: var(--bg-active);
+}
+
 /* tree ---------------------------------------------------------------- */
 
 .tree {

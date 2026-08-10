@@ -6,6 +6,7 @@ import { CONTENT_DIR, DEFAULT_PAGE_PATH, DEFAULT_SPACE_SLUG } from '../env';
 import type {
   AuthState,
   CreatePageInput,
+  Favorite,
   GitStatus,
   Page,
   PageSummary,
@@ -117,6 +118,21 @@ export class ApiClient {
       await this.request.delete(`${PREFIX}/pages/${id}`, { params }),
     );
     return body.deleted;
+  }
+
+  /** The pins of the signed-in account. They live per person, so the token client has none. */
+  async favorites(): Promise<Favorite[]> {
+    const body = await unwrap<{ favorites: Favorite[] }>(await this.request.get(`${PREFIX}/favorites`));
+    return body.favorites;
+  }
+
+  async addFavorite(id: string): Promise<Favorite> {
+    const body = await unwrap<{ favorite: Favorite }>(await this.request.put(`${PREFIX}/favorites/${id}`));
+    return body.favorite;
+  }
+
+  async removeFavorite(id: string): Promise<void> {
+    await unwrap<{ ok: true }>(await this.request.delete(`${PREFIX}/favorites/${id}`));
   }
 
   async gitStatus(): Promise<GitStatus> {

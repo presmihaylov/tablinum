@@ -90,6 +90,26 @@ test.describe('favorites', () => {
     expect(await api.favorites()).toEqual([]);
   });
 
+  test('pins and unpins from the star in the page header', async ({ page, api }) => {
+    const seeded = await seedPage(api, 'Starred');
+
+    await page.goto(seeded.href);
+    const star = page.getByRole('button', { name: 'Add to your favorites' });
+    // It sits beside the page menu, so one click pins without opening anything.
+    await expect(star).toBeVisible();
+    await star.click();
+
+    await expect(row(page, 'Starred')).toBeVisible();
+    expect((await api.favorites()).map((one) => one.pageId)).toEqual([seeded.id]);
+
+    const filled = page.getByRole('button', { name: 'Remove from your favorites' });
+    await expect(filled).toHaveAttribute('aria-pressed', 'true');
+    await filled.click();
+
+    await expect(bucket(page).getByText('No favorites yet.')).toBeVisible();
+    expect(await api.favorites()).toEqual([]);
+  });
+
   test('pins a page from the tree row menu', async ({ page, api }) => {
     const seeded = await seedPage(api, 'Contextual');
 

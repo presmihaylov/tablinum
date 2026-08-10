@@ -1,12 +1,13 @@
-import { rm } from 'node:fs/promises';
+import { rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { defaultCommitMessage } from '../src/engine.js';
+import { defaultCommitMessage, isIndexLockError } from '../src/engine.js';
 import {
   cleanupTempDirs,
   commitCount,
   commitSubjects,
   disposeEngines,
+  exists,
   git,
   gitLines,
   makeEngine,
@@ -196,5 +197,48 @@ describe('GitEngine.scheduleCommit', () => {
     await engine.close();
 
     expect(await commitCount(dir)).toBe(before + 1);
+  });
+});
+
+describe('the git index lock', () => {
+  /** The lock a git run outside this process holds while it writes the index. */
+  async function holdIndexLock(dir: string): Promise<string> {
+    const lock = join(dir, '.git', 'index.lock');
+    await writeFile(lock, '');
+    return lock;
+  }
+
+  it('reads a lock refusal out of whatever git threw', () => {
+    expect(isIndexLockError(new Error("Unable to create '/r/.git/index.lock': File exists."))).toBe(
+      true,
+    );
+    expect(isIndexLockError(new Error('Commit failed: nothing to commit'))).toBe(false);
+  });
+
+  it('waits out a lock another process holds, then commits', async () => {
+    const dir = await tempDir();
+    const engine = makeEngine({ contentDir: dir });
+    await engine.init();
+    await writeFileIn(dir, 'eng/deploy.md', page('pg_1', 'Deploy', 'Run the script'));
+
+    const lock = await holdIndexLock(dir);
+    setTimeout(() => void rm(lock, { force: true }), 150);
+
+    const sha = await engine.commitAll();
+    expect(sha).toMatch(/^[0-9a-f]{40}$/);
+    expect(await gitLines(dir, 'ls-tree', '-r', '--name-only', 'HEAD')).toContain('eng/deploy.md');
+  });
+
+  it('gives up on a lock that stays, and leaves it alone', async () => {
+    const dir = await tempDir();
+    const engine = makeEngine({ contentDir: dir });
+    await engine.init();
+    await writeFileIn(dir, 'eng/deploy.md', page('pg_1', 'Deploy', 'Run the script'));
+
+    const lock = await holdIndexLock(dir);
+
+    await expect(engine.commitAll()).rejects.toThrow(/index\.lock/);
+    // Removing a lock this process did not take could destroy the work of the one that did.
+    expect(await exists(lock)).toBe(true);
   });
 });

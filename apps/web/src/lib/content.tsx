@@ -23,7 +23,8 @@ import {
   type SpacePickerRequest,
 } from '../components/ui/SpacePickerDialog';
 import { absolutePageUrl, pageHref, pathFromSplat } from './href';
-import { readStored, writeStored } from './storage';
+import { myUser } from './identity';
+import { readStored, removeStored, writeStored } from './storage';
 import {
   childPathFor,
   computeMove,
@@ -41,10 +42,15 @@ const RECENTS_KEY = 'recents';
 /** How many pages the Recents bucket keeps. Notion shows about this many. */
 const RECENTS_LIMIT = 10;
 
+/** Where one person's list lives. Two people who share a browser never see each other's. */
+function recentsKeyFor(accountId: string): string {
+  return `${RECENTS_KEY}.${accountId}`;
+}
+
 interface ContentValue {
   spaces: SpaceTree[];
   isLoadingTree: boolean;
-  /** Pages opened on this device, newest first. */
+  /** Pages this person opened on this device, newest first opened. A page never moves again. */
   recents: PagePath[];
   /** Pages this person pinned in this workspace, oldest pin first. */
   favorites: TreeNode[];
@@ -104,7 +110,12 @@ export function ContentProvider({ children }: { children: ReactNode }) {
   const [spacePick, setSpacePick] = useState<SpacePickerRequest | null>(null);
   const [spaceEdit, setSpaceEdit] = useState<SpaceDialogRequest | null>(null);
   const [storedSpace, setStoredSpace] = useState<string>(() => readStored<string>(SPACE_KEY, ''));
-  const [recents, setRecents] = useState<PagePath[]>(() => readStored<PagePath[]>(RECENTS_KEY, []));
+  const [recents, setRecents] = useState<PagePath[]>([]);
+
+  // Read the way the live channel reads it: the account is set while the provider above renders,
+  // and the shell is only reached once somebody is signed in.
+  const accountId = myUser()?.id ?? null;
+  const recentsKey = accountId === null ? null : recentsKeyFor(accountId);
 
   const spaces = useMemo<SpaceTree[]>(() => tree.data?.spaces ?? [], [tree.data]);
 
@@ -134,14 +145,24 @@ export function ContentProvider({ children }: { children: ReactNode }) {
   }, [currentPath, storedSpace, setCurrentSpace]);
 
   useEffect(() => {
-    if (currentPath === '') return;
+    if (recentsKey === null) return;
+    setRecents(readStored<PagePath[]>(recentsKey, []));
+    // One list used to be shared by everybody who signed in on this browser. It is dropped
+    // rather than handed to the first person who arrives, because nobody can say whose it was.
+    removeStored(RECENTS_KEY);
+  }, [recentsKey]);
+
+  useEffect(() => {
+    if (currentPath === '' || recentsKey === null) return;
     setRecents((prev) => {
-      if (prev[0] === currentPath) return prev;
-      const next = [currentPath, ...prev.filter((entry) => entry !== currentPath)].slice(0, RECENTS_LIMIT);
-      writeStored(RECENTS_KEY, next);
+      // A page already in the list keeps its place, and its row is lit where it stands. Moving
+      // it to the top would reshuffle the bucket under the pointer that just clicked it.
+      if (prev.includes(currentPath)) return prev;
+      const next = [currentPath, ...prev].slice(0, RECENTS_LIMIT);
+      writeStored(recentsKey, next);
       return next;
     });
-  }, [currentPath]);
+  }, [currentPath, recentsKey]);
 
   const favoriteIds = useMemo(
     () => new Set((favoritesQuery.data?.favorites ?? []).map((favorite) => favorite.pageId)),

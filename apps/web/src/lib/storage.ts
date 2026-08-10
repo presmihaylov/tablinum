@@ -20,6 +20,14 @@ export function writeStored(key: string, value: unknown): void {
   }
 }
 
+export function removeStored(key: string): void {
+  try {
+    window.localStorage.removeItem(PREFIX + key);
+  } catch {
+    /* quota or private mode: nothing was stored to remove */
+  }
+}
+
 /** useState that survives a reload. */
 export function usePersistedState<T>(key: string, initial: T): [T, (next: T | ((prev: T) => T)) => void] {
   const [value, setValue] = useState<T>(() => readStored(key, initial));

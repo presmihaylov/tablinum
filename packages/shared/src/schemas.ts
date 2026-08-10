@@ -240,14 +240,42 @@ export const UpdatePageBodySchema = z
     'Provide at least one field to update',
   );
 
-export const GitCommitBodySchema = z.object({ message: z.string().min(1).optional() });
+/**
+ * A commit message the caller wrote. The git log is parsed on separator bytes, so a control
+ * character in the message could otherwise forge a whole revision row.
+ */
+const CommitMessageSchema = z
+  .string()
+  .min(1)
+  .max(2000)
+  .refine(
+    (value) => !/[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(value),
+    'The message contains control characters',
+  );
+
+/** A repo-relative path the conflict UI may write. `.git` is metadata, never content. */
+const ConflictFilePathSchema = z
+  .string()
+  .min(1)
+  .max(1024)
+  .refine((value) => !value.startsWith('/') && !/^[a-zA-Z]:/.test(value), 'Use a repo-relative path')
+  .refine(
+    (value) =>
+      !value
+        .replace(/\\/g, '/')
+        .split('/')
+        .some((segment) => segment === '..' || segment.toLowerCase() === '.git'),
+    'That path is not inside the content tree',
+  );
+
+export const GitCommitBodySchema = z.object({ message: CommitMessageSchema.optional() });
 
 /** One decision from the conflict UI: the exact text to keep for a file. */
 export const GitResolveBodySchema = z.object({
   files: z
-    .array(z.object({ file: z.string().min(1), content: z.string() }))
+    .array(z.object({ file: ConflictFilePathSchema, content: z.string() }))
     .min(1),
-  message: z.string().min(1).optional(),
+  message: CommitMessageSchema.optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -270,10 +298,11 @@ export const HistoryQuerySchema = z.object({ limit: intParam(1, 500).optional() 
 // responses
 // ---------------------------------------------------------------------------
 
+// An anonymous caller gets `ok` alone, so the build and the content directory are optional.
 export const HealthResponseSchema = z.object({
   ok: z.literal(true),
-  version: z.string(),
-  contentDir: z.string(),
+  version: z.string().optional(),
+  contentDir: z.string().optional(),
 });
 
 export const OkResponseSchema = z.object({ ok: z.literal(true) });

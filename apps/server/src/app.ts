@@ -11,7 +11,7 @@ import {
   DEFAULT_WORKSPACE_NAME,
   DEFAULT_WORKSPACE_SLUG,
 } from '@tablinum/shared';
-import { normalizePathname, registerAuthHook } from './auth.js';
+import { registerAuthHook, routedPathname } from './auth.js';
 import { rememberContext, type RouteContext } from './context.js';
 import type { ServerDeps } from './deps.js';
 import { registerErrorHandler } from './errors.js';
@@ -43,6 +43,25 @@ const JSON_BODY_LIMIT = 8 * 1024 * 1024;
 
 /** Where the web build puts its hashed bundles, relative to the site root. */
 const WEB_ASSETS_DIR = 'assets';
+
+/**
+ * What the app shell may load. `style-src 'unsafe-inline'` stays because the editor writes
+ * style attributes; scripts get no such escape, so the theme boot lives in a file. The https
+ * sources carry remote images in markdown and the video players in editor/embeds.ts.
+ */
+const HTML_CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob: https:",
+  "media-src 'self' blob: https:",
+  'frame-src https:',
+  "connect-src 'self' ws: wss:",
+  "object-src 'none'",
+  "base-uri 'none'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+].join('; ');
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -76,6 +95,16 @@ export async function buildApp(deps: ServerDeps): Promise<FastifyInstance> {
   });
 
   registerErrorHandler(app);
+
+  // Before any route: Fastify freezes a route's hook chain when the route is added. Only the
+  // shell gets a policy, so the stricter one an attachment sets for itself survives.
+  app.addHook('onSend', async (_request, reply, payload) => {
+    reply.header('x-content-type-options', 'nosniff');
+    reply.header('referrer-policy', 'same-origin');
+    const type = String(reply.getHeader('content-type') ?? '');
+    if (type.startsWith('text/html')) reply.header('content-security-policy', HTML_CSP);
+    return payload;
+  });
 
   await app.register(fastifyCookie, { secret: deps.config.sessionSecret });
   await app.register(fastifyMultipart, {
@@ -185,7 +214,8 @@ export async function buildApp(deps: ServerDeps): Promise<FastifyInstance> {
   }
 
   app.setNotFoundHandler((request, reply) => {
-    const pathname = normalizePathname(request.url);
+    // Decoded, or `/%61pi/v1/nope` would be handed the SPA shell instead of a JSON 404.
+    const pathname = routedPathname(request.url);
     const isApi = pathname === '/api' || pathname.startsWith('/api/');
     const isAsset = pathname === `/${ASSETS_DIR}` || pathname.startsWith(`/${ASSETS_DIR}/`);
     // The built bundles live under /assets/. Serving index.html for a missing one hands the

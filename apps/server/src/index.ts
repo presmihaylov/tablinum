@@ -6,11 +6,13 @@ export {
   SESSION_TTL_MS,
   accountTokenOf,
   isPublicPath,
+  isPublicRequest,
   normalizePathname,
   principalOf,
   registerAuthHook,
   requireAccount,
   requireAdmin,
+  routedPathname,
   setAccountCookie,
 } from './auth.js';
 export type { Principal, PrincipalKind } from './auth.js';

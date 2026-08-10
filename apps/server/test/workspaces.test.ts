@@ -5,6 +5,7 @@ import {
   PageListResponseSchema,
   PageResponseSchema,
   SpacesResponseSchema,
+  TreeResponseSchema,
   WORKSPACE_HEADER,
   WorkspaceMembersResponseSchema,
   WorkspaceResponseSchema,
@@ -38,6 +39,28 @@ async function createWorkspace(name = 'Handbook') {
   });
   expect(response.statusCode).toBe(201);
   return bodyOf(response, WorkspaceResponseSchema).workspace;
+}
+
+const PASSWORD = 'correct horse battery staple';
+
+/** The cookie half of a Set-Cookie header. */
+function cookieOf(response: { headers: Record<string, unknown> }): string {
+  const raw = response.headers['set-cookie'];
+  const first = Array.isArray(raw) ? raw[0] : raw;
+  if (typeof first !== 'string') throw new Error('The response carries no Set-Cookie header');
+  return first.split(';')[0] ?? '';
+}
+
+/** An account and the cookie it signs in with: a machine credential cannot do everything. */
+async function signIn(email: string, name: string, role: 'admin' | 'member' = 'member') {
+  const account = harness.accounts.createUser({ email, name, password: PASSWORD, role });
+  const login = await harness.app.inject({
+    method: 'POST',
+    url: '/api/v1/auth/login',
+    payload: { email, password: PASSWORD },
+  });
+  expect(login.statusCode).toBe(200);
+  return { account, cookie: cookieOf(login) };
 }
 
 describe('workspaces', () => {
@@ -183,10 +206,12 @@ describe('workspace members', () => {
     });
     expect(added.statusCode).toBe(200);
 
+    // The roster is for people, so it takes an account rather than the api token.
+    const ada = await signIn('ada@example.com', 'Ada Lovelace', 'admin');
     const listed = await harness.app.inject({
       method: 'GET',
       url: `/api/v1/workspaces/${created.id}/members`,
-      headers: harness.authHeaders(),
+      headers: { cookie: ada.cookie },
     });
     const members = bodyOf(listed, WorkspaceMembersResponseSchema).members;
     expect(members.map((one) => one.account.id)).toEqual([sam.id]);
@@ -200,6 +225,15 @@ describe('workspace members', () => {
     });
     expect(promoted.statusCode).toBe(200);
     expect(harness.accounts.memberRole(created.id, sam.id)).toBe('admin');
+
+    // An admin has to stay behind, so Ada joins before Sam goes.
+    const second = await harness.app.inject({
+      method: 'POST',
+      url: `/api/v1/workspaces/${created.id}/members`,
+      headers: harness.authHeaders(),
+      payload: { userId: ada.account.id, role: 'admin' },
+    });
+    expect(second.statusCode).toBe(200);
 
     const dropped = await harness.app.inject({
       method: 'DELETE',
@@ -219,6 +253,74 @@ describe('workspace members', () => {
       payload: { role: 'admin' },
     });
     expect(response.statusCode).toBe(404);
+  });
+});
+
+describe('revoking a membership revokes access', () => {
+  it('answers 401 instead of handing over the default workspace', async () => {
+    await seed(harness);
+    const other = await createWorkspace();
+    const bob = await signIn('bob@example.com', 'Bob Reyes');
+    harness.accounts.addMember(other.id, bob.account.id);
+
+    const mine = await harness.app.inject({
+      method: 'GET',
+      url: '/api/v1/tree',
+      headers: { cookie: bob.cookie },
+    });
+    expect(mine.statusCode).toBe(200);
+    expect(bodyOf(mine, TreeResponseSchema).spaces.map((one) => one.slug)).toEqual(['general']);
+
+    const dropped = await harness.app.inject({
+      method: 'DELETE',
+      url: `/api/v1/workspaces/${other.id}/members/${bob.account.id}`,
+      headers: harness.authHeaders(),
+    });
+    expect(dropped.statusCode).toBe(200);
+
+    // The cookie dies with the membership it was reaching the workspace through.
+    const after = await harness.app.inject({
+      method: 'GET',
+      url: '/api/v1/tree',
+      headers: { cookie: bob.cookie },
+    });
+    expect(after.statusCode).toBe(401);
+
+    // And signing in again reaches nothing, not the workspace he was never a member of.
+    const again = await harness.app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      payload: { email: 'bob@example.com', password: PASSWORD },
+    });
+    const refused = await harness.app.inject({
+      method: 'GET',
+      url: '/api/v1/tree',
+      headers: { cookie: cookieOf(again) },
+    });
+    expect(refused.statusCode).toBe(401);
+    expect(bodyOf(refused, ErrorBodySchema).error.message).toContain('not in any workspace');
+  });
+
+  it('refuses to remove yourself, or the last admin of a workspace', async () => {
+    const other = await createWorkspace();
+    const ada = await signIn('ada@example.com', 'Ada Lovelace');
+    harness.accounts.addMember(other.id, ada.account.id, 'admin');
+
+    const self = await harness.app.inject({
+      method: 'DELETE',
+      url: `/api/v1/workspaces/${other.id}/members/${ada.account.id}`,
+      headers: { cookie: ada.cookie },
+    });
+    expect(self.statusCode).toBe(409);
+    expect(harness.accounts.memberRole(other.id, ada.account.id)).toBe('admin');
+
+    const lastAdmin = await harness.app.inject({
+      method: 'DELETE',
+      url: `/api/v1/workspaces/${other.id}/members/${ada.account.id}`,
+      headers: harness.authHeaders(),
+    });
+    expect(lastAdmin.statusCode).toBe(409);
+    expect(bodyOf(lastAdmin, ErrorBodySchema).error.message).toContain('at least one admin');
   });
 });
 
@@ -291,6 +393,27 @@ describe('workspace export and import', () => {
       headers: harness.authHeaders(),
     });
     expect(bodyOf(original, PageResponseSchema).page.markdown).not.toBe('Rewritten in the copy.');
+  });
+
+  /** The export commits before it zips, so another site must not be able to fire it. */
+  it('refuses an export another site navigated to, and allows one from the app', async () => {
+    const url = `/api/v1/workspaces/${DEFAULT_WORKSPACE_SLUG}/export`;
+
+    const foreign = await harness.app.inject({
+      method: 'GET',
+      url,
+      headers: { ...harness.authHeaders(), 'sec-fetch-site': 'cross-site' },
+    });
+    expect(foreign.statusCode).toBe(401);
+    expect(bodyOf(foreign, ErrorBodySchema).error.code).toBe('UNAUTHORIZED');
+
+    const ours = await harness.app.inject({
+      method: 'GET',
+      url,
+      headers: { ...harness.authHeaders(), 'sec-fetch-site': 'same-origin' },
+    });
+    expect(ours.statusCode).toBe(200);
+    expect(ours.headers['content-type']).toBe('application/zip');
   });
 
   it('names the workspace after the file when the upload carries no name', async () => {

@@ -1,7 +1,7 @@
-import { readFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { AssetResponseSchema, ErrorBodySchema } from '@tablinum/shared';
+import { AssetResponseSchema, DIAGRAM_EXT, ErrorBodySchema } from '@tablinum/shared';
 import { MAX_ASSET_BYTES } from '../src/routes/assets.js';
 import { bodyOf, makeHarness, seed, type Harness } from './support/harness.js';
 import { multipart } from './support/multipart.js';
@@ -64,11 +64,11 @@ describe('asset upload', () => {
   it('strips any directory component from the filename', async () => {
     const response = await upload({
       fields: { pageId },
-      filename: '../../../etc/passwd',
+      filename: '../../../etc/passwd.txt',
       data: Buffer.from('root:x:0:0'),
     });
     expect(response.statusCode).toBe(200);
-    expect(bodyOf(response, AssetResponseSchema).path).toBe(`_assets/${pageId}/passwd`);
+    expect(bodyOf(response, AssetResponseSchema).path).toBe(`_assets/${pageId}/passwd.txt`);
   });
 
   it('never overwrites an existing attachment', async () => {
@@ -193,5 +193,89 @@ describe('asset upload', () => {
     });
     expect(response.statusCode).toBe(400);
     expect(bodyOf(response, ErrorBodySchema).error.code).toBe('VALIDATION');
+  });
+});
+
+describe('attachments are never active content', () => {
+  it('refuses an upload a browser would execute', async () => {
+    for (const filename of ['evil.html', 'logo.svg', 'run.js']) {
+      const response = await upload({
+        fields: { pageId },
+        filename,
+        data: Buffer.from('<script>alert(1)</script>'),
+      });
+      expect(`${filename} -> ${response.statusCode}`).toBe(`${filename} -> 400`);
+      expect(bodyOf(response, ErrorBodySchema).error.code).toBe('VALIDATION');
+    }
+  });
+
+  it('serves an image inline, with its own type', async () => {
+    const stored = await upload({
+      fields: { pageId },
+      filename: 'diagram.png',
+      contentType: 'image/png',
+      data: PNG,
+    });
+    const asset = bodyOf(stored, AssetResponseSchema);
+
+    const fetched = await harness.app.inject({
+      method: 'GET',
+      url: asset.url,
+      headers: harness.authHeaders(),
+    });
+    expect(fetched.statusCode).toBe(200);
+    expect(fetched.headers['content-type']).toBe('image/png');
+    expect(fetched.headers['content-disposition']).toBeUndefined();
+    expect(fetched.headers['x-content-type-options']).toBe('nosniff');
+  });
+
+  it('serves the editor own diagram as an image, sandboxed', async () => {
+    const stored = await upload({
+      fields: { pageId },
+      filename: `scene${DIAGRAM_EXT}`,
+      data: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>'),
+    });
+    const asset = bodyOf(stored, AssetResponseSchema);
+
+    const fetched = await harness.app.inject({
+      method: 'GET',
+      url: asset.url,
+      headers: harness.authHeaders(),
+    });
+    expect(fetched.statusCode).toBe(200);
+    // An <img> needs the real type. Script inside it never runs there, and a direct hit is
+    // sandboxed into an opaque origin by the CSP below.
+    expect(fetched.headers['content-type']).toBe('image/svg+xml');
+    expect(fetched.headers['content-disposition']).toBeUndefined();
+    expect(fetched.headers['x-content-type-options']).toBe('nosniff');
+    expect(String(fetched.headers['content-security-policy'])).toContain('sandbox');
+  });
+
+  it('still refuses a plain svg that only pretends to be a diagram', async () => {
+    for (const filename of ['excalidraw.svg', 'a.excalidraw.svg.svg']) {
+      const response = await upload({
+        fields: { pageId },
+        filename,
+        data: Buffer.from('<svg onload="alert(1)"/>'),
+      });
+      expect(`${filename} -> ${response.statusCode}`).toBe(`${filename} -> 400`);
+    }
+  });
+
+  it('downloads a file that predates the allowlist instead of rendering it', async () => {
+    const dir = join(harness.contentDir, '_assets', pageId);
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, 'legacy.html'), '<script>alert(1)</script>');
+
+    const fetched = await harness.app.inject({
+      method: 'GET',
+      url: `/_assets/${pageId}/legacy.html`,
+      headers: harness.authHeaders(),
+    });
+    expect(fetched.statusCode).toBe(200);
+    expect(fetched.headers['content-type']).toBe('application/octet-stream');
+    expect(fetched.headers['content-disposition']).toBe('attachment');
+    expect(fetched.headers['x-content-type-options']).toBe('nosniff');
+    expect(String(fetched.headers['content-security-policy'])).toContain('sandbox');
   });
 });

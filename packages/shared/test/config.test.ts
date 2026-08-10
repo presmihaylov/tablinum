@@ -4,6 +4,7 @@ import {
   getConfig,
   loadConfig,
   redactConfig,
+  redactRemoteUrl,
   resetConfigCache,
 } from '../src/config.js';
 import { AppError } from '../src/errors.js';
@@ -120,5 +121,44 @@ describe('redactConfig', () => {
     expect(redacted.apiTokens).toBe('2 token(s)');
     expect(redacted.sessionSecret).toBe('set');
     expect(JSON.stringify(redacted)).not.toContain('hunter2');
+  });
+
+  it('washes the token out of the git remote', () => {
+    const redacted = redactConfig(
+      loadConfig({
+        TABLINUM_GIT_REMOTE: 'https://x-access-token:ghp_secret@github.com/acme/docs.git',
+      }),
+    );
+    expect(JSON.stringify(redacted)).not.toContain('ghp_secret');
+    expect(redacted.gitRemote).toContain('github.com/acme/docs.git');
+  });
+
+  it('leaves an ssh remote as it is', () => {
+    const redacted = redactConfig(
+      loadConfig({ TABLINUM_GIT_REMOTE: 'git@github.com:acme/docs.git' }),
+    );
+    expect(redacted.gitRemote).toBe('git@github.com:acme/docs.git');
+  });
+});
+
+describe('redactRemoteUrl', () => {
+  it('drops the user name and the password of an https remote', () => {
+    expect(redactRemoteUrl('https://x-access-token:ghp_secret@github.com/acme/docs.git')).toBe(
+      'https://github.com/acme/docs.git',
+    );
+    // GitHub also accepts the token as the user name alone, so the name goes too.
+    expect(redactRemoteUrl('https://ghp_secret@github.com/acme/docs.git')).toBe(
+      'https://github.com/acme/docs.git',
+    );
+  });
+
+  it('returns anything without credentials unchanged', () => {
+    expect(redactRemoteUrl('https://github.com/acme/docs.git')).toBe(
+      'https://github.com/acme/docs.git',
+    );
+    expect(redactRemoteUrl('git@github.com:acme/docs.git')).toBe('git@github.com:acme/docs.git');
+    expect(redactRemoteUrl('/srv/tablinum/remote.git')).toBe('/srv/tablinum/remote.git');
+    expect(redactRemoteUrl('')).toBe('');
+    expect(redactRemoteUrl(null)).toBeNull();
   });
 });

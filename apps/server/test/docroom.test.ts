@@ -209,7 +209,7 @@ function hubWithDocs(markdown = '# Deploy'): Harness {
     client,
     join: (id: string): FakeSocket => {
       const socket = new FakeSocket();
-      const joined = hub.join(id, socket as unknown as WebSocket, 1_000);
+      const joined = hub.join(id, socket as unknown as WebSocket, user(id), 1_000);
       clients.set(id, joined);
       hub.receive(joined, JSON.stringify({ type: 'hello', user: user(id) }), 1_000);
       return socket;

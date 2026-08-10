@@ -340,6 +340,24 @@ export function isSafeEntryName(name: string): boolean {
     .some((segment) => segment === '..' || segment.includes('\\'));
 }
 
+/** The parts of a `.git` directory an import may restore. Config and hooks are code, so they are not. */
+const GIT_IMPORT_ALLOWED = [/^\.git\/objects\//, /^\.git\/refs\//, /^\.git\/HEAD$/, /^\.git\/packed-refs$/];
+
+/**
+ * True unless the entry is git metadata an import must not restore. A repository opens without
+ * its config and its index, so history survives; a hook or an `ext::` remote would run as us.
+ */
+export function isImportableGitEntry(name: string): boolean {
+  const clean = name.endsWith('/') ? name.slice(0, -1) : name;
+  const first = clean.split('/')[0]?.toLowerCase() ?? '';
+  if (first !== '.git') return true;
+  return GIT_IMPORT_ALLOWED.some((rule) => rule.test(clean));
+}
+
+/** What an extracted entry gets. The archive's own mode is never honoured: it can be executable. */
+const EXTRACT_FILE_MODE = 0o644;
+const EXTRACT_DIR_MODE = 0o755;
+
 /** Unpack an archive into a directory. Returns the number of files written. */
 export async function unzipToDirectory(archive: Buffer, root: string): Promise<number> {
   const entries = readZip(archive);
@@ -351,13 +369,15 @@ export async function unzipToDirectory(archive: Buffer, root: string): Promise<n
 
   let written = 0;
   for (const entry of entries) {
+    // Dropped rather than refused: an ordinary export ships .git/config and .git/index.
+    if (!isImportableGitEntry(entry.name)) continue;
     const target = join(root, entry.name);
     if (entry.directory) {
-      await mkdir(target, { recursive: true });
+      await mkdir(target, { recursive: true, mode: EXTRACT_DIR_MODE });
       continue;
     }
-    await mkdir(join(target, '..'), { recursive: true });
-    await writeFile(target, entry.data, { mode: entry.mode });
+    await mkdir(join(target, '..'), { recursive: true, mode: EXTRACT_DIR_MODE });
+    await writeFile(target, entry.data, { mode: EXTRACT_FILE_MODE });
     written += 1;
   }
   return written;

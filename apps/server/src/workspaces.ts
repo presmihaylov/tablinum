@@ -8,7 +8,7 @@ import {
   notFound,
   unauthorized,
 } from '@tablinum/shared';
-import { isPublicPath } from './auth.js';
+import { isPublicRequest } from './auth.js';
 import type { ServerDeps } from './deps.js';
 import { LiveHub } from './live.js';
 import { Wiring } from './wiring.js';
@@ -91,8 +91,14 @@ export class WorkspaceRegistry {
   /** Every workspace this caller may open. Operator credentials reach all of them. */
   allowedFor(request: FastifyRequest): WorkspaceRecord[] {
     const { accounts } = this.deps;
-    const { account, admin } = request.principal;
-    if (account === null || admin) return accounts.listWorkspaces();
+    const { account, agent, admin } = request.principal;
+    // An agent token reaches exactly one workspace, so it must not list the others.
+    if (agent !== null) {
+      const owned = accounts.getWorkspace(agent.workspaceId);
+      return owned === null ? [] : [owned];
+    }
+    if (admin) return accounts.listWorkspaces();
+    if (account === null) return [];
     return accounts.listWorkspacesFor(account.id);
   }
 
@@ -110,8 +116,10 @@ export class WorkspaceRegistry {
     const wanted = wantedWorkspace(request);
     if (wanted === null) {
       const first = allowed[0];
-      if (first === undefined) throw notFound('This server has no workspace yet');
-      return first;
+      if (first !== undefined) return first;
+      // Somebody whose last membership was taken away gets a refusal, not the default one.
+      if (request.principal.account !== null) throw unauthorized('You are not in any workspace');
+      throw notFound('This server has no workspace yet');
     }
 
     const found = allowed.find((entry) => entry.id === wanted || entry.slug === wanted);
@@ -222,6 +230,6 @@ export function registerWorkspaceHook(app: FastifyInstance, registry: WorkspaceR
   app.addHook('preHandler', async (request: FastifyRequest) => {
     // A public endpoint answers before anybody has proved anything, so it must not be a way
     // to ask which workspaces exist. It always gets the default one.
-    request.workspace = isPublicPath(request.url) ? registry.default.record : registry.resolve(request);
+    request.workspace = isPublicRequest(request) ? registry.default.record : registry.resolve(request);
   });
 }

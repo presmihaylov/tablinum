@@ -131,8 +131,12 @@ export function registerUserRoutes(app: FastifyInstance, ctx: RouteContext): voi
   });
 
   /** Everyone signed in may read the roster: the UI names the author of every edit. */
-  app.get(`${API_PREFIX}/users`, async (): Promise<UsersResponse> => {
-    return { users: accounts.listUsers() };
+  app.get(`${API_PREFIX}/users`, async (request): Promise<UsersResponse> => {
+    requireAccount(request);
+    // An admin runs the People screen, so they need the whole install. Everybody else gets
+    // this workspace, which is all the mention list and the author byline ask for.
+    if (request.principal.admin) return { users: accounts.listUsers() };
+    return { users: accounts.listUsersIn(request.workspace.id) };
   });
 
   app.get(`${API_PREFIX}/users/:id/avatar`, async (request, reply): Promise<FastifyReply> => {

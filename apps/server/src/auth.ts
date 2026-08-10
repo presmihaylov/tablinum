@@ -1,5 +1,6 @@
 import { timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import type { AccountStore, WorkspaceRecord } from '@tablinum/accounts';
 import {
   ASSETS_DIR,
   isAgentToken,
@@ -58,18 +59,56 @@ export function normalizePathname(url: string): string {
   return withoutHash.length === 0 ? '/' : withoutHash;
 }
 
+/** Percent-decode each segment. Null when the path cannot be decoded. */
+function decodePathname(pathname: string): string | null {
+  const out: string[] = [];
+  for (const segment of pathname.split('/')) {
+    try {
+      out.push(decodeURIComponent(segment));
+    } catch {
+      return null;
+    }
+  }
+  return out.join('/');
+}
+
+/**
+ * The pathname the router matched on. Fastify decodes before it routes, so a check that
+ * reads the raw text alone sees `/%61pi/...` where the handler sees `/api/...`.
+ */
+export function routedPathname(url: string): string {
+  const raw = normalizePathname(url);
+  const decoded = decodePathname(raw);
+  return decoded === null ? raw : normalizePathname(decoded);
+}
+
+function isPublicPathname(pathname: string): boolean {
+  if (PUBLIC_ENDPOINTS.has(pathname)) return true;
+  if (PUBLIC_PREFIXES.some((prefix) => pathname.startsWith(prefix))) return true;
+  if (pathname === '/api' || pathname.startsWith('/api/')) return false;
+  if (pathname === `/${ASSETS_DIR}` || pathname.startsWith(`/${ASSETS_DIR}/`)) return false;
+  return true;
+}
+
 /**
  * True when a request may proceed without credentials.
  * Everything under /api and every uploaded attachment is protected; the static shell of
  * the web UI is not, because the browser must load it before it can log in.
  */
 export function isPublicPath(url: string): boolean {
-  const pathname = normalizePathname(url);
-  if (PUBLIC_ENDPOINTS.has(pathname)) return true;
-  if (PUBLIC_PREFIXES.some((prefix) => pathname.startsWith(prefix))) return true;
-  if (pathname === '/api' || pathname.startsWith('/api/')) return false;
-  if (pathname === `/${ASSETS_DIR}` || pathname.startsWith(`/${ASSETS_DIR}/`)) return false;
-  return true;
+  const raw = normalizePathname(url);
+  const decoded = decodePathname(raw);
+  // A path we cannot decode is protected, and both readings must agree.
+  if (decoded === null) return false;
+  return isPublicPathname(raw) && isPublicPathname(normalizePathname(decoded));
+}
+
+/** True when this request may run without credentials. Judged on the matched route first. */
+export function isPublicRequest(request: FastifyRequest): boolean {
+  const routed = request.routeOptions.url;
+  if (typeof routed === 'string' && routed.length > 0) return isPublicPath(routed);
+  // No route matched: only the SPA fallback and the 404 handler remain.
+  return isPublicPath(request.url);
 }
 
 function bearerToken(request: FastifyRequest): string | null {
@@ -215,6 +254,16 @@ export function principalOf(request: FastifyRequest, deps: ServerDeps): Principa
   return ANONYMOUS;
 }
 
+/**
+ * Refuse a request another site started. The session cookie is `SameSite=Lax`, so it rides a
+ * top-level navigation from anywhere; a GET that changes something must not accept one.
+ */
+export function requireSameSiteNavigation(request: FastifyRequest): void {
+  if (request.headers['sec-fetch-site'] === 'cross-site') {
+    throw unauthorized('That link must be opened from the app itself');
+  }
+}
+
 /** Throw unless the caller may invite people, change roles or remove accounts. */
 export function requireAdmin(request: FastifyRequest): void {
   if (request.principal.admin) return;
@@ -226,6 +275,18 @@ export function requireAccount(request: FastifyRequest): Account {
   const { account } = request.principal;
   if (account === null) throw unauthorized('Sign in with an account to do that');
   return account;
+}
+
+/** An install admin, or an admin of this one workspace. */
+export function requireWorkspaceAdmin(
+  accounts: AccountStore,
+  request: FastifyRequest,
+  record: WorkspaceRecord,
+): void {
+  if (request.principal.admin) return;
+  const account = requireAccount(request);
+  if (accounts.memberRole(record.id, account.id) === 'admin') return;
+  throw unauthorized('Only an admin of this workspace can do that');
 }
 
 /**
@@ -240,7 +301,7 @@ export function registerAuthHook(app: FastifyInstance, deps: ServerDeps): void {
     // Resolved even on a public path, so /auth/state can report who is already signed in.
     request.principal = principalOf(request, deps);
     if (request.principal.kind !== 'none') return;
-    if (isPublicPath(request.url)) return;
+    if (isPublicRequest(request)) return;
     throw unauthorized('Missing or invalid credentials');
   });
 }

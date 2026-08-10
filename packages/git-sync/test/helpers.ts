@@ -143,6 +143,7 @@ export function makeEngine(options: GitEngineOptions): GitEngine {
   return engine;
 }
 
+/** Stop every engine and wait for its queued git commands, so the temp dirs can be removed. */
 export async function disposeEngines(): Promise<void> {
   const pending = engines.splice(0, engines.length);
   // dispose() only stops the timers. A git process already running keeps writing into .git,

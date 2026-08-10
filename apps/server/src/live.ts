@@ -37,7 +37,9 @@ const CLIENT_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 export interface LiveClient {
   id: string;
   socket: WebSocket;
-  /** Who this browser says it is. Null until the client sends `hello`. */
+  /** Who the credential says this tab is. Null for a machine credential, which shows no chip. */
+  identity: LiveUser | null;
+  /** Who this browser is on the page. Null until the client sends `hello`. */
   user: LiveUser | null;
   watching: PagePath | null;
   editing: boolean;
@@ -108,21 +110,37 @@ export class LiveHub {
     this.#loadBaseline = load;
   }
 
-  /** Register a socket. An id already in use is disconnected first, so ids stay unique. */
-  join(id: string, socket: WebSocket, now: number = Date.now()): LiveClient {
+  /**
+   * Register a socket. A tab that reconnects with its own id replaces its older self, so ids
+   * stay unique. An id somebody else holds is not handed over: the newcomer is renamed instead,
+   * or one member could evict another member's tab by naming its id on the upgrade url.
+   */
+  join(
+    id: string,
+    socket: WebSocket,
+    identity: LiveUser | null = null,
+    now: number = Date.now(),
+  ): LiveClient {
     const existing = this.#clients.get(id);
-    if (existing !== undefined) this.leave(existing);
+    const taken = existing !== undefined && (existing.identity?.id ?? null) !== (identity?.id ?? null);
+    const key = taken ? randomUUID() : id;
+    if (existing !== undefined && !taken) {
+      this.leave(existing);
+      // The displaced tab must notice, or it types into a socket the hub no longer knows.
+      this.#close(existing);
+    }
 
     const client: LiveClient = {
-      id,
+      id: key,
       socket,
+      identity,
       user: null,
       watching: null,
       editing: false,
       lastSeen: now,
     };
-    this.#clients.set(id, client);
-    this.#send(client, { type: 'welcome', clientId: id });
+    this.#clients.set(key, client);
+    this.#send(client, { type: 'welcome', clientId: key });
     return client;
   }
 
@@ -152,7 +170,8 @@ export class LiveHub {
       return;
     }
     if (message.type === 'hello') {
-      client.user = message.user;
+      // The credential decides who this tab is. The frame only says the tab is ready.
+      client.user = client.identity;
       if (client.watching !== null) this.#announcePresence(client.watching);
       return;
     }
@@ -454,6 +473,11 @@ export function registerLiveRoutes(app: FastifyInstance, ctx: RouteContext): voi
     let client: LiveClient | null = null;
     const queued: string[] = [];
 
+    // Read before the workspace promise resolves, while the request is still the credential's.
+    const me = request.principal.account;
+    const identity: LiveUser | null =
+      me === null ? null : { id: me.id, name: me.name, color: me.color };
+
     socket.on('message', (raw: unknown) => {
       const text = String(raw);
       if (hub === null || client === null) {
@@ -477,7 +501,7 @@ export function registerLiveRoutes(app: FastifyInstance, ctx: RouteContext): voi
       .then((parts) => {
         if (socket.readyState !== socket.OPEN) return;
         hub = parts.live;
-        client = hub.join(readClientId(request), socket);
+        client = hub.join(readClientId(request), socket, identity);
         for (const text of queued.splice(0)) hub.receive(client, text);
       })
       .catch((err: unknown) => {

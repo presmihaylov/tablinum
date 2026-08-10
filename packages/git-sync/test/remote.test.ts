@@ -1,5 +1,6 @@
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { AppError } from '@tablinum/shared';
 import {
   bareRemote,
   captureLogger,
@@ -228,6 +229,93 @@ describe('GitEngine.pull', () => {
     await engine.init();
 
     await expect(engine.pull()).rejects.toMatchObject({ code: 'GIT_ERROR' });
+  });
+});
+
+describe('GitEngine.resolveConflict refuses anything but the conflicted files', () => {
+  /** A clone whose pull has just stopped on a real conflict in eng/index.md. */
+  async function armedConflict(): Promise<{ engine: GitEngine; dir: string }> {
+    const { remote, peer } = await seededRemote();
+    const { engine, dir } = await clonedEngine(remote);
+
+    await writeFileIn(dir, 'eng/index.md', page('pg_1', 'Engineering', 'the tablinum version'));
+    await engine.commitAll('docs: local edit');
+    await peerPush(peer, 'the other author version', 'docs: peer edit');
+    await expect(engine.pull()).rejects.toThrow(AppError);
+    expect(engine.conflict()?.files).toEqual(['eng/index.md']);
+
+    return { engine, dir };
+  }
+
+  it('refuses to write .git/config', async () => {
+    const { engine, dir } = await armedConflict();
+    const before = await readFileIn(dir, '.git/config');
+
+    await expect(
+      engine.resolveConflict([
+        { file: '.git/config', content: '[core]\n\tfsmonitor = "touch /tmp/pwned"\n' },
+      ]),
+    ).rejects.toThrow(AppError);
+
+    const after = await readFileIn(dir, '.git/config');
+    expect(after).toBe(before);
+    expect(after).toContain('[user]');
+    expect(after).not.toContain('fsmonitor');
+  });
+
+  it('refuses a page git never reported as conflicted', async () => {
+    const { engine, dir } = await armedConflict();
+
+    await expect(
+      engine.resolveConflict([{ file: 'eng/other.md', content: 'written by the attacker' }]),
+    ).rejects.toMatchObject({ code: 'VALIDATION' });
+
+    expect(await exists(join(dir, 'eng/other.md'))).toBe(false);
+    expect(await readFileIn(dir, 'eng/index.md')).toContain('the tablinum version');
+    expect(engine.conflict()?.files).toEqual(['eng/index.md']);
+  });
+
+  it('writes nothing at all when one entry of the batch is refused', async () => {
+    const { engine, dir } = await armedConflict();
+    const agreed = page('pg_1', 'Engineering', 'both authors agreed on this');
+
+    await expect(
+      engine.resolveConflict([
+        { file: 'eng/index.md', content: agreed },
+        { file: '.git/config', content: 'poisoned' },
+      ]),
+    ).rejects.toThrow(AppError);
+
+    expect(await readFileIn(dir, 'eng/index.md')).toContain('the tablinum version');
+    expect(await readFileIn(dir, '.git/config')).not.toContain('poisoned');
+  });
+
+  it('still resolves the conflicted file itself', async () => {
+    const { engine, dir } = await armedConflict();
+    const agreed = page('pg_1', 'Engineering', 'both authors agreed on this');
+
+    const changed = await engine.resolveConflict([{ file: 'eng/index.md', content: agreed }]);
+
+    expect(changed).toContain('eng/index.md');
+    expect(engine.conflict()).toBeNull();
+    expect(await readFileIn(dir, 'eng/index.md')).toContain('both authors agreed on this');
+    expect((await engine.status()).dirtyFiles).toEqual([]);
+  });
+});
+
+describe('GitEngine.status', () => {
+  it('hides the credentials embedded in the remote url', async () => {
+    const dir = await tempDir();
+    const url = 'https://x-access-token:ghp_secret@example.invalid/acme/docs.git';
+    // No network call: status only reads the config this writes.
+    await git(dir, 'init', '--initial-branch=main');
+    await git(dir, 'remote', 'add', 'origin', url);
+    const engine = makeEngine({ contentDir: dir, remote: url, branch: 'main' });
+
+    const status = await engine.status();
+
+    expect(status.remote).toBe('https://example.invalid/acme/docs.git');
+    expect(status.remote).not.toContain('ghp_secret');
   });
 });
 

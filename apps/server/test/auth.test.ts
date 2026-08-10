@@ -1,4 +1,6 @@
 import { existsSync } from 'node:fs';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
@@ -9,6 +11,7 @@ import {
   SpacesResponseSchema,
 } from '@tablinum/shared';
 import { SESSION_COOKIE } from '../src/auth.js';
+import { VERSION } from '../src/version.js';
 import { bodyOf, makeHarness, seed, TEST_TOKEN, type Harness } from './support/harness.js';
 
 const open: Harness[] = [];
@@ -76,10 +79,115 @@ describe('bearer tokens', () => {
 
     const health = await harness.app.inject({ method: 'GET', url: '/api/v1/health' });
     expect(health.statusCode).toBe(200);
-    expect(bodyOf(health, HealthResponseSchema).ok).toBe(true);
+    expect(bodyOf(health, HealthResponseSchema)).toEqual({ ok: true });
 
     const unknown = await harness.app.inject({ method: 'GET', url: '/api/v1/nothing-here' });
     expect(unknown.statusCode).toBe(401);
+  });
+
+  it('tells a credentialled caller the version and the content directory, nobody else', async () => {
+    const harness = await harnessFor();
+
+    const anonymous = await harness.app.inject({ method: 'GET', url: '/api/v1/health' });
+    expect(anonymous.body).not.toContain('contentDir');
+
+    const known = await harness.app.inject({
+      method: 'GET',
+      url: '/api/v1/health',
+      headers: harness.authHeaders(),
+    });
+    expect(known.statusCode).toBe(200);
+    const body = bodyOf(known, HealthResponseSchema);
+    expect(body.contentDir).toBe(harness.contentDir);
+    expect(body.version).toBe(VERSION);
+  });
+});
+
+describe('encoded paths cannot skip the auth hook', () => {
+  it('protects /api even when a character of the prefix is percent-encoded', async () => {
+    const harness = await harnessFor();
+
+    const first = await harness.app.inject({ method: 'GET', url: '/%61pi/v1/pages' });
+    expect(first.statusCode).toBe(401);
+
+    const middle = await harness.app.inject({ method: 'GET', url: '/ap%69/v1/pages' });
+    expect(middle.statusCode).toBe(401);
+  });
+
+  it('refuses an encoded write and stores nothing', async () => {
+    const harness = await harnessFor();
+    await harness.app.inject({
+      method: 'POST',
+      url: '/api/v1/spaces',
+      headers: harness.authHeaders(),
+      payload: { slug: 'eng', name: 'Engineering' },
+    });
+
+    const written = await harness.app.inject({
+      method: 'POST',
+      url: '/%61pi/v1/pages',
+      payload: { path: 'eng/sneaky', title: 'Sneaky', markdown: 'hello' },
+    });
+    expect(written.statusCode).toBe(401);
+    expect(await harness.store.getPageByPath('eng/sneaky')).toBeNull();
+  });
+
+  it('protects every read route reachable through an encoded prefix', async () => {
+    const harness = await harnessFor();
+
+    const urls = [
+      '/%61pi/v1/users',
+      '/%61pi/v1/git/status',
+      '/%61pi/v1/workspaces',
+      '/%61pi/v1/search?q=deploy',
+    ];
+    for (const url of urls) {
+      const response = await harness.app.inject({ method: 'GET', url });
+      expect(`${url} -> ${response.statusCode}`).toBe(`${url} -> 401`);
+    }
+  });
+
+  it('protects an attachment behind an encoded assets prefix', async () => {
+    const harness = await harnessFor();
+    const dir = join(harness.contentDir, '_assets', 'pg_00000000000000000000000000');
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, 'ok.txt'), 'confidential');
+
+    const url = '/_%61ssets/pg_00000000000000000000000000/ok.txt';
+    const response = await harness.app.inject({ method: 'GET', url });
+    expect(response.statusCode).toBe(401);
+    expect(response.body).not.toContain('confidential');
+  });
+
+  it('keeps an encoded spelling of a public route public, by design', async () => {
+    const harness = await harnessFor();
+
+    const plain = await harness.app.inject({ method: 'GET', url: '/api/v1/health' });
+    expect(plain.statusCode).toBe(200);
+
+    const encoded = await harness.app.inject({ method: 'GET', url: '/%61pi/v1/health' });
+    expect(encoded.statusCode).toBe(200);
+  });
+
+  it('answers a JSON 404 for an encoded api path instead of the SPA shell', async () => {
+    const webDist = await mkdtemp(join(tmpdir(), 'tablinum-web-'));
+    await writeFile(join(webDist, 'index.html'), '<!doctype html><title>the shell</title>');
+    try {
+      const harness = await harnessFor({ webDistDir: webDist });
+      const headers = harness.authHeaders();
+
+      const shell = await harness.app.inject({ method: 'GET', url: '/eng/deploy', headers });
+      expect(shell.statusCode).toBe(200);
+      expect(shell.body).toContain('the shell');
+
+      for (const url of ['/%61pi/v1/nope', '/_%61ssets/pg_1/nope.txt']) {
+        const response = await harness.app.inject({ method: 'GET', url, headers });
+        expect(`${url} -> ${response.statusCode}`).toBe(`${url} -> 404`);
+        expect(bodyOf(response, ErrorBodySchema).error.code).toBe('NOT_FOUND');
+      }
+    } finally {
+      await rm(webDist, { recursive: true, force: true });
+    }
   });
 });
 

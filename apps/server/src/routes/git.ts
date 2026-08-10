@@ -16,6 +16,7 @@ import {
   type GitStatusResponse,
   type PagePath,
 } from '@tablinum/shared';
+import { requireWorkspaceAdmin } from '../auth.js';
 import { API_PREFIX, partsOf, type RouteContext } from '../context.js';
 import type { ContentStore } from '../deps.js';
 import type { WorkspaceParts } from '../workspaces.js';
@@ -114,6 +115,9 @@ export function registerGitRoutes(app: FastifyInstance, ctx: RouteContext): void
 
   app.post(`${API_PREFIX}/git/resolve`, async (request): Promise<GitResolveResponse> => {
     const parts = await partsOf(ctx, request);
+    // This one writes raw bytes into the repository, so it is not a page edit. The other git
+    // routes stay open to every credential, because an MCP agent syncs through them.
+    requireWorkspaceAdmin(ctx.deps.accounts, request, parts.record);
     const body = parseOrThrow(GitResolveBodySchema, request.body, 'resolution');
     const resolved = await parts.git.resolveConflict(body.files, body.message);
 

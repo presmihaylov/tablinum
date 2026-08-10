@@ -456,6 +456,56 @@ describe('the roster', () => {
     expect(bodyOf(after, UsersResponseSchema).users).toHaveLength(1);
   });
 
+  it('shows a member only the people in the workspace they are in', async () => {
+    const harness = await harnessFor();
+    const cookie = await claim(harness);
+    const [main] = harness.accounts.listWorkspaces();
+    if (main === undefined) throw new Error('the server started with no workspace');
+
+    const other = harness.accounts.createWorkspace({ name: 'Finance', dir: '/content/finance' });
+    const bob = harness.accounts.createUser({
+      email: 'bob@example.com',
+      name: 'Bob Reyes',
+      password: 'correct horse battery staple',
+    });
+    harness.accounts.addMember(main.id, bob.id);
+    const mo = harness.accounts.createUser({
+      email: 'mo@example.com',
+      name: 'Mo Farah',
+      password: 'correct horse battery staple',
+    });
+    harness.accounts.addMember(other.id, mo.id);
+
+    const login = await harness.app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      payload: { email: 'bob@example.com', password: 'correct horse battery staple' },
+    });
+    const asMember = await harness.app.inject({
+      method: 'GET',
+      url: '/api/v1/users',
+      headers: { cookie: cookiePair(login) },
+    });
+    const seen = bodyOf(asMember, UsersResponseSchema).users.map((user) => user.email);
+    expect(seen).toEqual([ADMIN.email, 'bob@example.com']);
+
+    // The People screen belongs to an admin, so an admin still reads the whole install.
+    const asAdmin = await harness.app.inject({ method: 'GET', url: '/api/v1/users', headers: { cookie } });
+    expect(bodyOf(asAdmin, UsersResponseSchema).users.map((user) => user.email)).toContain('mo@example.com');
+  });
+
+  it('refuses the roster to a machine credential', async () => {
+    const harness = await harnessFor();
+    await claim(harness);
+    const response = await harness.app.inject({
+      method: 'GET',
+      url: '/api/v1/users',
+      headers: { authorization: `Bearer ${TEST_TOKEN}` },
+    });
+    expect(response.statusCode).toBe(401);
+    expect(bodyOf(response, ErrorBodySchema).error.code).toBe('UNAUTHORIZED');
+  });
+
   it('refuses to remove the account you are signed in as', async () => {
     const harness = await harnessFor();
     const cookie = await claim(harness);

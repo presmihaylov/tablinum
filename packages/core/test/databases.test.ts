@@ -2,9 +2,11 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   newOptionId,
   newPropertyId,
+  newRowId,
   newViewId,
   starterDatabase,
   type Database,
+  type DbRow,
   type PageId,
 } from '@tablinum/shared';
 import { ContentStore } from '../src/store.js';
@@ -14,9 +16,11 @@ import {
   readDatabase,
   readPropValue,
   readRowProps,
+  readRows,
   rowPropsEqual,
+  rowsEqual,
   stringifyDatabase,
-  stringifyRowProps,
+  stringifyRows,
 } from '../src/db-frontmatter.js';
 import { codeOf, makeStore, makeTempDir, readFileAt, removeTempDir } from './helpers.js';
 
@@ -60,6 +64,12 @@ function sampleDatabase(): Database {
 async function dbOnDisk(relFile: string): Promise<Database | null> {
   const parsed = parse(await readFileAt(dir, relFile));
   return parsed.frontmatter.db ?? null;
+}
+
+/** Read the `rows` block back out of a page file on disk. */
+async function rowsOnDisk(relFile: string): Promise<DbRow[] | null> {
+  const parsed = parse(await readFileAt(dir, relFile));
+  return parsed.frontmatter.rows ?? null;
 }
 
 // ---------------------------------------------------------------------------
@@ -178,23 +188,65 @@ describe('readRowProps', () => {
   });
 });
 
-describe('stringifyRowProps', () => {
+describe('stringifyRows and readRows', () => {
+  const AT = '2026-01-01T00:00:00.000Z';
+
+  function sampleRow(props: Record<string, unknown> = {}): DbRow {
+    return { id: newRowId(), title: 'A row', created: AT, updated: AT, props: props as DbRow['props'] };
+  }
+
   it('survives a round trip through the parser', () => {
-    const props = { [TEXT]: 'a note', [SELECT]: OPTION };
-    const parsed = parse(`---\n${stringifyRowProps(props)}\n---\n\nbody\n`);
-    expect(parsed.frontmatter.props).toEqual(props);
+    const rows = [sampleRow({ [TEXT]: 'a note', [SELECT]: OPTION }), sampleRow()];
+    const parsed = parse(`---\n${stringifyRows(rows)}\n---\n\nbody\n`);
+    expect(parsed.frontmatter.rows).toEqual(rows);
   });
 
-  it('writes a list on its own lines', () => {
+  it('writes a list cell on its own lines', () => {
     const multi = newPropertyId();
-    const yaml = stringifyRowProps({ [multi]: ['a', 'b'] });
+    const yaml = stringifyRows([sampleRow({ [multi]: ['a', 'b'] })]);
     expect(yaml).toContain('- a');
     const parsed = parse(`---\n${yaml}\n---\n\nbody\n`);
-    expect(parsed.frontmatter.props?.[multi]).toEqual(['a', 'b']);
+    expect(parsed.frontmatter.rows?.[0]?.props[multi]).toEqual(['a', 'b']);
+  });
+
+  it('writes nothing at all when there is no row', () => {
+    expect(stringifyRows([])).toBe('');
+  });
+
+  it('keeps a title with a colon in it readable back', () => {
+    const row = { ...sampleRow(), title: 'Ship: the thing' };
+    const parsed = parse(`---\n${stringifyRows([row])}\n---\n\nbody\n`);
+    expect(parsed.frontmatter.rows?.[0]?.title).toBe('Ship: the thing');
+  });
+
+  it('drops a row with no id, and a second row that repeats an id', () => {
+    const id = newRowId();
+    const read = readRows(
+      [
+        { id, title: 'First', created: AT, updated: AT },
+        { title: 'No id', created: AT, updated: AT },
+        { id, title: 'Twin', created: AT, updated: AT },
+      ],
+      AT,
+    );
+    expect(read.value?.map((row) => row.title)).toEqual(['First']);
+    expect(read.exact).toBe(false);
+  });
+
+  it('names a row the file left untitled, and stamps one the file left undated', () => {
+    const read = readRows([{ id: newRowId() }], AT);
+    expect(read.value?.[0]?.title).toBe('Untitled');
+    expect(read.value?.[0]?.created).toBe(AT);
+    expect(read.exact).toBe(false);
+  });
+
+  it('reads nothing from an absent block, and refuses one that is not a list', () => {
+    expect(readRows(undefined, AT)).toEqual({ value: null, exact: true });
+    expect(readRows('nonsense', AT)).toEqual({ value: null, exact: false });
   });
 });
 
-describe('databaseEqual and rowPropsEqual', () => {
+describe('databaseEqual, rowPropsEqual and rowsEqual', () => {
   it('sees two copies of the same database as equal', () => {
     expect(databaseEqual(sampleDatabase(), sampleDatabase())).toBe(true);
     expect(databaseEqual(undefined, undefined)).toBe(true);
@@ -213,6 +265,16 @@ describe('databaseEqual and rowPropsEqual', () => {
     );
     expect(rowPropsEqual({ [TEXT]: 'a' }, { [TEXT]: 'b' })).toBe(false);
     expect(rowPropsEqual(undefined, undefined)).toBe(true);
+  });
+
+  it('sees a row list change in the title, the cells or the length', () => {
+    const at = '2026-01-01T00:00:00.000Z';
+    const row: DbRow = { id: newRowId(), title: 'A', created: at, updated: at, props: {} };
+    expect(rowsEqual([row], [{ ...row }])).toBe(true);
+    expect(rowsEqual([row], [{ ...row, title: 'B' }])).toBe(false);
+    expect(rowsEqual([row], [{ ...row, props: { [TEXT]: 'x' } }])).toBe(false);
+    expect(rowsEqual([row], [])).toBe(false);
+    expect(rowsEqual(undefined, undefined)).toBe(true);
   });
 });
 
@@ -297,16 +359,15 @@ describe('getDatabase', () => {
 });
 
 describe('removeDatabase', () => {
-  it('takes the block off and leaves the rows as ordinary pages', async () => {
+  it('takes the block off, and the rows go with it', async () => {
     const id = await makeTasksPage();
     await store.setDatabase(id, sampleDatabase());
-    const row = await store.createRow(id, { title: 'Keep me' });
+    await store.createRow(id, { title: 'Keep me' });
 
     const page = await store.removeDatabase(id);
     expect(page.database).toBeUndefined();
-    expect(await dbOnDisk('docs/tasks/index.md')).toBeNull();
-    const kept = await store.getPageById(row.id);
-    expect(kept.title).toBe('Keep me');
+    expect(await dbOnDisk('docs/tasks.md')).toBeNull();
+    expect(await rowsOnDisk('docs/tasks.md')).toBeNull();
   });
 
   it('is quiet when the page never was a database', async () => {
@@ -317,18 +378,22 @@ describe('removeDatabase', () => {
 });
 
 describe('createRow', () => {
-  it('writes the row as a child page with its cells in the frontmatter', async () => {
+  it('writes the row into the database page, not into a page of its own', async () => {
     const id = await makeTasksPage();
     await store.setDatabase(id, sampleDatabase());
     const row = await store.createRow(id, { title: 'Ship it', props: { [SELECT]: OPTION } });
 
-    expect(row.path).toBe('docs/tasks/ship-it');
+    expect(row.id.startsWith('rw_')).toBe(true);
     expect(row.props[SELECT]).toBe(OPTION);
-    const parsed = parse(await readFileAt(dir, 'docs/tasks/ship-it.md'));
-    expect(parsed.frontmatter.props).toEqual({ [SELECT]: OPTION });
+    const onDisk = await rowsOnDisk('docs/tasks.md');
+    expect(onDisk?.map((entry) => entry.title)).toEqual(['Ship it']);
+    // The row is a record, so the database page never grew a child.
+    const tree = await store.getTree();
+    const home = tree.find((space) => space.slug === 'docs')?.tree[0];
+    expect(home?.children.find((node) => node.path === 'docs/tasks')?.children).toEqual([]);
   });
 
-  it('names an untitled row and still gives it a path', async () => {
+  it('names an untitled row', async () => {
     const id = await makeTasksPage();
     await store.setDatabase(id, sampleDatabase());
     const row = await store.createRow(id);
@@ -336,12 +401,23 @@ describe('createRow', () => {
     expect(row.props).toEqual({});
   });
 
-  it('lets two rows share a title', async () => {
+  it('lets two rows share a title and still tells them apart', async () => {
     const id = await makeTasksPage();
     await store.setDatabase(id, sampleDatabase());
     const first = await store.createRow(id, { title: 'Same' });
     const second = await store.createRow(id, { title: 'Same' });
-    expect(first.path).not.toBe(second.path);
+    expect(first.id).not.toBe(second.id);
+    expect((await store.getDatabase(id)).rows).toHaveLength(2);
+  });
+
+  it('keeps the rows in the order they were added', async () => {
+    const id = await makeTasksPage();
+    await store.setDatabase(id, sampleDatabase());
+    await store.createRow(id, { title: 'One' });
+    await store.createRow(id, { title: 'Two' });
+    await store.createRow(id, { title: 'Three' });
+    const read = await store.getDatabase(id);
+    expect(read.rows.map((row) => row.title)).toEqual(['One', 'Two', 'Three']);
   });
 
   it('drops a cell the schema does not describe', async () => {
@@ -369,8 +445,19 @@ describe('updateRow', () => {
       props: { [TEXT]: 'note', [SELECT]: OPTION },
     });
 
-    const saved = await store.updateRow(row.id, { props: { [TEXT]: 'changed' } });
+    const saved = await store.updateRow(id, row.id, { props: { [TEXT]: 'changed' } });
     expect(saved.props).toEqual({ [TEXT]: 'changed', [SELECT]: OPTION });
+  });
+
+  it('leaves the other rows of the same database alone', async () => {
+    const id = await makeTasksPage();
+    await store.setDatabase(id, sampleDatabase());
+    const first = await store.createRow(id, { title: 'First', props: { [TEXT]: 'one' } });
+    await store.createRow(id, { title: 'Second', props: { [TEXT]: 'two' } });
+
+    await store.updateRow(id, first.id, { props: { [TEXT]: 'changed' } });
+    const read = await store.getDatabase(id);
+    expect(read.rows.map((row) => row.props[TEXT])).toEqual(['changed', 'two']);
   });
 
   it('clears a cell that is set to null', async () => {
@@ -378,20 +465,19 @@ describe('updateRow', () => {
     await store.setDatabase(id, sampleDatabase());
     const row = await store.createRow(id, { title: 'Row', props: { [TEXT]: 'note' } });
 
-    const saved = await store.updateRow(row.id, { props: { [TEXT]: null } });
+    const saved = await store.updateRow(id, row.id, { props: { [TEXT]: null } });
     expect(saved.props).toEqual({});
-    const parsed = parse(await readFileAt(dir, `${row.path}.md`));
-    expect(parsed.frontmatter.props).toBeUndefined();
+    expect((await rowsOnDisk('docs/tasks.md'))?.[0]?.props).toEqual({});
   });
 
-  it('renames the row without moving its file', async () => {
+  it('renames the row', async () => {
     const id = await makeTasksPage();
     await store.setDatabase(id, sampleDatabase());
     const row = await store.createRow(id, { title: 'Old name' });
 
-    const saved = await store.updateRow(row.id, { title: 'New name' });
+    const saved = await store.updateRow(id, row.id, { title: 'New name' });
     expect(saved.title).toBe('New name');
-    expect(saved.path).toBe(row.path);
+    expect(saved.id).toBe(row.id);
   });
 
   it('drops a select value no option matches', async () => {
@@ -399,7 +485,7 @@ describe('updateRow', () => {
     await store.setDatabase(id, sampleDatabase());
     const row = await store.createRow(id, { title: 'Row' });
 
-    const saved = await store.updateRow(row.id, {
+    const saved = await store.updateRow(id, row.id, {
       props: { [SELECT]: 'op_00000000000000000000000000' },
     });
     expect(saved.props).toEqual({});
@@ -412,17 +498,53 @@ describe('updateRow', () => {
 
     expect(
       await codeOf(() =>
-        store.updateRow(row.id, { props: { pr_00000000000000000000000000: 'ghost' } }),
+        store.updateRow(id, row.id, { props: { pr_00000000000000000000000000: 'ghost' } }),
       ),
     ).toBe('VALIDATION');
   });
 
-  it('refuses a page whose parent is not a database', async () => {
+  it('reports a row the database does not hold', async () => {
+    const id = await makeTasksPage();
+    await store.setDatabase(id, sampleDatabase());
+    expect(await codeOf(() => store.updateRow(id, newRowId(), { title: 'x' }))).toBe('NOT_FOUND');
+  });
+
+  it('refuses a page that is not a database', async () => {
     await store.init();
-    const parent = await store.createPage({ path: 'docs/plain', title: 'Plain' });
-    const child = await store.createPage({ path: 'docs/plain/child', title: 'Child' });
-    expect(await codeOf(() => store.updateRow(child.id, { title: 'x' }))).toBe('VALIDATION');
-    expect(parent.database).toBeUndefined();
+    const plain = await store.createPage({ path: 'docs/plain', title: 'Plain' });
+    expect(await codeOf(() => store.updateRow(plain.id, newRowId(), { title: 'x' }))).toBe(
+      'VALIDATION',
+    );
+  });
+});
+
+describe('deleteRow', () => {
+  it('takes the row out and leaves the rest in order', async () => {
+    const id = await makeTasksPage();
+    await store.setDatabase(id, sampleDatabase());
+    await store.createRow(id, { title: 'One' });
+    const second = await store.createRow(id, { title: 'Two' });
+    await store.createRow(id, { title: 'Three' });
+
+    await store.deleteRow(id, second.id);
+    const read = await store.getDatabase(id);
+    expect(read.rows.map((row) => row.title)).toEqual(['One', 'Three']);
+  });
+
+  it('leaves no rows block behind when the last row goes', async () => {
+    const id = await makeTasksPage();
+    await store.setDatabase(id, sampleDatabase());
+    const row = await store.createRow(id, { title: 'Only' });
+
+    await store.deleteRow(id, row.id);
+    expect(await rowsOnDisk('docs/tasks.md')).toBeNull();
+    expect(await dbOnDisk('docs/tasks.md')).toEqual(sampleDatabase());
+  });
+
+  it('reports a row the database does not hold', async () => {
+    const id = await makeTasksPage();
+    await store.setDatabase(id, sampleDatabase());
+    expect(await codeOf(() => store.deleteRow(id, newRowId()))).toBe('NOT_FOUND');
   });
 });
 
@@ -436,14 +558,15 @@ describe('a database page under ordinary edits', () => {
     expect(page.database).toEqual(sampleDatabase());
   });
 
-  it('keeps the cells of a row when the body of that row is rewritten', async () => {
+  it('keeps its rows when the body is rewritten', async () => {
     const id = await makeTasksPage();
     await store.setDatabase(id, sampleDatabase());
-    const row = await store.createRow(id, { title: 'Row', props: { [TEXT]: 'note' } });
-    await store.updatePage(row.id, { markdown: 'Detail.\n' });
+    await store.createRow(id, { title: 'Row', props: { [TEXT]: 'note' } });
+    await store.updatePage(id, { markdown: 'Detail.\n' });
 
     const read = await store.getDatabase(id);
     expect(read.rows[0]?.props[TEXT]).toBe('note');
+    expect((await store.getPageById(id)).markdown).toBe('Detail.');
   });
 
   it('starts from the starter schema, which passes every check', async () => {

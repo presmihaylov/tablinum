@@ -1,19 +1,5 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from './fixtures';
-import type { ContentRepo } from './helpers/content';
-import { pageMenu } from './menus';
-
-/**
- * The file of one row. Every row is born "Untitled", and a rename never moves a file, so the
- * name on disk says nothing about the title: the file is found by the title it holds.
- */
-async function rowFile(content: ContentRepo, dir: string, title: string): Promise<string> {
-  for (const file of await content.list(dir)) {
-    const text = await content.read(file);
-    if (text?.includes(`title: ${title}`) === true) return file;
-  }
-  throw new Error(`No row file holding ${title}`);
-}
 
 /** The database on the open page: its tools and its body. */
 function db(page: Page): Locator {
@@ -34,9 +20,8 @@ function card(page: Page, title: string): Locator {
   return board(page).locator('.db-card').filter({ hasText: title });
 }
 
-/** Turn the open page into a database and wait for the grid. */
-async function turnIntoDatabase(page: Page): Promise<void> {
-  await pageMenu(page, 'Turn into a database');
+/** Wait for the grid of the database the page was seeded with. */
+async function openDatabase(page: Page): Promise<void> {
   await expect(page.getByTestId('db-table')).toBeVisible();
 }
 
@@ -102,7 +87,12 @@ test.describe('kanban boards', () => {
   test.beforeEach(async ({ api }) => {
     slug = (await api.createUniqueSpace('kb')).slug;
     path = `${slug}/tasks`;
-    await api.createPage({ path, title: 'Tasks', markdown: 'The plan lives below.\n' });
+    const created = await api.createPage({
+      path,
+      title: 'Tasks',
+      markdown: 'The plan lives below.\n',
+    });
+    await api.makeDatabase(created.id);
   });
 
   test('turns a table view into a board and writes the layout to the page file', async ({
@@ -110,7 +100,7 @@ test.describe('kanban boards', () => {
     content,
   }) => {
     await page.goto(`/p/${path}`);
-    await turnIntoDatabase(page);
+    await openDatabase(page);
     await turnIntoBoard(page);
 
     const file = await content.waitForPageFile(path);
@@ -120,7 +110,7 @@ test.describe('kanban boards', () => {
 
   test('stacks the cards by the option each row holds', async ({ page }) => {
     await page.goto(`/p/${path}`);
-    await turnIntoDatabase(page);
+    await openDatabase(page);
     await addRow(page, 'Ship it');
     await addRow(page, 'Write it');
     await addStatus(page, 0, 'Doing');
@@ -133,7 +123,7 @@ test.describe('kanban boards', () => {
 
   test('moves a card to another stack by dragging it', async ({ page, content }) => {
     await page.goto(`/p/${path}`);
-    await turnIntoDatabase(page);
+    await openDatabase(page);
     await addRow(page, 'Ship it');
     await addStatus(page, 0, 'Doing');
     await addRow(page, 'Write it');
@@ -145,15 +135,15 @@ test.describe('kanban boards', () => {
     await expect(column(page, 'No Status').locator('.db-card')).toHaveCount(0);
 
     await expect
-      .poll(async () => content.read(await rowFile(content, path, 'Write it')), {
-        message: 'the move never reached the row file',
+      .poll(async () => (await content.pageFileText(path)) ?? '', {
+        message: 'the move never reached the database page',
       })
-      .toContain('props:');
+      .toContain('Doing');
   });
 
   test('moves a card from its own menu', async ({ page }) => {
     await page.goto(`/p/${path}`);
-    await turnIntoDatabase(page);
+    await openDatabase(page);
     await addRow(page, 'Ship it');
     await addStatus(page, 0, 'Doing');
     await addRow(page, 'Write it');
@@ -167,7 +157,7 @@ test.describe('kanban boards', () => {
 
   test('sends a card back to the stack that holds no option', async ({ page }) => {
     await page.goto(`/p/${path}`);
-    await turnIntoDatabase(page);
+    await openDatabase(page);
     await addRow(page, 'Ship it');
     await addStatus(page, 0, 'Doing');
     await turnIntoBoard(page);
@@ -181,7 +171,7 @@ test.describe('kanban boards', () => {
 
   test('creates a card that already holds the option of its stack', async ({ page, content }) => {
     await page.goto(`/p/${path}`);
-    await turnIntoDatabase(page);
+    await openDatabase(page);
     await addRow(page, 'Ship it');
     await addStatus(page, 0, 'Doing');
     await turnIntoBoard(page);
@@ -190,39 +180,42 @@ test.describe('kanban boards', () => {
 
     await expect(column(page, 'Doing').locator('.db-card')).toHaveCount(2);
     await expect
-      .poll(async () => content.read(await rowFile(content, path, 'Untitled')))
-      .toContain('props:');
+      .poll(async () => (await content.pageFileText(path)) ?? '')
+      .toContain('title: Untitled');
   });
 
-  test('opens the page a card lives on', async ({ page }) => {
+  test('opens a card in the record panel', async ({ page }) => {
     await page.goto(`/p/${path}`);
-    await turnIntoDatabase(page);
+    await openDatabase(page);
     await addRow(page, 'Ship it');
     await turnIntoBoard(page);
 
-    await card(page, 'Ship it').getByRole('link', { name: 'Ship it' }).click();
+    await card(page, 'Ship it').getByRole('button', { name: 'Ship it', exact: true }).click();
 
-    await expect(page).toHaveURL(`/p/${path}/untitled`);
-    await expect(page.getByLabel('Page title')).toHaveValue('Ship it');
+    const panel = page.getByRole('dialog');
+    await expect(panel).toBeVisible();
+    await expect(panel.getByLabel('Row title')).toHaveValue('Ship it');
   });
 
   test('deletes a row from the card menu', async ({ page, content }) => {
     await page.goto(`/p/${path}`);
-    await turnIntoDatabase(page);
+    await openDatabase(page);
     await addRow(page, 'Ship it');
-    await content.waitForPageFile(`${path}/untitled`);
+    await expect.poll(async () => (await content.pageFileText(path)) ?? '').toContain('Ship it');
     await turnIntoBoard(page);
 
     await card(page, 'Ship it').getByLabel('Card menu for Ship it').click();
     await page.getByRole('menuitem', { name: 'Delete row' }).click();
 
     await expect(board(page).locator('.db-card')).toHaveCount(0);
-    await content.waitForFileGone(`${path}/untitled.md`);
+    await expect
+      .poll(async () => (await content.pageFileText(path)) ?? '')
+      .not.toContain('Ship it');
   });
 
   test('keeps a table view beside the board', async ({ page }) => {
     await page.goto(`/p/${path}`);
-    await turnIntoDatabase(page);
+    await openDatabase(page);
     await addRow(page, 'Ship it');
 
     await page.getByLabel('Add a view').click();
@@ -236,7 +229,7 @@ test.describe('kanban boards', () => {
 
   test('renames the board and keeps the name over a reload', async ({ page }) => {
     await page.goto(`/p/${path}`);
-    await turnIntoDatabase(page);
+    await openDatabase(page);
     await turnIntoBoard(page);
 
     await page.getByRole('tab', { selected: true }).click();
@@ -250,7 +243,7 @@ test.describe('kanban boards', () => {
 
   test('survives a reload with its stacks and its cards intact', async ({ page }) => {
     await page.goto(`/p/${path}`);
-    await turnIntoDatabase(page);
+    await openDatabase(page);
     await addRow(page, 'Ship it');
     await addStatus(page, 0, 'Doing');
     await turnIntoBoard(page);
@@ -263,7 +256,7 @@ test.describe('kanban boards', () => {
 
   test('asks for a select column when the database has none', async ({ page }) => {
     await page.goto(`/p/${path}`);
-    await turnIntoDatabase(page);
+    await openDatabase(page);
 
     const table = page.getByTestId('db-table');
     await table.getByRole('button', { name: /^Status/ }).click();

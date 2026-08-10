@@ -1,4 +1,4 @@
-import type { Database, RowProps } from './databases.js';
+import type { Database, DbRow } from './databases.js';
 
 /** Stable page identifier: "pg_" + ULID. Never changes across renames or moves. */
 export type PageId = string;
@@ -16,8 +16,8 @@ export interface Frontmatter {
   updated: string; // ISO
   /** Present only on a database page: the schema and the views of its rows. */
   db?: Database;
-  /** Present only on a row of a database: its cell values, keyed by property id. */
-  props?: RowProps;
+  /** Present only on a database page: its rows, which are records and not pages. */
+  rows?: DbRow[];
 }
 
 /** A page: its frontmatter, its body and where it lives on disk. */
@@ -40,8 +40,6 @@ export interface Page {
   hasChildren: boolean;
   /** Present when the page is a database: the schema and views its rows are read through. */
   database?: Database;
-  /** Present when the page is a row of a database: its cells, keyed by property id. */
-  props?: RowProps;
 }
 
 /** A page without its body. Used by the list and tree endpoints. */

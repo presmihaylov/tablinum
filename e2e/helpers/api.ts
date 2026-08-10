@@ -95,6 +95,22 @@ export class ApiClient {
     return body.page;
   }
 
+  /** Give a page the starter database, the way the slash commands do. */
+  async makeDatabase(id: string): Promise<Page> {
+    const body = await unwrap<{ page: Page }>(
+      await this.request.put(`${PREFIX}/pages/${id}/database`, { data: {} }),
+    );
+    return body.page;
+  }
+
+  /** Take the database off a page again. The rows are records inside it, so they go with it. */
+  async removeDatabase(id: string): Promise<Page> {
+    const body = await unwrap<{ page: Page }>(
+      await this.request.delete(`${PREFIX}/pages/${id}/database`),
+    );
+    return body.page;
+  }
+
   async deletePage(id: string, options: { recursive?: boolean } = {}): Promise<string[]> {
     const params: Record<string, string> = options.recursive === true ? { recursive: 'true' } : {};
     const body = await unwrap<{ deleted: string[] }>(

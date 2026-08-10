@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
 import type {
   Account,
   Database,
@@ -9,7 +8,6 @@ import type {
   PropValue,
   SelectOption,
 } from '@tablinum/shared';
-import { pageHref } from '../../lib/href';
 import { Plus, Trash } from '../ui/Icon';
 import { Cell } from './Cell';
 import { Pop } from './Pop';
@@ -26,6 +24,7 @@ interface TableViewProps {
   onTitleChange: (rowId: string, title: string) => void;
   onCreateRow: () => void;
   onDeleteRow: (row: DbRow) => void;
+  onOpenRow: (row: DbRow) => void;
   onCreateOption: (property: DbProperty, name: string) => Promise<SelectOption | null>;
 }
 
@@ -40,6 +39,7 @@ export function TableView({
   onTitleChange,
   onCreateRow,
   onDeleteRow,
+  onOpenRow,
   onCreateOption,
 }: TableViewProps) {
   const visible = database.properties.filter((property) => !view.hidden.includes(property.id));
@@ -78,7 +78,12 @@ export function TableView({
           {rows.map((row) => (
             <tr key={row.id} className="db-table__row" data-row-id={row.id}>
               <td>
-                <TitleCell row={row} onTitleChange={onTitleChange} onDelete={() => onDeleteRow(row)} />
+                <TitleCell
+                  row={row}
+                  onTitleChange={onTitleChange}
+                  onDelete={() => onDeleteRow(row)}
+                  onOpen={() => onOpenRow(row)}
+                />
               </td>
               {visible.map((property) => (
                 <td key={property.id} data-property={property.id}>
@@ -114,9 +119,10 @@ interface TitleCellProps {
   row: DbRow;
   onTitleChange: (rowId: string, title: string) => void;
   onDelete: () => void;
+  onOpen: () => void;
 }
 
-function TitleCell({ row, onTitleChange, onDelete }: TitleCellProps) {
+function TitleCell({ row, onTitleChange, onDelete, onOpen }: TitleCellProps) {
   const [draft, setDraft] = useState(row.title);
   const [open, setOpen] = useState(false);
   const focused = useRef(false);
@@ -127,7 +133,6 @@ function TitleCell({ row, onTitleChange, onDelete }: TitleCellProps) {
 
   const commit = (): void => {
     const next = draft.trim();
-    // A row must keep a title: an empty one has no filename to live under.
     if (next.length === 0 || next === row.title) {
       setDraft(row.title);
       return;
@@ -153,9 +158,9 @@ function TitleCell({ row, onTitleChange, onDelete }: TitleCellProps) {
           if (event.key === 'Enter') event.currentTarget.blur();
         }}
       />
-      <Link className="db-table__open" to={pageHref(row.path)}>
+      <button type="button" className="db-table__open" onClick={onOpen}>
         Open
-      </Link>
+      </button>
       <button
         type="button"
         className="db-table__open"

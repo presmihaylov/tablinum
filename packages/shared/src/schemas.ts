@@ -1,5 +1,12 @@
 import { z } from 'zod';
-import { DatabaseSchema, PropertyIdSchema, PropValueSchema, RowPropsSchema } from './databases.js';
+import {
+  DatabaseSchema,
+  DbRowSchema,
+  DbRowsSchema,
+  PropertyIdSchema,
+  PropValueSchema,
+  RowPropsSchema,
+} from './databases.js';
 import { validation } from './errors.js';
 import { isPageId } from './ids.js';
 import { isValidPagePath } from './paths.js';
@@ -48,7 +55,7 @@ export const FrontmatterSchema = z.object({
   created: IsoDateSchema,
   updated: IsoDateSchema,
   db: DatabaseSchema.optional(),
-  props: RowPropsSchema.optional(),
+  rows: DbRowsSchema.optional(),
 });
 
 export const PageSummarySchema = z.object({
@@ -69,19 +76,6 @@ export const PageSchema = PageSummarySchema.extend({
   rev: z.string().min(1),
   /** Present when the page is a database. */
   database: DatabaseSchema.optional(),
-  /** Present when the page is a row of a database. */
-  props: RowPropsSchema.optional(),
-});
-
-/** One row of a database: the page behind it, and its cells. */
-export const DbRowSchema = z.object({
-  id: PageIdSchema,
-  path: PagePathSchema,
-  title: z.string(),
-  icon: IconSchema.optional(),
-  created: IsoDateSchema,
-  updated: IsoDateSchema,
-  props: RowPropsSchema,
 });
 
 export const TreeNodeSchema: z.ZodType<TreeNode> = z.lazy(() =>
@@ -337,7 +331,7 @@ export const UpdateRowBodySchema = z.object({
 
 export const DatabaseResponseSchema = z.object({
   database: DatabaseSchema,
-  rows: z.array(DbRowSchema),
+  rows: DbRowsSchema,
 });
 export const RowResponseSchema = z.object({ row: DbRowSchema });
 

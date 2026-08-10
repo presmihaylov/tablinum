@@ -480,9 +480,9 @@ export function useCreateRow(): UseMutationResult<RowResponse, ApiError, CreateR
 }
 
 export interface UpdateRowVars {
-  /** The database page the row belongs to, so the right cached view is patched. */
+  /** The database page the row lives in. A row is a record inside that page, not a page. */
   pageId: PageId;
-  rowId: PageId;
+  rowId: string;
   body: UpdateRowBody;
 }
 
@@ -493,7 +493,7 @@ export interface UpdateRowVars {
 export function useUpdateRow(): UseMutationResult<RowResponse, ApiError, UpdateRowVars> {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: ({ rowId, body }: UpdateRowVars) => api.updateRow(rowId, body),
+    mutationFn: ({ pageId, rowId, body }: UpdateRowVars) => api.updateRow(pageId, rowId, body),
     onMutate: async (vars) => {
       const key = qk.database(vars.pageId);
       await client.cancelQueries({ queryKey: key });
@@ -510,6 +510,40 @@ export function useUpdateRow(): UseMutationResult<RowResponse, ApiError, UpdateR
                 }
               : row,
           ),
+        });
+      }
+      return { previous };
+    },
+    onError: (_err, vars, context) => {
+      if (context?.previous !== undefined) {
+        client.setQueryData(qk.database(vars.pageId), context.previous);
+      }
+    },
+    onSettled: (_data, _err, vars) => {
+      void client.invalidateQueries({ queryKey: qk.database(vars.pageId) });
+      invalidateContent(client);
+    },
+  });
+}
+
+export interface DeleteRowVars {
+  pageId: PageId;
+  rowId: string;
+}
+
+export function useDeleteRow(): UseMutationResult<OkResponse, ApiError, DeleteRowVars> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ pageId, rowId }: DeleteRowVars) => api.deleteRow(pageId, rowId),
+    // The row leaves the table at once; a delete that waits for a commit reads as a dead click.
+    onMutate: async (vars) => {
+      const key = qk.database(vars.pageId);
+      await client.cancelQueries({ queryKey: key });
+      const previous = client.getQueryData<DatabaseResponse>(key);
+      if (previous !== undefined) {
+        client.setQueryData<DatabaseResponse>(key, {
+          ...previous,
+          rows: previous.rows.filter((row) => row.id !== vars.rowId),
         });
       }
       return { previous };

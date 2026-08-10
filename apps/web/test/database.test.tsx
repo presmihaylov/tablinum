@@ -12,7 +12,7 @@ import {
   type Page,
 } from '@tablinum/shared';
 import { DatabaseView } from '../src/components/Database/DatabaseView';
-import { fakeId, page } from './fixtures';
+import { page } from './fixtures';
 import { installFetch, type MockServer, type Routes } from './mockFetch';
 import { renderApp } from './render';
 
@@ -63,10 +63,15 @@ function database(overrides: Partial<Database> = {}): Database {
   };
 }
 
+/** Deterministic, valid row ids: the shared guard rejects anything else. */
+function rowId(seed: string): string {
+  const base = seed.toUpperCase().replace(/[^0-9ABCDEFGHJKMNPQRSTVWXYZ]/g, '');
+  return `rw_${(base + '0'.repeat(26)).slice(0, 26)}`;
+}
+
 function row(id: string, title: string, props: DbRow['props'] = {}): DbRow {
   return {
-    id: fakeId(id),
-    path: `eng/tasks/${id}`,
+    id: rowId(id),
     title,
     created: '2026-01-01T00:00:00.000Z',
     updated: '2026-01-01T00:00:00.000Z',
@@ -179,7 +184,7 @@ describe('editing a cell', () => {
     const user = userEvent.setup();
     mount({
       routes: {
-        [`PATCH /api/v1/pages/${ROWS[0]!.id}/row`]: () => ({
+        [`PATCH /api/v1/pages/${PAGE.id}/database/rows/${ROWS[0]!.id}`]: () => ({
           row: { ...ROWS[0]!, props: { ...ROWS[0]!.props, [NOTES]: 'changed' } },
         }),
       },
@@ -191,14 +196,14 @@ describe('editing a cell', () => {
     await user.type(input, 'changed');
     await user.tab();
 
-    await waitFor(() => expect(lastCall('PATCH', '/row')).toEqual({ props: { [NOTES]: 'changed' } }));
+    await waitFor(() => expect(lastCall('PATCH', ROWS[0]!.id)).toEqual({ props: { [NOTES]: 'changed' } }));
   });
 
   it('clears a text cell that is emptied', async () => {
     const user = userEvent.setup();
     mount({
       routes: {
-        [`PATCH /api/v1/pages/${ROWS[0]!.id}/row`]: () => ({ row: { ...ROWS[0]!, props: {} } }),
+        [`PATCH /api/v1/pages/${PAGE.id}/database/rows/${ROWS[0]!.id}`]: () => ({ row: { ...ROWS[0]!, props: {} } }),
       },
     });
     await screen.findByTestId('db-table');
@@ -207,14 +212,14 @@ describe('editing a cell', () => {
     await user.clear(input);
     await user.tab();
 
-    await waitFor(() => expect(lastCall('PATCH', '/row')).toEqual({ props: { [NOTES]: null } }));
+    await waitFor(() => expect(lastCall('PATCH', ROWS[0]!.id)).toEqual({ props: { [NOTES]: null } }));
   });
 
   it('sends a number cell as a number', async () => {
     const user = userEvent.setup();
     mount({
       routes: {
-        [`PATCH /api/v1/pages/${ROWS[0]!.id}/row`]: () => ({ row: ROWS[0]! }),
+        [`PATCH /api/v1/pages/${PAGE.id}/database/rows/${ROWS[0]!.id}`]: () => ({ row: ROWS[0]! }),
       },
     });
     await screen.findByTestId('db-table');
@@ -224,7 +229,7 @@ describe('editing a cell', () => {
     await user.type(input, '11');
     await user.tab();
 
-    await waitFor(() => expect(lastCall('PATCH', '/row')).toEqual({ props: { [SCORE]: 11 } }));
+    await waitFor(() => expect(lastCall('PATCH', ROWS[0]!.id)).toEqual({ props: { [SCORE]: 11 } }));
   });
 
   it('keeps what is typed when the server copy arrives late', async () => {
@@ -242,7 +247,7 @@ describe('editing a cell', () => {
     const user = userEvent.setup();
     mount({
       routes: {
-        [`PATCH /api/v1/pages/${ROWS[0]!.id}/row`]: () => ({ row: ROWS[0]! }),
+        [`PATCH /api/v1/pages/${PAGE.id}/database/rows/${ROWS[0]!.id}`]: () => ({ row: ROWS[0]! }),
       },
     });
     await screen.findByTestId('db-table');
@@ -250,14 +255,14 @@ describe('editing a cell', () => {
     await user.click(within(await cellOf('Ship it', STATUS)).getByLabelText('Status'));
     await user.click(await screen.findByRole('menuitem', { name: /Done/ }));
 
-    await waitFor(() => expect(lastCall('PATCH', '/row')).toEqual({ props: { [STATUS]: DONE } }));
+    await waitFor(() => expect(lastCall('PATCH', ROWS[0]!.id)).toEqual({ props: { [STATUS]: DONE } }));
   });
 
   it('adds an option to the schema before it puts one in a cell', async () => {
     const user = userEvent.setup();
     mount({
       routes: {
-        [`PATCH /api/v1/pages/${ROWS[0]!.id}/row`]: () => ({ row: ROWS[0]! }),
+        [`PATCH /api/v1/pages/${PAGE.id}/database/rows/${ROWS[0]!.id}`]: () => ({ row: ROWS[0]! }),
       },
     });
     await screen.findByTestId('db-table');
@@ -271,7 +276,7 @@ describe('editing a cell', () => {
       const status = saved?.database.properties.find((property) => property.id === STATUS);
       expect(status?.options.map((option) => option.name)).toEqual(['Todo', 'Done', 'Blocked']);
     });
-    await waitFor(() => expect(lastCall('PATCH', '/row')).not.toBeNull());
+    await waitFor(() => expect(lastCall('PATCH', ROWS[0]!.id)).not.toBeNull());
   });
 });
 
@@ -439,7 +444,7 @@ describe('rows', () => {
     const user = userEvent.setup();
     mount({
       routes: {
-        [`PATCH /api/v1/pages/${ROWS[0]!.id}/row`]: () => ({ row: { ...ROWS[0]!, title: 'Shipped' } }),
+        [`PATCH /api/v1/pages/${PAGE.id}/database/rows/${ROWS[0]!.id}`]: () => ({ row: { ...ROWS[0]!, title: 'Shipped' } }),
       },
     });
     await screen.findByTestId('db-table');
@@ -451,7 +456,7 @@ describe('rows', () => {
     await user.type(input, 'Shipped');
     await user.tab();
 
-    await waitFor(() => expect(lastCall('PATCH', '/row')).toEqual({ title: 'Shipped' }));
+    await waitFor(() => expect(lastCall('PATCH', ROWS[0]!.id)).toEqual({ title: 'Shipped' }));
   });
 
   it('refuses to blank a row title', async () => {
@@ -465,7 +470,7 @@ describe('rows', () => {
     await user.clear(input);
     await user.tab();
 
-    expect(lastCall('PATCH', '/row')).toBeNull();
+    expect(lastCall('PATCH', ROWS[0]!.id)).toBeNull();
     expect((input as HTMLInputElement).value).toBe('Ship it');
   });
 
@@ -473,7 +478,7 @@ describe('rows', () => {
     const user = userEvent.setup();
     mount({
       routes: {
-        [`DELETE /api/v1/pages/${ROWS[0]!.id}`]: () => ({ deleted: [ROWS[0]!.path] }),
+        [`DELETE /api/v1/pages/${PAGE.id}/database/rows/${ROWS[0]!.id}`]: () => ({ ok: true }),
       },
     });
     await screen.findByTestId('db-table');
@@ -488,14 +493,37 @@ describe('rows', () => {
     });
   });
 
-  it('links to the page a row lives on', async () => {
+  it('opens a row in the record panel', async () => {
+    const user = userEvent.setup();
     mount();
     await screen.findByTestId('db-table');
 
-    const link = within((await rowOf('Ship it'))).getByRole('link', {
-      name: 'Open',
+    await user.click(within(await rowOf('Ship it')).getByRole('button', { name: 'Open' }));
+
+    const panel = await screen.findByRole('dialog');
+    expect(within(panel).getByLabelText<HTMLInputElement>('Row title').value).toBe('Ship it');
+    expect(within(panel).getByLabelText<HTMLInputElement>('Notes').value).toBe('first');
+  });
+
+  it('saves a cell edited in the record panel', async () => {
+    const user = userEvent.setup();
+    mount({
+      routes: {
+        [`PATCH /api/v1/pages/${PAGE.id}/database/rows/${ROWS[0]!.id}`]: () => ({ row: ROWS[0]! }),
+      },
     });
-    expect(link.getAttribute('href')).toContain('eng/tasks/one');
+    await screen.findByTestId('db-table');
+
+    await user.click(within(await rowOf('Ship it')).getByRole('button', { name: 'Open' }));
+    const panel = await screen.findByRole('dialog');
+    const input = within(panel).getByLabelText('Notes');
+    await user.clear(input);
+    await user.type(input, 'edited');
+    await user.tab();
+
+    await waitFor(() =>
+      expect(lastCall('PATCH', ROWS[0]!.id)).toEqual({ props: { [NOTES]: 'edited' } }),
+    );
   });
 });
 
@@ -591,19 +619,22 @@ describe('the board', () => {
     expect((await card('Ship it')).textContent).not.toContain('first');
   });
 
-  it('links a card to the page the row lives on', async () => {
+  it('opens a card in the record panel', async () => {
+    const user = userEvent.setup();
     mount({ db: boardDatabase() });
     await screen.findByTestId('db-board');
 
-    const link = within(await card('Ship it')).getByRole('link', { name: 'Ship it' });
-    expect(link.getAttribute('href')).toBe('/p/eng/tasks/one');
+    await user.click(within(await card('Ship it')).getByRole('button', { name: 'Ship it' }));
+
+    const panel = await screen.findByRole('dialog');
+    expect(within(panel).getByLabelText<HTMLInputElement>('Row title').value).toBe('Ship it');
   });
 
   it('moves a card dropped on another stack', async () => {
     mount({
       db: boardDatabase(),
       routes: {
-        [`PATCH /api/v1/pages/${ROWS[0]!.id}/row`]: () => ({ row: ROWS[0]! }),
+        [`PATCH /api/v1/pages/${PAGE.id}/database/rows/${ROWS[0]!.id}`]: () => ({ row: ROWS[0]! }),
       },
     });
     await screen.findByTestId('db-board');
@@ -613,14 +644,14 @@ describe('the board', () => {
     fireEvent.dragOver(await column(DONE), { dataTransfer: payload });
     fireEvent.drop(await column(DONE), { dataTransfer: payload });
 
-    await waitFor(() => expect(lastCall('PATCH', '/row')).toEqual({ props: { [STATUS]: DONE } }));
+    await waitFor(() => expect(lastCall('PATCH', ROWS[0]!.id)).toEqual({ props: { [STATUS]: DONE } }));
   });
 
   it('clears the cell of a card dropped on the empty stack', async () => {
     mount({
       db: boardDatabase(),
       routes: {
-        [`PATCH /api/v1/pages/${ROWS[0]!.id}/row`]: () => ({ row: ROWS[0]! }),
+        [`PATCH /api/v1/pages/${PAGE.id}/database/rows/${ROWS[0]!.id}`]: () => ({ row: ROWS[0]! }),
       },
     });
     await screen.findByTestId('db-board');
@@ -629,7 +660,7 @@ describe('the board', () => {
     fireEvent.dragStart(await card('Ship it'), { dataTransfer: payload });
     fireEvent.drop(await column(null), { dataTransfer: payload });
 
-    await waitFor(() => expect(lastCall('PATCH', '/row')).toEqual({ props: { [STATUS]: null } }));
+    await waitFor(() => expect(lastCall('PATCH', ROWS[0]!.id)).toEqual({ props: { [STATUS]: null } }));
   });
 
   it('says nothing to the server when a card lands on the stack it came from', async () => {
@@ -640,7 +671,7 @@ describe('the board', () => {
     fireEvent.dragStart(await card('Ship it'), { dataTransfer: payload });
     fireEvent.drop(await column(TODO), { dataTransfer: payload });
 
-    expect(lastCall('PATCH', '/row')).toBeNull();
+    expect(lastCall('PATCH', ROWS[0]!.id)).toBeNull();
   });
 
   it('moves a card from its own menu', async () => {
@@ -648,7 +679,7 @@ describe('the board', () => {
     mount({
       db: boardDatabase(),
       routes: {
-        [`PATCH /api/v1/pages/${ROWS[0]!.id}/row`]: () => ({ row: ROWS[0]! }),
+        [`PATCH /api/v1/pages/${PAGE.id}/database/rows/${ROWS[0]!.id}`]: () => ({ row: ROWS[0]! }),
       },
     });
     await screen.findByTestId('db-board');
@@ -656,14 +687,14 @@ describe('the board', () => {
     await user.click(within(await card('Ship it')).getByLabelText('Card menu for Ship it'));
     await user.click(await screen.findByRole('menuitem', { name: 'Done' }));
 
-    await waitFor(() => expect(lastCall('PATCH', '/row')).toEqual({ props: { [STATUS]: DONE } }));
+    await waitFor(() => expect(lastCall('PATCH', ROWS[0]!.id)).toEqual({ props: { [STATUS]: DONE } }));
   });
 
   it('deletes a row from the card menu', async () => {
     const user = userEvent.setup();
     mount({
       db: boardDatabase(),
-      routes: { [`DELETE /api/v1/pages/${ROWS[0]!.id}`]: () => ({ ok: true }) },
+      routes: { [`DELETE /api/v1/pages/${PAGE.id}/database/rows/${ROWS[0]!.id}`]: () => ({ ok: true }) },
     });
     await screen.findByTestId('db-board');
 

@@ -1,5 +1,4 @@
 import { useState, type DragEvent } from 'react';
-import { Link } from 'react-router-dom';
 import {
   boardGroups,
   boardProperty,
@@ -12,7 +11,6 @@ import {
   type PropValue,
   type RowProps,
 } from '@tablinum/shared';
-import { pageHref } from '../../lib/href';
 import { Plus, Trash } from '../ui/Icon';
 import { Tag } from './Cell';
 import { Pop } from './Pop';
@@ -28,6 +26,7 @@ interface BoardViewProps {
   onCellChange: (rowId: string, propertyId: string, value: PropValue) => void;
   onCreateRow: (props: RowProps) => void;
   onDeleteRow: (row: DbRow) => void;
+  onOpenRow: (row: DbRow) => void;
 }
 
 /** The kanban board: one stack of cards for each option of the select property it groups by. */
@@ -39,6 +38,7 @@ export function BoardView({
   onCellChange,
   onCreateRow,
   onDeleteRow,
+  onOpenRow,
 }: BoardViewProps) {
   const [dragging, setDragging] = useState<string | null>(null);
   const [over, setOver] = useState<string | null>(null);
@@ -112,6 +112,7 @@ export function BoardView({
                 }}
                 onMove={(target) => move(row.id, target)}
                 onDelete={() => onDeleteRow(row)}
+                onOpen={() => onOpenRow(row)}
               />
             ))}
           </div>
@@ -141,6 +142,7 @@ interface CardProps {
   onDragEnd: () => void;
   onMove: (group: BoardGroup) => void;
   onDelete: () => void;
+  onOpen: () => void;
 }
 
 function Card({
@@ -153,6 +155,7 @@ function Card({
   onDragEnd,
   onMove,
   onDelete,
+  onOpen,
 }: CardProps) {
   const [open, setOpen] = useState(false);
   const filled = properties.filter((property) => (row.props[property.id] ?? null) !== null);
@@ -172,9 +175,9 @@ function Card({
       onDragEnd={onDragEnd}
     >
       <div className="db-card__top">
-        <Link className="db-card__title" to={pageHref(row.path)}>
+        <button type="button" className="db-card__title" onClick={onOpen}>
           {row.title}
-        </Link>
+        </button>
         <button
           type="button"
           className="db-card__menu"

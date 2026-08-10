@@ -97,7 +97,6 @@ describe('the page menu', () => {
       expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
         'Backlinks',
         'History',
-        'Turn into a database',
         'Move to',
         'Delete',
       ]),
@@ -175,18 +174,16 @@ describe('the page menu', () => {
     expect(screen.queryByRole('region', { name: 'Backlinks' })).toBeNull();
   });
 
-  it('turns the page into a database', async () => {
-    const mock = start({ [`PUT /api/v1/pages/${PAGE_ID}/database`]: { page: PAGE } });
-    const user = userEvent.setup();
+  // A database now comes from the /Database and /Board slash commands, so the page menu no
+  // longer converts a whole page into one.
+  it('offers no way to turn the page into a database', async () => {
+    start();
     renderApp(<Harness />, { route: '/p/notes/weekly' });
 
     await openMenu();
-    await user.click(await screen.findByRole('menuitem', { name: 'Turn into a database' }));
 
-    await waitFor(() => {
-      const sent = mock.calls.find((call) => call.method === 'PUT');
-      expect(sent?.url.pathname).toBe(`/api/v1/pages/${PAGE_ID}/database`);
-    });
+    await screen.findByRole('menuitem', { name: 'Backlinks' });
+    expect(screen.queryByRole('menuitem', { name: /database/i })).toBeNull();
   });
 
   it('asks before it deletes the page', async () => {

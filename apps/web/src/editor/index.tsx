@@ -548,7 +548,13 @@ export function PageEditor({
       </header>
 
       <div className="editor__canvas" ref={canvasRef} onClickCapture={followLink(navigate)}>
-        {editor ? <BlockHandles editor={editor} canvas={canvasRef} /> : null}
+        {editor ? (
+          <BlockHandles
+            editor={editor}
+            canvas={canvasRef}
+            {...(comments.pageId === null ? {} : { onComment: startComment })}
+          />
+        ) : null}
         <EditorContent editor={editor} className="editor__body" />
         {editor ? <TableControls editor={editor} canvas={canvasRef} /> : null}
         {editor ? (

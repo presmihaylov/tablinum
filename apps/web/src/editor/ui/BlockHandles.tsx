@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { DragEvent as ReactDragEvent, RefObject } from 'react';
 import type { Editor } from '@tiptap/core';
+import { TextSelection } from '@tiptap/pm/state';
 import { nodeSelectionAt, startNodeDrag } from './nodeDrag';
 
 interface HandleTarget {
@@ -13,6 +14,8 @@ export interface BlockHandlesProps {
   editor: Editor;
   /** The positioned box the handles are placed inside. */
   canvas: RefObject<HTMLDivElement>;
+  /** Starts a comment on whatever is selected. Absent when the page holds no comments. */
+  onComment?: () => void;
 }
 
 /**
@@ -20,12 +23,16 @@ export interface BlockHandlesProps {
  * They live outside the editable DOM, so the drag is handed to ProseMirror by
  * setting `view.dragging` rather than by relying on native drag data.
  */
-export function BlockHandles({ editor, canvas }: BlockHandlesProps) {
+export function BlockHandles({ editor, canvas, onComment }: BlockHandlesProps) {
   const [target, setTarget] = useState<HandleTarget | null>(null);
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   const locate = useCallback(
     (event: MouseEvent): void => {
       const box = canvas.current;
+      // The menu names one block, so the pointer must not move the handles off it.
+      if (open) return;
       if (!box) return;
       const root = editor.view.dom;
       if (!nearDocument(root, event)) {
@@ -47,13 +54,30 @@ export function BlockHandles({ editor, canvas }: BlockHandlesProps) {
       const rect = block.getBoundingClientRect();
       setTarget({ pos, top: rect.top - box.getBoundingClientRect().top, element: block });
     },
-    [editor, canvas],
+    [editor, canvas, open],
   );
 
   useEffect(() => {
     window.addEventListener('mousemove', locate);
     return () => window.removeEventListener('mousemove', locate);
   }, [locate]);
+
+  useEffect(() => {
+    if (!open) return;
+    const dismiss = (event: MouseEvent): void => {
+      if (event.target instanceof Node && menuRef.current?.contains(event.target)) return;
+      setOpen(false);
+    };
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    window.addEventListener('mousedown', dismiss);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('mousedown', dismiss);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
 
   if (!target || !editor.isEditable) return null;
 
@@ -62,6 +86,31 @@ export function BlockHandles({ editor, canvas }: BlockHandlesProps) {
     if (!selection) return;
     editor.view.dispatch(editor.state.tr.setSelection(selection));
     editor.view.focus();
+  };
+
+  const blockRange = (): { from: number; to: number } | null => {
+    const node = editor.state.doc.nodeAt(target.pos);
+    if (!node) return null;
+    return { from: target.pos, to: target.pos + node.nodeSize };
+  };
+
+  const commentOnBlock = (): void => {
+    const range = blockRange();
+    setOpen(false);
+    if (!range || !onComment) return;
+    const { doc } = editor.state;
+    // `between` walks to the nearest text, so a block that is not a textblock still works.
+    const selection = TextSelection.between(doc.resolve(range.from + 1), doc.resolve(range.to - 1));
+    editor.view.dispatch(editor.state.tr.setSelection(selection));
+    editor.view.focus();
+    onComment();
+  };
+
+  const remove = (): void => {
+    const range = blockRange();
+    setOpen(false);
+    if (!range) return;
+    editor.chain().focus().deleteRange(range).run();
   };
 
   const startDrag = (event: ReactDragEvent<HTMLButtonElement>): void => {
@@ -105,13 +154,43 @@ export function BlockHandles({ editor, canvas }: BlockHandlesProps) {
         type="button"
         draggable
         className="gd-editor-handles__btn gd-editor-handles__btn--grip"
-        title="Drag to move, click to select"
-        aria-label="Drag to move the block"
-        onClick={select}
+        title="Drag to move, click for actions"
+        aria-label="Block actions"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        // The dismiss listener runs on mousedown, so a plain toggle here would reopen it.
+        onMouseDown={(event) => event.stopPropagation()}
+        onClick={() => {
+          select();
+          setOpen((current) => !current);
+        }}
         onDragStart={startDrag}
       >
         <span aria-hidden="true">⠿</span>
       </button>
+
+      {open ? (
+        <div className="gd-editor-blockmenu" role="menu" aria-label="Block actions" ref={menuRef}>
+          {onComment ? (
+            <button
+              type="button"
+              role="menuitem"
+              className="gd-editor-blockmenu__item"
+              onClick={commentOnBlock}
+            >
+              Comment
+            </button>
+          ) : null}
+          <button
+            type="button"
+            role="menuitem"
+            className="gd-editor-blockmenu__item gd-editor-blockmenu__item--danger"
+            onClick={remove}
+          >
+            Delete
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

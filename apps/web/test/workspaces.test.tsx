@@ -141,20 +141,23 @@ describe('the workspace switcher', () => {
 });
 
 describe('the switcher menu', () => {
-  it('sends every settings item to the settings page', async () => {
+  it('sends the settings item to the settings page', async () => {
     startServer();
     await showSwitcher();
 
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Invite members' }));
-    expect(screen.getByTestId('location')).toHaveTextContent('/settings/people');
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Settings' }));
+    expect(screen.getByTestId('location')).toHaveTextContent('/settings');
   });
 
-  it('sends the workspace item to the workspace section', async () => {
+  // Each settings section belongs on the settings page. A second door to one of them from
+  // the switcher only made the menu longer.
+  it('keeps the settings sections out of the menu', async () => {
     startServer();
     await showSwitcher();
 
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Workspace settings' }));
-    expect(screen.getByTestId('location')).toHaveTextContent('/settings/workspace');
+    await screen.findByRole('menuitem', { name: 'Settings' });
+    expect(screen.queryByRole('menuitem', { name: 'Invite members' })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: 'Workspace settings' })).toBeNull();
   });
 });
 

@@ -53,7 +53,8 @@ function decorationsFor(spans: CommentSpan[], activeId: string | null, size: num
       Decoration.inline(
         span.from,
         span.to,
-        { class: classFor(span, activeId) },
+        // The panel reads this attribute to put the thread card beside the words it marks.
+        { class: classFor(span, activeId), 'data-comment-anchor': span.id },
         { threadId: span.id },
       ),
     );

@@ -139,6 +139,11 @@ function cardFor(threadId: string): HTMLElement {
   return card;
 }
 
+/** A card shows only its first remark until somebody clicks into it. */
+async function openCard(threadId: string): Promise<void> {
+  await userEvent.click(cardFor(threadId));
+}
+
 function highlight(text: string): HTMLElement {
   const found = [...document.querySelectorAll('.gd-comment')].find(
     (node) => node.textContent === text,
@@ -189,6 +194,8 @@ describe('the comments panel', () => {
     await userEvent.click(screen.getByRole('checkbox'));
     await waitFor(() => expect(document.querySelectorAll('[data-thread-id]')).toHaveLength(2));
     expect(screen.getByText('Fixed in the runbook.')).toBeTruthy();
+
+    await openCard(done.id);
     expect(screen.getByRole('button', { name: 'Reopen' })).toBeTruthy();
   });
 
@@ -197,6 +204,7 @@ describe('the comments panel', () => {
       'POST /api/v1/comment-threads/ct_00000000000000000000000001/replies': { thread: thread() },
     });
 
+    await openCard('ct_00000000000000000000000001');
     await userEvent.click(within(cardFor('ct_00000000000000000000000001')).getByRole('button', { name: 'Reply' }));
     await userEvent.type(screen.getByLabelText('Reply'), 'It is, I checked on Monday.');
     await userEvent.click(screen.getByRole('button', { name: 'Reply' }));
@@ -215,6 +223,7 @@ describe('the comments panel', () => {
       },
     });
 
+    await openCard('ct_00000000000000000000000001');
     await userEvent.click(screen.getByRole('button', { name: 'Resolve' }));
 
     await waitFor(() =>
@@ -262,10 +271,13 @@ describe('the comments panel', () => {
     });
     await mount([mine, theirs]);
 
+    // Only the card in focus offers anything to do, so each one is opened in its turn.
+    await openCard(mine.id);
     const own = within(cardFor(mine.id));
     expect(own.getByRole('button', { name: 'Edit' })).toBeTruthy();
     expect(own.getByRole('button', { name: 'Delete' })).toBeTruthy();
 
+    await openCard(theirs.id);
     const other = within(cardFor(theirs.id));
     expect(other.queryByRole('button', { name: 'Edit' })).toBeNull();
     expect(other.getByRole('button', { name: 'Delete' })).toBeTruthy();
@@ -277,6 +289,7 @@ describe('the comments panel', () => {
       'PATCH /api/v1/comments/cm_00000000000000000000000001': { thread: thread() },
     });
 
+    await openCard('ct_00000000000000000000000001');
     await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
     const field = screen.getByLabelText('Edit the comment');
     await userEvent.clear(field);
@@ -295,6 +308,7 @@ describe('the comments panel', () => {
       'DELETE /api/v1/comments/cm_00000000000000000000000001': { thread: null },
     });
 
+    await openCard('ct_00000000000000000000000001');
     await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
     const dialog = within(screen.getByRole('dialog', { name: 'Delete comment' }));
     expect(
@@ -334,6 +348,74 @@ describe('the comments panel', () => {
     await waitFor(() => expect(callsTo('POST', `/api/v1/pages/${PAGE.id}/comments`)).toHaveLength(1));
     const [sent] = callsTo('POST', `/api/v1/pages/${PAGE.id}/comments`);
     expect(sent?.body).toEqual({ body: 'Who owns this page?' });
+  });
+});
+
+describe('a card that nobody is in', () => {
+  const WITH_REPLY = thread({
+    comments: [
+      {
+        id: 'cm_00000000000000000000000001',
+        threadId: 'ct_00000000000000000000000001',
+        author: ADA.id,
+        body: 'Is this still the right pipeline?',
+        created: '2026-01-01T00:00:00.000Z',
+        updated: '2026-01-01T00:00:00.000Z',
+      },
+      {
+        id: 'cm_00000000000000000000000002',
+        threadId: 'ct_00000000000000000000000001',
+        author: SAM.id,
+        body: 'It is. I checked it on Monday.',
+        created: '2026-01-02T00:00:00.000Z',
+        updated: '2026-01-02T00:00:00.000Z',
+      },
+    ],
+  });
+
+  it('shows the first remark and counts the rest', async () => {
+    await mount([WITH_REPLY]);
+
+    const card = within(cardFor(WITH_REPLY.id));
+    expect(card.getByText('Is this still the right pipeline?')).toBeTruthy();
+    expect(card.queryByText('It is. I checked it on Monday.')).toBeNull();
+    expect(card.getByText('1 more reply')).toBeTruthy();
+    expect(card.queryByRole('button', { name: 'Reply' })).toBeNull();
+  });
+
+  it('opens on a click, with the whole thread and a way to answer it', async () => {
+    await mount([WITH_REPLY]);
+
+    await openCard(WITH_REPLY.id);
+
+    const card = within(cardFor(WITH_REPLY.id));
+    expect(card.getByText('It is. I checked it on Monday.')).toBeTruthy();
+    expect(card.queryByText('1 more reply')).toBeNull();
+    expect(card.getByRole('button', { name: 'Reply' })).toBeTruthy();
+  });
+
+  it('closes again when another card is opened', async () => {
+    const second = thread({
+      id: 'ct_00000000000000000000000002',
+      comments: [
+        {
+          id: 'cm_00000000000000000000000003',
+          threadId: 'ct_00000000000000000000000002',
+          author: SAM.id,
+          body: 'And who owns the runbook?',
+          created: '2026-01-03T00:00:00.000Z',
+          updated: '2026-01-03T00:00:00.000Z',
+        },
+      ],
+    });
+    await mount([WITH_REPLY, second]);
+
+    await openCard(WITH_REPLY.id);
+    await openCard(second.id);
+
+    expect(within(cardFor(second.id)).getByRole('button', { name: 'Reply' })).toBeTruthy();
+    expect(within(cardFor(WITH_REPLY.id)).queryByRole('button', { name: 'Reply' })).toBeNull();
+    expect(cardFor(WITH_REPLY.id).className).toContain('comments__thread--peek');
   });
 });
 

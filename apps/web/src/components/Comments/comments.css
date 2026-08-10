@@ -46,6 +46,39 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+/*
+ * The field the anchored cards stand in. Each group is placed by the panel, level with the
+ * words it marks, so the field itself only has to be tall enough to hold them all.
+ */
+.comments__field {
+  position: relative;
+}
+
+.comments__group {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  transition: transform 140ms ease;
+}
+
+/* Several threads about one spot. The rail says they are read together. */
+.comments__group--many {
+  gap: var(--space-1);
+  padding-left: var(--space-2);
+  border-left: 2px solid var(--border-strong);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .comments__group {
+    transition: none;
+  }
 }
 
 .comments__thread {
@@ -58,6 +91,26 @@
 .comments__thread--active {
   border-color: var(--accent);
   box-shadow: 0 0 0 1px var(--accent);
+}
+
+/* A card nobody is in. It shows the remark and nothing to do with it, until it is clicked. */
+.comments__thread--peek {
+  cursor: pointer;
+}
+
+.comments__thread--peek:hover {
+  border-color: var(--border-strong);
+}
+
+.comments__thread--peek:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.comments__rest {
+  margin-top: var(--space-2);
+  font-size: var(--text-2xs);
+  color: var(--text-faint);
 }
 
 .comments__thread--resolved {
@@ -139,6 +192,13 @@
   font-size: var(--text-sm);
   line-height: var(--leading-relaxed);
   overflow-wrap: anywhere;
+}
+
+.comment__text--preview {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .comment__text p {

@@ -184,7 +184,7 @@ token instead, either one from `TABLINUM_API_TOKENS` or a per-agent `gda_` token
 1. **Claim the server.** Open a fresh server and the sign-in screen asks for an email, a name and a
    password. The first visitor becomes the admin, and then names the workspace the server started
    with. The form works exactly once: from then on nobody reaches the API without a credential.
-2. **Invite people.** As an admin, open "People and invites" and create a link. Leave the email
+2. **Invite people.** As an admin, open Settings > Workspace and create an invite link. Leave the email
    empty for a link anybody may use, or pin it to one address so the link cannot be redirected.
    A link expires after 14 days by default and is spent once it is used.
 3. **The invited person opens the link** at `/invite/<token>`, picks a display name and a password,

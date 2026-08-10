@@ -210,13 +210,33 @@ describe('CommandPalette', () => {
     ]);
   });
 
-  it('keeps the admin sections away from everybody else', async () => {
+  it('finds the invites under the workspace section, which now holds them', async () => {
     startServer({ 'GET /api/v1/auth/state': { setupRequired: false, user: ADA } });
     const { user, input } = await openPalette();
 
     await user.type(input, 'invites');
 
-    await waitFor(() => expect(rowLabels()).toEqual(['People and invites']));
+    await waitFor(() => expect(rowLabels()).toEqual(['Workspace settings']));
+  });
+
+  it('offers the agent screen to an admin', async () => {
+    startServer({ 'GET /api/v1/auth/state': { setupRequired: false, user: ADA } });
+    const { user, input } = await openPalette();
+
+    await user.type(input, 'agents');
+
+    await waitFor(() => expect(rowLabels()).toContain('Agents'));
+  });
+
+  it('keeps the admin sections away from everybody else', async () => {
+    startServer({
+      'GET /api/v1/auth/state': { setupRequired: false, user: { ...ADA, role: 'member' } },
+    });
+    const { user, input } = await openPalette();
+
+    await user.type(input, 'agents');
+
+    await waitFor(() => expect(rowLabels()).not.toContain('Agents'));
   });
 
   it('runs a page action on the page that is open', async () => {

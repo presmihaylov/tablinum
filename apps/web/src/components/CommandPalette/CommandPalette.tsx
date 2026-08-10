@@ -18,7 +18,6 @@ import {
   Moon,
   MoveTo,
   Pencil,
-  People,
   Plus,
   Search,
   Settings,
@@ -235,34 +234,23 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
         id: 'go-workspace',
         label: 'Workspace settings',
         group: 'Go to',
-        hint: 'settings',
+        hint: 'people and invites too',
         icon: <Settings size={13} />,
-        keywords: ['git', 'remote', 'name', 'settings'],
+        keywords: ['git', 'remote', 'name', 'people', 'members', 'invite', 'invites', 'team', 'settings'],
         run: () => navigate('/settings/workspace'),
       },
     );
 
     if (isAdmin) {
-      made.push(
-        {
-          id: 'go-people',
-          label: 'People and invites',
-          group: 'Go to',
-          hint: 'settings',
-          icon: <People size={13} />,
-          keywords: ['members', 'invite', 'team', 'settings'],
-          run: () => navigate('/settings/people'),
-        },
-        {
-          id: 'go-agents',
-          label: 'Agents',
-          group: 'Go to',
-          hint: 'settings',
-          icon: <Bot size={13} />,
-          keywords: ['mcp', 'bot', 'token', 'settings'],
-          run: () => navigate('/settings/agents'),
-        },
-      );
+      made.push({
+        id: 'go-agents',
+        label: 'Agents',
+        group: 'Go to',
+        hint: 'settings',
+        icon: <Bot size={13} />,
+        keywords: ['mcp', 'bot', 'token', 'settings'],
+        run: () => navigate('/settings/agents'),
+      });
     }
 
     return made;

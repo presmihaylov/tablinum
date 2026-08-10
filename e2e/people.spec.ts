@@ -81,15 +81,20 @@ async function joinFromLink(
   return { context, page: await context.newPage(), account };
 }
 
-/** The roster lives on the settings page now, reached from the avatar in the sidebar. */
-async function openPeopleDialog(page: Page) {
+/** The roster lives on the workspace settings page now, with the invites beside it. */
+async function openPeopleSettings(page: Page) {
   await page.goto('/');
   await page.getByRole('button', { name: 'Your account' }).click();
   await page.getByRole('menuitem', { name: 'Settings' }).click();
-  await page.getByRole('button', { name: 'People and invites' }).click();
-  const panel = page.getByRole('region', { name: 'People and invites' });
+  await page.getByRole('navigation', { name: 'Settings' }).getByRole('button', { name: 'Workspace' }).click();
+  const panel = page.getByRole('region', { name: 'Workspace', exact: true });
   await expect(panel).toBeVisible();
   return panel;
+}
+
+/** The roster of every account on the server. The workspace roster sits above it on the same page. */
+function accounts(page: Page) {
+  return page.getByRole('region', { name: 'Accounts' });
 }
 
 /**
@@ -124,25 +129,28 @@ test.describe('people, invites and roles', () => {
   });
 
   test('an admin sees the people screen', async ({ page }) => {
-    const dialog = await openPeopleDialog(page);
+    const dialog = await openPeopleSettings(page);
 
     await expect(dialog.getByText('Invite somebody')).toBeVisible();
     await expect(dialog.getByText('The link lasts 14 days.')).toBeVisible();
-    await expect(dialog.getByText('Accounts')).toBeVisible();
+    await expect(dialog.getByRole('region', { name: 'Accounts' })).toBeVisible();
+    // The workspace parts share the page, so one visit covers both.
+    await expect(dialog.getByRole('region', { name: 'People in this workspace' })).toBeVisible();
+    await expect(dialog.getByRole('link', { name: /Export as a zip/ })).toBeVisible();
 
     // The role select fills the row, so the name and the address are squeezed to no width at
     // all: they are in the row, but only the controls named after them can be seen.
     await expect(dialog.getByText(`${ADMIN.name} (you)`)).toHaveCount(1);
-    await expect(dialog.getByText(ADMIN.email)).toHaveCount(1);
-    await expect(dialog.getByLabel(`Role of ${ADMIN.name}`)).toHaveValue('admin');
+    await expect(accounts(page).getByText(ADMIN.email)).toHaveCount(1);
+    await expect(accounts(page).getByLabel(`Role of ${ADMIN.name}`)).toHaveValue('admin');
 
     // Nobody may remove the account they are signed in as.
-    await expect(dialog.getByRole('button', { name: `Remove ${ADMIN.name}` })).toBeDisabled();
+    await expect(accounts(page).getByRole('button', { name: `Remove ${ADMIN.name}` })).toBeDisabled();
   });
 
   test('creating an invite produces a link and lists it as waiting', async ({ page, request }) => {
     const email = uniqueEmail('invitee');
-    const dialog = await openPeopleDialog(page);
+    const dialog = await openPeopleSettings(page);
 
     await dialog.getByPlaceholder('name@example.com (optional)').fill(email);
     await dialog.getByLabel('Role', { exact: true }).selectOption('member');
@@ -240,10 +248,11 @@ test.describe('people, invites and roles', () => {
     await expect(member.page.getByRole('menuitem', { name: 'Settings' })).toBeVisible();
     await expect(member.page.getByRole('menuitem', { name: 'Log out' })).toBeVisible();
 
-    // The settings page offers a member no admin section, whatever the path asks for.
+    // The old people path lands on the workspace section, and it holds nothing admin-only.
     await member.page.goto('/settings/people');
-    await expect(member.page.getByRole('heading', { name: 'My account' })).toBeVisible();
-    await expect(member.page.getByRole('button', { name: 'People and invites' })).toHaveCount(0);
+    await expect(member.page.getByRole('heading', { name: 'Workspace' })).toBeVisible();
+    await expect(member.page.getByRole('region', { name: 'Accounts' })).toHaveCount(0);
+    await expect(member.page.getByText('Invite somebody')).toHaveCount(0);
     await expect(member.page.getByRole('button', { name: 'Agents' })).toHaveCount(0);
 
     const admin = (await listUsers(request)).find((user) => user.email === ADMIN.email);
@@ -266,8 +275,8 @@ test.describe('people, invites and roles', () => {
     invites.push(invited.id);
     const member = await joinFromLink(browser, invited, { name: 'E2E Promoted' });
 
-    const dialog = await openPeopleDialog(page);
-    const select = dialog.getByLabel('Role of E2E Promoted');
+    await openPeopleSettings(page);
+    const select = accounts(page).getByLabel('Role of E2E Promoted');
     await expect(select).toHaveValue('member');
 
     await select.selectOption('admin');
@@ -277,8 +286,9 @@ test.describe('people, invites and roles', () => {
       .toBe('admin');
 
     // The new admin sees the admin screens as soon as the browser asks again.
-    await member.page.goto('/settings');
-    await expect(member.page.getByRole('button', { name: 'People and invites' })).toBeVisible();
+    await member.page.goto('/settings/workspace');
+    await expect(member.page.getByRole('region', { name: 'Accounts' })).toBeVisible();
+    await expect(member.page.getByRole('button', { name: 'Agents' })).toBeVisible();
 
     await select.selectOption('member');
     await expect(select).toHaveValue('member');
@@ -293,8 +303,8 @@ test.describe('people, invites and roles', () => {
     const adminId = admin?.id ?? '';
 
     await withSoleAdmin(request, adminId, async () => {
-      const dialog = await openPeopleDialog(page);
-      const select = dialog.getByLabel(`Role of ${ADMIN.name}`);
+      const dialog = await openPeopleSettings(page);
+      const select = accounts(page).getByLabel(`Role of ${ADMIN.name}`);
 
       await select.selectOption('member');
 

@@ -24,7 +24,8 @@ function isPending(invite: Invite): boolean {
   return !invite.revoked && invite.acceptedBy === null && Date.parse(invite.expires) > Date.now();
 }
 
-/** Everyone with an account, plus the links that have been sent but not used. */
+/** Everyone with an account, plus the links that have been sent but not used.
+ * It draws sections only: the workspace page it sits on owns the form around them. */
 export function PeoplePanel({ me }: PeoplePanelProps) {
   const toast = useToast();
   const users = useUsers(true);
@@ -85,7 +86,7 @@ export function PeoplePanel({ me }: PeoplePanelProps) {
 
   return (
     <>
-      <div className="account-form">
+      <div className="account-section account-section--stack">
         <div className="account-section__title">Invite somebody</div>
         <div className="account-form__row">
           <input
@@ -131,67 +132,67 @@ export function PeoplePanel({ me }: PeoplePanelProps) {
         )}
 
         {error === null ? null : <p className="account-form__error">{error}</p>}
+      </div>
 
-        <div className="account-section">
-          <div className="account-section__title">Accounts</div>
-          {(users.data?.users ?? []).map((user) => (
-            <div className="people-row" key={user.id}>
-              <Avatar person={user} size={26} />
-              <div className="people-row__who">
-                <div className="people-row__name">
-                  {user.name}
-                  {user.id === me?.id ? ' (you)' : ''}
-                </div>
-                <div className="people-row__email">{user.email}</div>
+      <section className="account-section" aria-label="Accounts">
+        <div className="account-section__title">Accounts</div>
+        {(users.data?.users ?? []).map((user) => (
+          <div className="people-row" key={user.id}>
+            <Avatar person={user} size={26} />
+            <div className="people-row__who">
+              <div className="people-row__name">
+                {user.name}
+                {user.id === me?.id ? ' (you)' : ''}
               </div>
-              <select
-                className="input"
-                value={user.role}
-                onChange={(event) => setRoleOf(user, event.target.value === 'admin' ? 'admin' : 'member')}
-                aria-label={`Role of ${user.name}`}
-              >
-                <option value="member">Member</option>
-                <option value="admin">Admin</option>
-              </select>
+              <div className="people-row__email">{user.email}</div>
+            </div>
+            <select
+              className="input"
+              value={user.role}
+              onChange={(event) => setRoleOf(user, event.target.value === 'admin' ? 'admin' : 'member')}
+              aria-label={`Role of ${user.name}`}
+            >
+              <option value="member">Member</option>
+              <option value="admin">Admin</option>
+            </select>
+            <button
+              type="button"
+              className="btn btn--icon"
+              onClick={() => remove(user)}
+              disabled={user.id === me?.id}
+              title={user.id === me?.id ? 'You cannot remove yourself' : `Remove ${user.name}`}
+              aria-label={`Remove ${user.name}`}
+            >
+              <Trash />
+            </button>
+          </div>
+        ))}
+      </section>
+
+      {pending.length === 0 ? null : (
+        <section className="account-section" aria-label="Invites waiting">
+          <div className="account-section__title">Invites waiting</div>
+          {pending.map((item) => (
+            <div className="people-row" key={item.id}>
+              <div className="people-row__who">
+                <div className="people-row__name">{item.email ?? 'Anyone with the link'}</div>
+                <div className="people-row__email">
+                  {item.role} · expires {absoluteTime(item.expires)}
+                </div>
+              </div>
               <button
                 type="button"
                 className="btn btn--icon"
-                onClick={() => remove(user)}
-                disabled={user.id === me?.id}
-                title={user.id === me?.id ? 'You cannot remove yourself' : `Remove ${user.name}`}
-                aria-label={`Remove ${user.name}`}
+                onClick={() => revokeInvite.mutate(item.id)}
+                title="Revoke this invite"
+                aria-label="Revoke this invite"
               >
                 <Trash />
               </button>
             </div>
           ))}
-        </div>
-
-        {pending.length === 0 ? null : (
-          <div className="account-section">
-            <div className="account-section__title">Invites waiting</div>
-            {pending.map((item) => (
-              <div className="people-row" key={item.id}>
-                <div className="people-row__who">
-                  <div className="people-row__name">{item.email ?? 'Anyone with the link'}</div>
-                  <div className="people-row__email">
-                    {item.role} · expires {absoluteTime(item.expires)}
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  className="btn btn--icon"
-                  onClick={() => revokeInvite.mutate(item.id)}
-                  title="Revoke this invite"
-                  aria-label="Revoke this invite"
-                >
-                  <Trash />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+        </section>
+      )}
 
       <ConfirmDialog request={confirm} onClose={() => setConfirm(null)} />
     </>

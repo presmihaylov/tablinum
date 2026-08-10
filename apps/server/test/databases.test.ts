@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+  databaseRev,
   DatabaseResponseSchema,
   ErrorBodySchema,
   OkResponseSchema,
@@ -61,12 +62,12 @@ async function makePage(path = 'eng/tasks', title = 'Tasks'): Promise<string> {
   return bodyOf(created, PageResponseSchema).page.id;
 }
 
-async function setDatabase(id: string, database?: Database) {
+async function setDatabase(id: string, database?: Database, baseRev?: string) {
   return harness.app.inject({
     method: 'PUT',
     url: `/api/v1/pages/${id}/database`,
     headers: headers(),
-    payload: database === undefined ? {} : { database },
+    payload: database === undefined ? {} : { database, baseRev },
   });
 }
 
@@ -129,6 +130,42 @@ describe('PUT /pages/:id/database', () => {
     const response = await setDatabase(id, { ...sampleDatabase(), views: [] });
     expect(response.statusCode).toBe(400);
     expect(bodyOf(response, ErrorBodySchema).error.code).toBe('VALIDATION');
+  });
+
+  it('merges two writers that add a property from the same base', async () => {
+    await seed(harness);
+    const id = await makePage();
+    await setDatabase(id, sampleDatabase());
+    const base = databaseRev(bodyOf(await readDatabase(id), DatabaseResponseSchema).database);
+
+    const mine = sampleDatabase();
+    mine.properties.push({ id: newPropertyId(), name: 'Owner', type: 'text', options: [] });
+    const theirs = sampleDatabase();
+    theirs.properties.push({ id: newPropertyId(), name: 'Due', type: 'text', options: [] });
+
+    expect((await setDatabase(id, mine, base)).statusCode).toBe(200);
+    const second = await setDatabase(id, theirs, base);
+    expect(second.statusCode).toBe(200);
+    expect(
+      bodyOf(second, PageResponseSchema).page.database?.properties.map((entry) => entry.name),
+    ).toEqual(['Status', 'Notes', 'Owner', 'Due']);
+  });
+
+  it('reports a conflict when two writers rename the same property differently', async () => {
+    await seed(harness);
+    const id = await makePage();
+    await setDatabase(id, sampleDatabase());
+    const base = databaseRev(bodyOf(await readDatabase(id), DatabaseResponseSchema).database);
+
+    const mine = sampleDatabase();
+    mine.properties[1]!.name = 'Detail';
+    const theirs = sampleDatabase();
+    theirs.properties[1]!.name = 'Remarks';
+
+    expect((await setDatabase(id, mine, base)).statusCode).toBe(200);
+    const second = await setDatabase(id, theirs, base);
+    expect(second.statusCode).toBe(409);
+    expect(bodyOf(second, ErrorBodySchema).error.code).toBe('CONFLICT');
   });
 
   it('refuses a property type it does not know', async () => {

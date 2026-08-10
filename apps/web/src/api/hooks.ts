@@ -464,12 +464,15 @@ export function useDatabase(id: PageId | undefined): UseQueryResult<DatabaseResp
 export interface SetDatabaseVars {
   pageId: PageId;
   database?: Database;
+  /** databaseRev() of the schema this edit was built from. Left out, the write replaces whole. */
+  baseRev?: string;
 }
 
 export function useSetDatabase(): UseMutationResult<PageResponse, ApiError, SetDatabaseVars> {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: ({ pageId, database }: SetDatabaseVars) => api.setDatabase(pageId, database),
+    mutationFn: ({ pageId, database, baseRev }: SetDatabaseVars) =>
+      api.setDatabase(pageId, database, baseRev),
     onSuccess: (data, vars) => {
       // Seed the schema from the response so a renamed column does not flash its old name.
       const saved = data.page.database;

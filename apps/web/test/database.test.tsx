@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createEvent, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
+  databaseRev,
   newOptionId,
   newPropertyId,
   newViewId,
@@ -139,6 +140,13 @@ function lastCall(method: string, suffix: string): unknown {
     (call) => call.method === method && call.url.pathname.endsWith(suffix),
   );
   return calls[calls.length - 1]?.body ?? null;
+}
+
+/** Every schema write the browser made, oldest first. */
+function writes(): { database: Database; baseRev?: string }[] {
+  return (server?.calls ?? [])
+    .filter((call) => call.method === 'PUT' && call.url.pathname.endsWith('/database'))
+    .map((call) => call.body as { database: Database; baseRev?: string });
 }
 
 describe('the grid', () => {
@@ -294,6 +302,38 @@ describe('the schema', () => {
       expect(saved?.database.properties[3]?.name).toBe('Property');
       expect(saved?.database.properties[3]?.type).toBe('text');
     });
+  });
+
+  // Two edits made from one starting point used to overwrite each other, so a schema write now
+  // says which revision it started from and the server merges the two.
+  it('tells the server which revision the edit started from', async () => {
+    const user = userEvent.setup();
+    mount();
+    await screen.findByTestId('db-table');
+
+    await user.click(screen.getByLabelText('Add a property'));
+
+    await waitFor(() => {
+      const saved = lastCall('PUT', '/database') as { baseRev?: string } | null;
+      expect(saved?.baseRev).toBe(databaseRev(database()));
+    });
+  });
+
+  it('sends the same base revision from a pair of quick clicks, so neither is lost', async () => {
+    const user = userEvent.setup();
+    mount();
+    await screen.findByTestId('db-table');
+
+    const add = screen.getByLabelText('Add a property');
+    await user.click(add);
+    await user.click(add);
+
+    await waitFor(() => expect(writes()).toHaveLength(2));
+    const [first, second] = writes();
+    expect(first?.baseRev).toBe(databaseRev(database()));
+    expect(second?.baseRev).toBe(databaseRev(database()));
+    // Different ids, so the server keeps both rather than settling one over the other.
+    expect(first?.database.properties[3]?.id).not.toBe(second?.database.properties[3]?.id);
   });
 
   // The grid scrolls sideways, so a menu drawn inside it was cut off at the right edge.

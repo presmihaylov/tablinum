@@ -138,11 +138,8 @@ test.describe('databases', () => {
     await expect(grid(page)).toBeVisible();
 
     // Enough columns to make the grid scroll sideways. The last one used to open a menu that
-    // the scroller cut in half, because the menu was drawn inside the scroller.
-    //
-    // Each add sends the whole schema the browser holds, so wait for one to land before asking
-    // for the next. Two in flight together give the columns new ids, which pulls the header out
-    // from under the menu this test opens.
+    // the scroller cut in half, because the menu was drawn inside the scroller. Each add waits
+    // for its own column, so the count below counts what this loop asked for.
     for (let n = 0; n < 6; n += 1) {
       const columns = grid(page).getByRole('columnheader');
       const before = await columns.count();
@@ -175,6 +172,34 @@ test.describe('databases', () => {
     expect(box.y).toBeGreaterThanOrEqual(0);
     expect(box.x + box.width).toBeLessThanOrEqual(size.width);
     expect(box.y + box.height).toBeLessThanOrEqual(size.height);
+  });
+
+  // A schema write sends the whole schema the browser holds. Two of them from one starting point
+  // used to overwrite each other, so the second click ate the first click's column.
+  test('keeps both columns from a pair of quick clicks on Add a property', async ({
+    page,
+    content,
+  }) => {
+    await page.goto(`/p/${path}`);
+    await expect(grid(page)).toBeVisible();
+
+    const columns = grid(page).getByRole('columnheader');
+    const before = await columns.count();
+    const add = grid(page).getByLabel('Add a property');
+    await add.click();
+    await add.click();
+
+    // Both clicks read the same schema, so both pick the same free name. Two columns is the
+    // point; the person renames one. Losing one was the bug.
+    await expect(columns).toHaveCount(before + 2);
+    await expect(grid(page).getByRole('button', { name: /^Property/ })).toHaveCount(2);
+
+    // Both reached the file, so neither survived only in the browser.
+    const file = await content.waitForPageFile(path);
+    await expect.poll(async () => {
+      const raw = (await content.read(file)) ?? '';
+      return raw.split('name: Property').length - 1;
+    }).toBe(2);
   });
 
   test('renames a column and hides it from the view', async ({ page, content }) => {

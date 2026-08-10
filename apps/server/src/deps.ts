@@ -119,7 +119,7 @@ export interface ContentStore {
   getDatabase(id: PageId): Promise<{ page: Page; database: Database; rows: DbRow[] }>;
 
   /** Give the page a `db` block, or replace the one it has. */
-  setDatabase(id: PageId, database: Database): Promise<Page>;
+  setDatabase(id: PageId, database: Database, baseRev?: string): Promise<Page>;
 
   /** Take the `db` block away, and the rows with it. */
   removeDatabase(id: PageId): Promise<Page>;

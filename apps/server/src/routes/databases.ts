@@ -68,7 +68,7 @@ export function registerDatabaseRoutes(app: FastifyInstance, ctx: RouteContext):
         : parseOrThrow(SetDatabaseBodySchema, request.body, 'database');
 
     wiring.markWritten(pageFileVariants(before.path));
-    const page = await store.setDatabase(id, body.database);
+    const page = await store.setDatabase(id, body.database, body.baseRev);
     await commit(request, page, `Update the database on ${page.path}`);
     return { page };
   });

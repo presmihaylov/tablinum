@@ -5,7 +5,7 @@ import { useCreateWorkspace, useImportWorkspace } from '../../api/hooks';
 import { describeError, useToast } from '../../lib/toast';
 import { useWorkspace } from '../../lib/workspaces';
 import { EmojiGlyph } from '../ui/EmojiGlyph';
-import { ChevronDown, People, Plus, Settings, Upload } from '../ui/Icon';
+import { ChevronDown, Plus, Settings, Upload } from '../ui/Icon';
 import { SpaceDialog, type SpaceDialogRequest } from '../ui/SpaceDialog';
 import './workspace.css';
 
@@ -98,21 +98,6 @@ export function WorkspaceSwitcher() {
             <span className="workspace-switcher__name">Settings</span>
           </button>
 
-          <button
-            type="button"
-            role="menuitem"
-            className="workspace-switcher__item"
-            onClick={() => {
-              setOpen(false);
-              navigate('/settings/people');
-            }}
-          >
-            <span className="workspace-switcher__mark">
-              <People size={12} />
-            </span>
-            <span className="workspace-switcher__name">Invite members</span>
-          </button>
-
           <div className="workspace-switcher__divider" />
 
           {workspaces.map((one) => (
@@ -169,22 +154,6 @@ export function WorkspaceSwitcher() {
             <span className="workspace-switcher__name">Import from a zip</span>
           </button>
 
-          {current === null ? null : (
-            <button
-              type="button"
-              role="menuitem"
-              className="workspace-switcher__item"
-              onClick={() => {
-                setOpen(false);
-                navigate('/settings/workspace');
-              }}
-            >
-              <span className="workspace-switcher__mark">
-                <Settings size={12} />
-              </span>
-              <span className="workspace-switcher__name">Workspace settings</span>
-            </button>
-          )}
         </div>
       ) : null}
 

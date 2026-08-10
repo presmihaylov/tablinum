@@ -94,6 +94,14 @@ const PRE_PULL_COMMIT_MESSAGE = 'docs: save local edits before pull';
 const PRE_PULL_COMMIT_ATTEMPTS = 3;
 const RESOLVE_COMMIT_MESSAGE = 'docs: resolve conflicts with the remote';
 
+/**
+ * Every write of ours goes through one mutex, so a lock we meet belongs to a git run outside
+ * this process. Those are short, so a few waits beat a warning in the log. The lock file is
+ * never removed here: one that outlives this belongs to a live process or needs a human.
+ */
+const INDEX_LOCK_ATTEMPTS = 4;
+const INDEX_LOCK_WAIT_MS = 120;
+
 // NUL ends a record: git accepts every other byte in a commit message, so nothing else is
 // safe to split on. The message is the last field, so a stray field separator cannot forge one.
 const FIELD_SEP = '\x1f';
@@ -169,6 +177,16 @@ function describeGitError(err: unknown): string {
   // A failed fetch prints the remote URL, and this text reaches the client.
   if (err instanceof Error) return redactUserInfo(firstLine(err.message) || err.message);
   return redactUserInfo(firstLine(String(err)));
+}
+
+/** True when git refused because another process holds `.git/index.lock`. */
+export function isIndexLockError(err: unknown): boolean {
+  const text = err instanceof Error ? err.message : String(err);
+  return text.includes('index.lock');
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function parseLog(raw: string): Revision[] {
@@ -746,7 +764,7 @@ export class GitEngine {
 
   private async commitAllUnlocked(message?: string): Promise<string | null> {
     const git = await this.git();
-    await git.raw(['add', '-A']);
+    await this.throughIndexLock(() => git.raw(['add', '-A']));
     const staged = await this.stagedFiles();
     if (staged.length === 0) return null;
 
@@ -762,9 +780,22 @@ export class GitEngine {
 
   private async runCommit(git: SimpleGit, message: string): Promise<void> {
     try {
-      await git.raw(['commit', '--no-verify', '-m', message]);
+      await this.throughIndexLock(() => git.raw(['commit', '--no-verify', '-m', message]));
     } catch (err) {
       throw gitError(`Commit failed: ${describeGitError(err)}`, err);
+    }
+  }
+
+  /** Run a git command that takes `.git/index.lock`, waiting out a lock another process holds. */
+  private async throughIndexLock<T>(task: () => Promise<T>): Promise<T> {
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        return await task();
+      } catch (err) {
+        if (attempt >= INDEX_LOCK_ATTEMPTS || !isIndexLockError(err)) throw err;
+        this.logger.warn('the git index is locked, waiting', { attempt });
+        await delay(INDEX_LOCK_WAIT_MS * attempt);
+      }
     }
   }
 

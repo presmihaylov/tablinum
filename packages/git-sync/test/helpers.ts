@@ -34,7 +34,11 @@ export async function tempDir(prefix = 'tablinum-'): Promise<string> {
 /** Remove every directory made by tempDir(). */
 export async function cleanupTempDirs(): Promise<void> {
   const dirs = created.splice(0, created.length);
-  await Promise.all(dirs.map((dir) => rm(dir, { recursive: true, force: true })));
+  // A git child can still be writing into .git as the directory goes, which fails the removal
+  // with ENOTEMPTY. Retry rather than fail a test on its own teardown.
+  await Promise.all(
+    dirs.map((dir) => rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 })),
+  );
 }
 
 /** Run git directly, outside the engine, so tests can assert on real repo state. */

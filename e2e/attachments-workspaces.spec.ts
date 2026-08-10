@@ -4,6 +4,7 @@ import type { Page as BrowserPage } from '@playwright/test';
 import { expect, test, uniqueSlug, type ApiClient } from './fixtures';
 import { RUN_DIR } from './env';
 import { ContentRepo } from './helpers/content';
+import { newPageFromPalette } from './palette';
 
 /**
  * Attachments and workspaces.
@@ -175,10 +176,7 @@ test.describe('attachments and workspaces', () => {
     const workspace = await createWorkspace(page, name);
 
     const title = `Roadmap ${uniqueSlug('x')}`;
-    await page.getByRole('button', { name: 'New page' }).click();
-    const dialog = page.getByRole('dialog', { name: 'New page' });
-    await dialog.getByLabel('Page title').fill(title);
-    await dialog.getByRole('button', { name: 'Create' }).click();
+    await newPageFromPalette(page, title);
 
     await expect(page.getByRole('treeitem', { name: title })).toBeVisible();
     const path = new URL(page.url()).pathname.replace('/p/', '');

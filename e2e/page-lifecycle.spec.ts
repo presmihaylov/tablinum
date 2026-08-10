@@ -1,5 +1,6 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from './fixtures';
+import { newPageFromPalette } from './palette';
 import { pageTree } from './sidebar';
 
 /** The sidebar tree, the only place page rows are asserted on. */
@@ -52,15 +53,11 @@ test.describe('page lifecycle', () => {
     slug = (await api.createUniqueSpace('lifecycle')).slug;
   });
 
-  test('creates a page from the sidebar, in the tree and on disk', async ({ page, content }) => {
+  test('creates a page from the palette, in the tree and on disk', async ({ page, content }) => {
     await page.goto(`/p/${slug}`);
     await expect(row(page, slug)).toBeVisible();
 
-    await page.getByRole('button', { name: 'New page' }).click();
-
-    const dialog = page.getByRole('dialog', { name: 'New page' });
-    await dialog.getByLabel('Page title').fill('Release notes');
-    await dialog.getByRole('button', { name: 'Create' }).click();
+    await newPageFromPalette(page, 'Release notes');
 
     await expect(page).toHaveURL(`/p/${slug}/release-notes`);
     await expect(row(page, 'Release notes')).toBeVisible();

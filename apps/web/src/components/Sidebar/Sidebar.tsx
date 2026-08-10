@@ -6,7 +6,7 @@ import { ancestorPaths, findNode } from '../../lib/tree';
 import { usePersistedState } from '../../lib/storage';
 import { useContent } from '../../lib/content';
 import { EmojiGlyph } from '../ui/EmojiGlyph';
-import { DocIcon, PanelLeft, Plus, Search, Star } from '../ui/Icon';
+import { DocIcon, PanelLeft, Search, Star } from '../ui/Icon';
 import { AccountMenu } from '../Account/AccountMenu';
 import { GitStatusPill } from './GitStatusPill';
 import { PageTree } from './PageTree';
@@ -25,7 +25,7 @@ type SectionState = Record<string, boolean>;
 
 export function Sidebar({ onOpenPalette, onCollapse }: SidebarProps) {
   const navigate = useNavigate();
-  const { spaces, recents, favorites, toggleFavorite, currentPath, newPage, newSpace, isLoadingTree } =
+  const { spaces, recents, favorites, toggleFavorite, currentPath, newSpace, isLoadingTree } =
     useContent();
   const [expanded, setExpanded] = usePersistedState<string[]>('tree.expanded', []);
   const [sections, setSections] = usePersistedState<SectionState>('ui.sections', {});
@@ -179,11 +179,6 @@ export function Sidebar({ onOpenPalette, onCollapse }: SidebarProps) {
               />
             ))}
           </SidebarSection>
-
-          <button type="button" className="sidebar__new" onClick={() => newPage(null)}>
-            <Plus />
-            New page
-          </button>
         </TreeDragProvider>
       </nav>
 

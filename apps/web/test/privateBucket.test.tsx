@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { CommandPalette } from '../src/components/CommandPalette/CommandPalette';
 import { Sidebar } from '../src/components/Sidebar/Sidebar';
 import { AuthProvider } from '../src/lib/auth';
 import type { SpaceTree } from '../src/lib/tree';
@@ -149,14 +150,21 @@ describe('the private bucket', () => {
     const mock = start({
       'POST /api/v1/pages': { page: page({ path: 'notes/bonus-letter', title: 'Bonus letter' }) },
     });
-    // The reader was in the private space, then stepped off the page. The button used to fall
+    // The reader was in the private space, then stepped off the page. The action used to fall
     // back to the first space in the tree, which is public, so private work landed in the open.
     localStorage.setItem('tablinum.space', '"notes"');
-    await showSidebarAt('/');
+    renderApp(
+      <AuthProvider>
+        <CommandPalette open onClose={vi.fn()} />
+      </AuthProvider>,
+      { route: '/' },
+    );
 
-    fireEvent.click(screen.getByRole('button', { name: 'New page' }));
-    fireEvent.change(screen.getByLabelText('Page title'), { target: { value: 'Bonus letter' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+    // The hint carries the space the action targets, so it only reads "notes" once the tree is in.
+    fireEvent.click(await screen.findByRole('option', { name: 'New page notes' }));
+    const dialog = await screen.findByRole('dialog', { name: 'New page' });
+    fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: 'Bonus letter' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create' }));
 
     await waitFor(() => {
       const post = mock.calls.find((call) => call.method === 'POST');

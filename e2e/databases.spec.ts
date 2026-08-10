@@ -103,11 +103,14 @@ test.describe('databases', () => {
     await turnIntoDatabase(page);
     await addRow(page, 'Ship it');
 
-    await (await rowOf(page, 'Ship it')).getByLabel('Status').click();
+    // The button of the cell, not the row and not the label: the option list sits inside the
+    // row too, and it carries both the name "Status" and the name of the new option.
+    const cell = (await rowOf(page, 'Ship it')).getByRole('button', { name: 'Status', exact: true });
+    await cell.click();
     await page.getByLabel('Search Status options').fill('Doing');
     await page.getByRole('menuitem', { name: /Create/ }).click();
 
-    await expect((await rowOf(page, 'Ship it')).getByText('Doing')).toBeVisible();
+    await expect(cell).toContainText('Doing');
 
     const file = await content.waitForPageFile(path);
     await expect.poll(async () => (await content.read(file)) ?? '').toContain('name: Doing');

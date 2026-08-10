@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import type { Editor } from '@tiptap/core';
+import { NodeSelection } from '@tiptap/pm/state';
 import { toMarkdown } from './harness';
 import { hoverTable, mountEditor, settle } from './mount';
 
@@ -54,6 +55,16 @@ describe('selection toolbar', () => {
     fireEvent.keyDown(screen.getByLabelText('Link address'), { key: 'Enter' });
 
     await waitFor(() => expect(toMarkdown(editor)).toBe('[Hello](https://example.com) there\n'));
+  });
+
+  it('keeps away from a node that is picked whole', async () => {
+    const editor = await mountEditor({ content: '![[eng/rollout]]\n' });
+    await settle(() => editor.commands.setNodeSelection(0));
+
+    // An insert can leave the new node picked. A node holds no text to mark, and the bar would
+    // then sit over the page and swallow the next click.
+    expect(editor.state.selection).toBeInstanceOf(NodeSelection);
+    expect(bar('Text formatting')).toBeNull();
   });
 
   it('keeps out of the way inside a code block', async () => {

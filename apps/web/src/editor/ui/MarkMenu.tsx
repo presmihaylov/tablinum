@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Editor } from '@tiptap/core';
+import { NodeSelection } from '@tiptap/pm/state';
 import { CellSelection } from '@tiptap/pm/tables';
 import { FloatingBar } from './FloatingBar';
 
@@ -14,7 +15,9 @@ function hasTextSelection(editor: Editor): boolean {
   const { from, to } = editor.state.selection;
   if (from === to) return false;
   if (editor.isActive('codeBlock')) return false;
-  // A whole-cell selection belongs to the table toolbar, not to this one.
+  // A whole node holds no text to mark, and an insert leaves one picked, so the bar would land
+  // over the page. A whole-cell selection belongs to the table toolbar, not to this one.
+  if (editor.state.selection instanceof NodeSelection) return false;
   return !(editor.state.selection instanceof CellSelection);
 }
 

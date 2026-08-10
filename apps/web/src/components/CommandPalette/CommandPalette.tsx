@@ -42,10 +42,16 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
 
   const search = useSearch({ q: debounced, limit: 12 }, open);
 
+  // Cleared on the way out, never on the way in. A reset that runs after the dialog is on screen
+  // races the first keys: React flushes the effect after paint, so it can wipe what was typed.
   useEffect(() => {
-    if (!open) return;
+    if (open) return;
     setQuery('');
     setActive(0);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
     const timer = setTimeout(() => inputRef.current?.focus(), 10);
     return () => clearTimeout(timer);
   }, [open]);
@@ -94,7 +100,10 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
       run: action.run,
     }));
 
-    const hits = (search.data?.hits ?? []).map<Row>((hit) => ({
+    // An empty box asks for nothing, so the query is switched off and its last answer is kept.
+    // Drawing that answer would show the hits of the previous visit under a blank box.
+    const found = query.trim().length === 0 ? [] : (search.data?.hits ?? []);
+    const hits = found.map<Row>((hit) => ({
       key: `page:${hit.id}`,
       label: hit.title,
       hint: hit.snippet.replace(/\s+/g, ' ').slice(0, 90),

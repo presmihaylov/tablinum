@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { Workspace } from '@tablinum/shared';
-import { useCreateWorkspace, useImportWorkspace } from '../../api/hooks';
+import { useCreateWorkspace } from '../../api/hooks';
 import { describeError, useToast } from '../../lib/toast';
 import { useWorkspace } from '../../lib/workspaces';
 import { EmojiGlyph } from '../ui/EmojiGlyph';
-import { ChevronDown, Plus, Settings, Upload } from '../ui/Icon';
+import { ChevronDown, Plus, Settings } from '../ui/Icon';
 import { SpaceDialog, type SpaceDialogRequest } from '../ui/SpaceDialog';
 import './workspace.css';
 
@@ -13,14 +13,12 @@ import './workspace.css';
 export function WorkspaceSwitcher() {
   const { workspaces, current, switchTo } = useWorkspace();
   const createWorkspace = useCreateWorkspace();
-  const importWorkspace = useImportWorkspace();
   const navigate = useNavigate();
   const toast = useToast();
 
   const [open, setOpen] = useState(false);
   const [dialog, setDialog] = useState<SpaceDialogRequest | null>(null);
   const ref = useRef<HTMLDivElement | null>(null);
-  const fileRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -49,20 +47,6 @@ export function WorkspaceSwitcher() {
           },
         ),
     });
-
-  const importFile = (file: File): void => {
-    toast.push('Unpacking the archive…');
-    importWorkspace.mutate(
-      { file },
-      {
-        onSuccess: (result) => {
-          toast.push(`Imported ${result.workspace.name}`, 'success');
-          switchTo(result.workspace.slug);
-        },
-        onError: (cause) => toast.push(describeError(cause, 'Could not import that archive.'), 'error'),
-      },
-    );
-  };
 
   return (
     <div className="workspace-switcher" ref={ref}>
@@ -138,37 +122,8 @@ export function WorkspaceSwitcher() {
             </span>
             <span className="workspace-switcher__name">New workspace</span>
           </button>
-
-          <button
-            type="button"
-            role="menuitem"
-            className="workspace-switcher__item"
-            onClick={() => {
-              setOpen(false);
-              fileRef.current?.click();
-            }}
-          >
-            <span className="workspace-switcher__mark">
-              <Upload size={12} />
-            </span>
-            <span className="workspace-switcher__name">Import from a zip</span>
-          </button>
-
         </div>
       ) : null}
-
-      <input
-        ref={fileRef}
-        type="file"
-        accept=".zip,application/zip"
-        className="workspace-switcher__file"
-        aria-label="Workspace archive"
-        onChange={(event) => {
-          const file = event.target.files?.[0];
-          event.target.value = '';
-          if (file !== undefined) importFile(file);
-        }}
-      />
 
       <SpaceDialog request={dialog} onClose={() => setDialog(null)} />
     </div>

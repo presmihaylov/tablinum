@@ -875,19 +875,6 @@ export function useDeleteWorkspace(): UseMutationResult<OkResponse, ApiError, st
   });
 }
 
-export interface ImportWorkspaceVars {
-  file: File;
-  name?: string;
-}
-
-export function useImportWorkspace(): UseMutationResult<WorkspaceResponse, ApiError, ImportWorkspaceVars> {
-  const client = useQueryClient();
-  return useMutation({
-    mutationFn: ({ file, name }: ImportWorkspaceVars) => api.importWorkspace(file, name),
-    onSuccess: () => void client.invalidateQueries({ queryKey: qk.workspaces }),
-  });
-}
-
 export function useWorkspaceMembers(
   id: string | null,
 ): UseQueryResult<WorkspaceMembersResponse, ApiError> {

@@ -1,8 +1,9 @@
 import { execFile } from 'node:child_process';
-import { access, mkdtemp, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { access, mkdtemp, mkdir, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { promisify } from 'node:util';
+import { TEMP_FILE_PREFIX } from '@tablinum/shared';
 import { GitEngine, type GitEngineOptions } from '../src/engine.js';
 import type { GitLogger } from '../src/logger.js';
 
@@ -19,6 +20,9 @@ const GIT_ENV = {
 };
 
 const created: string[] = [];
+
+/** Makes every temp file of a test write unique. */
+let counter = 0;
 
 /** A fresh temp directory, resolved through symlinks so paths compare equal on macOS. */
 export async function tempDir(prefix = 'tablinum-'): Promise<string> {
@@ -81,10 +85,13 @@ export async function cloneOf(remote: string, prefix = 'tablinum-peer-'): Promis
   return dir;
 }
 
+/** Writes the way the store does: into a temp file, then over the target in one step. */
 export async function writeFileIn(dir: string, rel: string, content: string): Promise<string> {
   const target = join(dir, rel);
   await mkdir(dirname(target), { recursive: true });
-  await writeFile(target, content, 'utf8');
+  const temp = join(dirname(target), `${TEMP_FILE_PREFIX}test-${(counter += 1)}`);
+  await writeFile(temp, content, 'utf8');
+  await rename(temp, target);
   return target;
 }
 

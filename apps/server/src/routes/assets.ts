@@ -1,4 +1,4 @@
-import { access, mkdir, writeFile } from 'node:fs/promises';
+import { access, mkdir } from 'node:fs/promises';
 import { basename, extname, join } from 'node:path';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type {} from '@fastify/multipart';
@@ -15,6 +15,7 @@ import {
   validation,
   type AssetResponse,
 } from '@tablinum/shared';
+import { writeBytes } from '@tablinum/core';
 import { API_PREFIX, partsOf, type RouteContext } from '../context.js';
 
 /** Hard ceiling for one attachment. Also enforced by the multipart parser itself. */
@@ -184,7 +185,7 @@ export function registerAssetRoutes(app: FastifyInstance, ctx: RouteContext): vo
 
     const target = join(store.contentDir, relPath);
     const replaced = upload.replace && (await exists(target));
-    await writeFile(target, upload.file.data);
+    await writeBytes(target, upload.file.data);
 
     await wiring.recordMutation({
       files: [relPath],

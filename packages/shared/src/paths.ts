@@ -9,6 +9,14 @@ export const INDEX_BASENAME = 'index';
 export const SPACE_FILE = '_space.yml';
 /** Directory that holds uploaded attachments, relative to the content root. */
 export const ASSETS_DIR = '_assets';
+/**
+ * Prefix of the file a save writes before it moves it over the real one. A leading dot keeps it
+ * away from the scanner and the watcher, and git-sync excludes the pattern, so a commit that
+ * fires mid-save can never pick one up.
+ */
+export const TEMP_FILE_PREFIX = '.tablinum-tmp-';
+/** The `.git/info/exclude` line that hides every one of them. */
+export const TEMP_FILE_EXCLUDE_LINE = `${TEMP_FILE_PREFIX}*`;
 
 const MAX_SEGMENT_LENGTH = 120;
 /** Characters that break on some filesystem, in URLs, or in git. */

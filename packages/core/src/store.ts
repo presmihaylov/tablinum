@@ -1,4 +1,3 @@
-import { promises as fsp } from 'node:fs';
 import path from 'node:path';
 import {
   CreatePageBodySchema,
@@ -69,6 +68,7 @@ import {
   removeFile,
   rename,
   resolveInside,
+  writeBytes,
   writeText,
 } from './fs-utils.js';
 import { IndexMap, type IndexedPage } from './index-map.js';
@@ -946,8 +946,7 @@ export class ContentStore {
     }
     const relative = assetRelPath(pageId, candidate);
     const absolute = resolveInside(this.contentDir, relative);
-    await ensureDir(path.dirname(absolute));
-    await fsp.writeFile(absolute, data);
+    await writeBytes(absolute, data);
     return { url: assetUrl(pageId, candidate), path: relative };
   }
 

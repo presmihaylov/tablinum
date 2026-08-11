@@ -5,32 +5,25 @@ import {
   AGENT_TOKEN_PREFIX,
   AVATAR_MIME_TYPES,
   CUSTOM_EMOJI_MIME_TYPES,
-  CommentAnchorSchema,
   DEFAULT_INVITE_DAYS,
   HANDLE_CHANGE_COOLDOWN_MS,
   HandleSchema,
   MAX_AVATAR_BYTES,
-  MAX_COMMENT_LENGTH,
   MAX_CUSTOM_EMOJI_BYTES,
   MAX_FAVORITES,
   MAX_SHORTCODE_LENGTH,
   colorForId,
   conflict,
-  findMentions,
-  isPropertyId,
   isShortcode,
   isUserId,
   newAgentId,
-  newCommentId,
   newCustomEmojiId,
   newInviteId,
-  newThreadId,
   newUserId,
   newWorkspaceId,
   normalizeHandle,
   notFound,
   parseOrThrow,
-  renameMentions,
   sniffImageMime,
   toHandle,
   unauthorized,
@@ -41,7 +34,6 @@ import {
   type AccountRole,
   type Agent,
   type Comment,
-  type CommentAnchor,
   type CommentThread,
   type CustomEmoji,
   type Favorite,
@@ -49,15 +41,17 @@ import {
   type Workspace,
   type WorkspaceRole,
 } from '@tablinum/shared';
+import * as comments from './comments.js';
+import type { CreateThreadInput } from './comments.js';
+import { iso, type Db } from './db.js';
 import { DECOY_HASH, hashPassword, verifyPassword } from './passwords.js';
 import { digestOf, hashToken, newToken } from './tokens.js';
-
-type Db = Database.Database;
 
 /** Filename of the account database. It lives beside the search index, never in the repo. */
 export const ACCOUNTS_DB_FILENAME = 'accounts.db';
 
-/** Stamped on the file so a future destructive migration knows what it is looking at. */
+// Forensic only: nothing here ever reads it back, because addColumn() self-detects through
+// table_info and repairs a file whatever the stamp says. It records which build wrote the file.
 const SCHEMA_VERSION = 11;
 
 /** How long a signed-in browser stays signed in. */
@@ -199,17 +193,6 @@ export interface CustomEmojiImage {
   rev: string;
 }
 
-export interface CreateThreadInput {
-  pageId: string;
-  /** The account that opened the thread. */
-  author: string;
-  body: string;
-  /** Left out for a comment about the whole page. */
-  anchor?: CommentAnchor | null;
-  /** The property id of the database column the thread is about. */
-  column?: string | null;
-}
-
 interface UserRow {
   id: string;
   email: string;
@@ -265,26 +248,6 @@ interface MemberRow {
   role: string;
 }
 
-interface ThreadRow {
-  id: string;
-  page_id: string;
-  anchor: string | null;
-  column_id: string | null;
-  resolved_by: string | null;
-  resolved_at: number | null;
-  created: number;
-  updated: number;
-}
-
-interface CommentRow {
-  id: string;
-  thread_id: string;
-  author: string;
-  body: string;
-  created: number;
-  updated: number;
-}
-
 interface AvatarRow {
   avatar_mime: string | null;
   avatar_bytes: Buffer | null;
@@ -334,15 +297,8 @@ const WORKSPACE_COLUMNS = 'id, slug, name, icon, dir, created, updated';
 /** Never selects `bytes`: a list of emoji is metadata, and the images are fetched one by one. */
 const CUSTOM_EMOJI_COLUMNS = 'id, shortcode, mime, user_id, created';
 
-const THREAD_COLUMNS =
-  'id, page_id, anchor, column_id, resolved_by, resolved_at, created, updated';
-
-const COMMENT_COLUMNS = 'id, thread_id, author, body, created, updated';
-
 /** A `last_used` stamp is refreshed at most this often, so a busy agent is not a write loop. */
 const LAST_USED_INTERVAL_MS = 60_000;
-
-const iso = (ms: number): string => new Date(ms).toISOString();
 
 function asRole(value: string): AccountRole {
   return value === 'admin' ? 'admin' : 'member';
@@ -421,63 +377,6 @@ function toInvite(row: InviteRow): Invite {
     accepted: row.accepted === null ? null : iso(row.accepted),
     revoked: row.revoked === 1,
   };
-}
-
-function toComment(row: CommentRow): Comment {
-  return {
-    id: row.id,
-    threadId: row.thread_id,
-    author: row.author,
-    body: row.body,
-    created: iso(row.created),
-    updated: iso(row.updated),
-  };
-}
-
-/** A stored anchor that no longer parses is treated as a page comment rather than thrown away. */
-function readAnchor(raw: string | null): CommentAnchor | null {
-  if (raw === null) return null;
-  try {
-    const parsed = CommentAnchorSchema.safeParse(JSON.parse(raw));
-    return parsed.success ? parsed.data : null;
-  } catch {
-    return null;
-  }
-}
-
-/** A column id the file no longer holds a valid value for reads as no column at all. */
-function readColumn(raw: string | null): string | null {
-  return isPropertyId(raw) ? raw : null;
-}
-
-function toThread(row: ThreadRow, comments: Comment[]): CommentThread {
-  return {
-    id: row.id,
-    pageId: row.page_id,
-    anchor: readAnchor(row.anchor),
-    column: readColumn(row.column_id),
-    resolved: row.resolved_at !== null,
-    resolvedBy: row.resolved_by,
-    resolvedAt: row.resolved_at === null ? null : iso(row.resolved_at),
-    created: iso(row.created),
-    updated: iso(row.updated),
-    comments,
-  };
-}
-
-/** Trim a body and refuse an empty or oversized one, wherever the write came from. */
-function cleanBody(body: string): string {
-  const trimmed = body.trim();
-  if (trimmed.length === 0) throw validation('A comment needs a body');
-  if (trimmed.length > MAX_COMMENT_LENGTH) {
-    throw validation(`A comment must be ${MAX_COMMENT_LENGTH} characters or shorter`);
-  }
-  return trimmed;
-}
-
-/** The `?, ?, ?` of an `IN` list, so a set of ids is one statement rather than a loop. */
-function marks(n: number): string {
-  return new Array(n).fill('?').join(', ');
 }
 
 function normalizeEmail(email: string): string {
@@ -1608,90 +1507,25 @@ export class AccountStore {
   // comments
   // -------------------------------------------------------------------------
 
-  /**
-   * Every method here takes the workspace id first and every statement filters on it, so a
-   * thread in one workspace is unreachable from another even when its id is known. The route
-   * layer checks membership; this is the second lock behind it.
-   */
+  // The bodies are in comments.ts. They stay reachable as store methods because that is the
+  // API the routes and the tests already call.
 
-  /** Every thread on a page, oldest first. Replies come with each thread. */
   listThreads(workspaceId: string, pageId: string): CommentThread[] {
-    const rows = this.#handle
-      .prepare(
-        `SELECT ${THREAD_COLUMNS} FROM comment_threads
-         WHERE workspace_id = ? AND page_id = ? ORDER BY created, id`,
-      )
-      .all(workspaceId, pageId) as ThreadRow[];
-    if (rows.length === 0) return [];
-
-    const byThread = new Map<string, Comment[]>(rows.map((row) => [row.id, []]));
-    const comments = this.#handle
-      .prepare(
-        `SELECT c.${COMMENT_COLUMNS.split(', ').join(', c.')} FROM comments c
-         JOIN comment_threads t ON t.id = c.thread_id
-         WHERE t.workspace_id = ? AND t.page_id = ? ORDER BY c.created, c.id`,
-      )
-      .all(workspaceId, pageId) as CommentRow[];
-    for (const row of comments) byThread.get(row.thread_id)?.push(toComment(row));
-
-    // A thread whose comments are all gone cannot happen, but it must never reach the wire.
-    return rows
-      .map((row) => toThread(row, byThread.get(row.id) ?? []))
-      .filter((thread) => thread.comments.length > 0);
+    return comments.listThreads(this.#handle, workspaceId, pageId);
   }
 
   getThread(workspaceId: string, threadId: string): CommentThread | null {
-    const row = this.#handle
-      .prepare(`SELECT ${THREAD_COLUMNS} FROM comment_threads WHERE workspace_id = ? AND id = ?`)
-      .get(workspaceId, threadId) as ThreadRow | undefined;
-    if (row === undefined) return null;
-
-    const comments = this.#handle
-      .prepare(`SELECT ${COMMENT_COLUMNS} FROM comments WHERE thread_id = ? ORDER BY created, id`)
-      .all(threadId) as CommentRow[];
-    if (comments.length === 0) return null;
-    return toThread(row, comments.map(toComment));
+    return comments.getThread(this.#handle, workspaceId, threadId);
   }
 
-  /** Open a thread. Its first comment is written in the same transaction. */
-  createThread(workspaceId: string, input: CreateThreadInput, now: number = Date.now()): CommentThread {
-    if (this.getWorkspace(workspaceId) === null) {
-      throw notFound(`No workspace with id ${workspaceId}`);
-    }
-    if (input.pageId.trim().length === 0) throw validation('A page id is required');
-    const body = cleanBody(input.body);
-    const anchor = input.anchor ?? null;
-    const column = input.column ?? null;
-    if (anchor !== null && column !== null) {
-      throw validation('A thread is about a selection or about a column, not both');
-    }
-    if (column !== null && !isPropertyId(column)) {
-      throw validation(`${JSON.stringify(column)} is not a property id`);
-    }
-
-    const threadId = newThreadId(now);
-    const write = this.#handle.transaction(() => {
-      this.#handle
-        .prepare(
-          `INSERT INTO comment_threads (id, workspace_id, page_id, anchor, column_id, resolved_by, resolved_at, created, updated)
-           VALUES (@id, @workspaceId, @pageId, @anchor, @column, NULL, NULL, @now, @now)`,
-        )
-        .run({
-          id: threadId,
-          workspaceId,
-          pageId: input.pageId,
-          anchor: anchor === null ? null : JSON.stringify(anchor),
-          column,
-          now,
-        });
-      this.#insertComment(threadId, input.author, body, now);
-    });
-    write();
-
-    return this.#requireThread(workspaceId, threadId);
+  createThread(
+    workspaceId: string,
+    input: CreateThreadInput,
+    now: number = Date.now(),
+  ): CommentThread {
+    return comments.createThread(this.#handle, workspaceId, input, now);
   }
 
-  /** Add a reply to an open thread. A resolved thread is reopened by unresolving it first. */
   addReply(
     workspaceId: string,
     threadId: string,
@@ -1699,17 +1533,9 @@ export class AccountStore {
     body: string,
     now: number = Date.now(),
   ): CommentThread {
-    this.#requireThread(workspaceId, threadId);
-    const clean = cleanBody(body);
-    const write = this.#handle.transaction(() => {
-      this.#insertComment(threadId, author, clean, now);
-      this.#touchThread(threadId, now);
-    });
-    write();
-    return this.#requireThread(workspaceId, threadId);
+    return comments.addReply(this.#handle, workspaceId, threadId, author, body, now);
   }
 
-  /** Mark a thread answered, or put it back. `by` is the account that pressed the button. */
   setThreadResolved(
     workspaceId: string,
     threadId: string,
@@ -1717,176 +1543,48 @@ export class AccountStore {
     by: string,
     now: number = Date.now(),
   ): CommentThread {
-    this.#requireThread(workspaceId, threadId);
-    this.#handle
-      .prepare(
-        `UPDATE comment_threads SET resolved_at = @resolvedAt, resolved_by = @resolvedBy, updated = @now
-         WHERE workspace_id = @workspaceId AND id = @id`,
-      )
-      .run({
-        id: threadId,
-        workspaceId,
-        resolvedAt: resolved ? now : null,
-        resolvedBy: resolved ? by : null,
-        now,
-      });
-    return this.#requireThread(workspaceId, threadId);
+    return comments.setThreadResolved(this.#handle, workspaceId, threadId, resolved, by, now);
   }
 
-  /** One comment, or null when it is not in this workspace. The route reads `author` off it. */
   getComment(workspaceId: string, commentId: string): Comment | null {
-    const row = this.#handle
-      .prepare(
-        `SELECT c.${COMMENT_COLUMNS.split(', ').join(', c.')} FROM comments c
-         JOIN comment_threads t ON t.id = c.thread_id
-         WHERE t.workspace_id = ? AND c.id = ?`,
-      )
-      .get(workspaceId, commentId) as CommentRow | undefined;
-    return row === undefined ? null : toComment(row);
+    return comments.getComment(this.#handle, workspaceId, commentId);
   }
 
-  /** Rewrite a body. Only `updated` moves, so the UI can show that it was edited. */
   updateComment(
     workspaceId: string,
     commentId: string,
     body: string,
     now: number = Date.now(),
   ): CommentThread {
-    const comment = this.getComment(workspaceId, commentId);
-    if (comment === null) throw notFound(`No comment with id ${commentId}`);
-    const clean = cleanBody(body);
-    // An edit inside the same millisecond must still read as an edit, so the stamp always moves.
-    const stamp = Math.max(now, Date.parse(comment.created) + 1);
-
-    const write = this.#handle.transaction(() => {
-      this.#handle
-        .prepare('UPDATE comments SET body = ?, updated = ? WHERE id = ?')
-        .run(clean, stamp, commentId);
-      this.#touchThread(comment.threadId, stamp);
-    });
-    write();
-    return this.#requireThread(workspaceId, comment.threadId);
+    return comments.updateComment(this.#handle, workspaceId, commentId, body, now);
   }
 
-  /**
-   * Remove one comment. Removing the comment that opened the thread removes the thread and
-   * every reply with it, because a reply with nothing above it reads as a comment on nothing.
-   * Returns the thread that is left, or null when the whole thread went.
-   */
-  deleteComment(workspaceId: string, commentId: string, now: number = Date.now()): CommentThread | null {
-    const comment = this.getComment(workspaceId, commentId);
-    if (comment === null) throw notFound(`No comment with id ${commentId}`);
-    const thread = this.#requireThread(workspaceId, comment.threadId);
-
-    if (thread.comments[0]?.id === commentId) {
-      this.#handle
-        .prepare('DELETE FROM comment_threads WHERE workspace_id = ? AND id = ?')
-        .run(workspaceId, thread.id);
-      return null;
-    }
-
-    const write = this.#handle.transaction(() => {
-      this.#handle.prepare('DELETE FROM comments WHERE id = ?').run(commentId);
-      this.#touchThread(thread.id, now);
-    });
-    write();
-    return this.#requireThread(workspaceId, thread.id);
+  deleteComment(
+    workspaceId: string,
+    commentId: string,
+    now: number = Date.now(),
+  ): CommentThread | null {
+    return comments.deleteComment(this.#handle, workspaceId, commentId, now);
   }
 
-  /**
-   * Drop every thread on the given pages. Pages live in git rather than in this database, so
-   * there is no foreign key to cascade: the page route calls this after a delete.
-   */
   deleteThreadsForPages(workspaceId: string, pageIds: readonly string[]): number {
-    if (pageIds.length === 0) return 0;
-    return this.#handle
-      .prepare(
-        `DELETE FROM comment_threads WHERE workspace_id = ? AND page_id IN (${marks(pageIds.length)})`,
-      )
-      .run(workspaceId, ...pageIds).changes;
+    return comments.deleteThreadsForPages(this.#handle, workspaceId, pageIds);
   }
 
-  /**
-   * Drop every thread about the given columns of one page. A column thread names only a property
-   * id, so once the column is gone there is nothing left for a reader to recognise it by: the
-   * conversation goes with the column rather than lingering as an unanswerable card.
-   */
-  deleteThreadsForColumns(workspaceId: string, pageId: string, columnIds: readonly string[]): number {
-    if (columnIds.length === 0) return 0;
-    return this.#handle
-      .prepare(
-        `DELETE FROM comment_threads
-         WHERE workspace_id = ? AND page_id = ? AND column_id IN (${marks(columnIds.length)})`,
-      )
-      .run(workspaceId, pageId, ...columnIds).changes;
+  deleteThreadsForColumns(
+    workspaceId: string,
+    pageId: string,
+    columnIds: readonly string[],
+  ): number {
+    return comments.deleteThreadsForColumns(this.#handle, workspaceId, pageId, columnIds);
   }
 
-  /**
-   * Every comment that carries `@handle` right now, across every workspace.
-   *
-   * The count and the rewrite below both come from here. The preview is what a person agrees
-   * to, so a count that could disagree with the rewrite would be a consent bug rather than an
-   * untidiness.
-   *
-   * LIKE narrows the scan to the few rows that could carry the handle; `_` in a handle is a
-   * LIKE wildcard, which only ever hands back extra rows, and findMentions() is what decides.
-   */
-  #commentsMentioning(handle: string): { id: string; body: string }[] {
-    const wanted = normalizeHandle(handle);
-    const rows = this.#handle
-      .prepare("SELECT id, body FROM comments WHERE body LIKE '%@' || ? || '%'")
-      .all(wanted) as { id: string; body: string }[];
-    return rows.filter((row) => findMentions(row.body).includes(wanted));
-  }
-
-  /** How many comments carry `@handle` right now, across every workspace. */
   countCommentMentions(handle: string): number {
-    return this.#commentsMentioning(handle).length;
+    return comments.countCommentMentions(this.#handle, handle);
   }
 
-  /**
-   * Rewrite `@from` as `@to` in every comment that carries it. Returns how many changed.
-   *
-   * `updated` is deliberately left alone: the author did not edit their remark, so the card
-   * must not start claiming they did.
-   */
   renameCommentMentions(from: string, to: string): number {
-    const before = normalizeHandle(from);
-    const after = normalizeHandle(to);
-    const rows = this.#commentsMentioning(before);
-    const update = this.#handle.prepare('UPDATE comments SET body = ? WHERE id = ?');
-
-    const write = this.#handle.transaction(() => {
-      let changed = 0;
-      for (const row of rows) {
-        const body = renameMentions(row.body, before, after);
-        if (body === row.body) continue;
-        update.run(body, row.id);
-        changed += 1;
-      }
-      return changed;
-    });
-    return write();
-  }
-
-  #insertComment(threadId: string, author: string, body: string, now: number): void {
-    if (author.trim().length === 0) throw validation('An author is required');
-    this.#handle
-      .prepare(
-        `INSERT INTO comments (id, thread_id, author, body, created, updated)
-         VALUES (@id, @threadId, @author, @body, @now, @now)`,
-      )
-      .run({ id: newCommentId(now), threadId, author, body, now });
-  }
-
-  #touchThread(threadId: string, now: number): void {
-    this.#handle.prepare('UPDATE comment_threads SET updated = ? WHERE id = ?').run(now, threadId);
-  }
-
-  #requireThread(workspaceId: string, threadId: string): CommentThread {
-    const thread = this.getThread(workspaceId, threadId);
-    if (thread === null) throw notFound(`No comment thread with id ${threadId}`);
-    return thread;
+    return comments.renameCommentMentions(this.#handle, from, to);
   }
 
   // -------------------------------------------------------------------------

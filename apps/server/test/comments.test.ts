@@ -8,9 +8,13 @@ import {
   ErrorBodySchema,
   InviteResponseSchema,
   MAX_COMMENT_LENGTH,
+  PageResponseSchema,
   WORKSPACE_HEADER,
   WorkspaceResponseSchema,
+  newPropertyId,
+  newViewId,
   type CommentAnchor,
+  type Database,
 } from '@tablinum/shared';
 import { bodyOf, makeHarness, seed, TEST_TOKEN, type Harness } from './support/harness.js';
 
@@ -523,5 +527,207 @@ describe('a deleted page', () => {
     });
     expect(removed.statusCode).toBe(200);
     expect(harness.accounts.listThreads(workspaceId, pageId)).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// threads about a database column
+// ---------------------------------------------------------------------------
+
+const STATUS = newPropertyId();
+const NOTES = newPropertyId();
+const VIEW = newViewId();
+
+function sampleDatabase(): Database {
+  return {
+    properties: [
+      { id: STATUS, name: 'Status', type: 'select', options: [] },
+      { id: NOTES, name: 'Notes', type: 'text', options: [] },
+    ],
+    views: [{ id: VIEW, name: 'Table', type: 'table', filters: [], sorts: [], hidden: [] }],
+  };
+}
+
+/** A database page with a Status column and a Notes column, plus the admin cookie. */
+async function databaseWithAdmin(): Promise<{ cookie: string; pageId: string }> {
+  const cookie = await claim();
+  await seed(harness);
+  const created = await harness.app.inject({
+    method: 'POST',
+    url: '/api/v1/pages',
+    headers: { cookie },
+    payload: { path: 'eng/tasks', title: 'Tasks' },
+  });
+  expect(created.statusCode).toBe(201);
+  const pageId = bodyOf(created, PageResponseSchema).page.id;
+
+  const saved = await harness.app.inject({
+    method: 'PUT',
+    url: `/api/v1/pages/${pageId}/database`,
+    headers: { cookie },
+    payload: { database: sampleDatabase() },
+  });
+  expect(saved.statusCode).toBe(200);
+  return { cookie, pageId };
+}
+
+async function openColumnThread(cookie: string, pageId: string, body: string, column: string) {
+  const response = await harness.app.inject({
+    method: 'POST',
+    url: `/api/v1/pages/${pageId}/comments`,
+    headers: { cookie },
+    payload: { body, column },
+  });
+  expect(response.statusCode).toBe(201);
+  return bodyOf(response, CommentThreadResponseSchema).thread;
+}
+
+async function saveDatabase(cookie: string, pageId: string, database: Database) {
+  return harness.app.inject({
+    method: 'PUT',
+    url: `/api/v1/pages/${pageId}/database`,
+    headers: { cookie },
+    payload: { database },
+  });
+}
+
+describe('a thread about a database column', () => {
+  it('opens against the column id and lists back with it', async () => {
+    const { cookie, pageId } = await databaseWithAdmin();
+
+    const thread = await openColumnThread(cookie, pageId, 'Should this be a select?', STATUS);
+    expect(thread.column).toBe(STATUS);
+    expect(thread.anchor).toBeNull();
+
+    const threads = await listThreads(cookie, pageId);
+    expect(threads.map((one) => one.column)).toEqual([STATUS]);
+  });
+
+  it('replies and resolves through the same endpoints as any other thread', async () => {
+    const { cookie, pageId } = await databaseWithAdmin();
+    const member = await invite(cookie, 'Grace Hopper', 'grace@example.com');
+    const thread = await openColumnThread(cookie, pageId, 'Should this be a select?', STATUS);
+
+    const replied = await harness.app.inject({
+      method: 'POST',
+      url: `/api/v1/comment-threads/${thread.id}/replies`,
+      headers: { cookie: member },
+      payload: { body: 'Yes, with three options.' },
+    });
+    expect(replied.statusCode).toBe(201);
+    expect(bodyOf(replied, CommentThreadResponseSchema).thread.column).toBe(STATUS);
+
+    const resolved = await harness.app.inject({
+      method: 'PATCH',
+      url: `/api/v1/comment-threads/${thread.id}`,
+      headers: { cookie: member },
+      payload: { resolved: true },
+    });
+    expect(resolved.statusCode).toBe(200);
+    const after = bodyOf(resolved, CommentThreadResponseSchema).thread;
+    expect(after.resolved).toBe(true);
+    expect(after.column).toBe(STATUS);
+  });
+
+  it('narrows the list to one column, and to one state as well', async () => {
+    const { cookie, pageId } = await databaseWithAdmin();
+    await openColumnThread(cookie, pageId, 'On Status', STATUS);
+    const second = await openColumnThread(cookie, pageId, 'Also on Status', STATUS);
+    await openColumnThread(cookie, pageId, 'On Notes', NOTES);
+    await openThread(cookie, pageId, 'On the page');
+
+    expect(await listThreads(cookie, pageId)).toHaveLength(4);
+    expect(await listThreads(cookie, pageId, `?column=${STATUS}`)).toHaveLength(2);
+    expect(await listThreads(cookie, pageId, `?column=${NOTES}`)).toHaveLength(1);
+
+    await harness.app.inject({
+      method: 'PATCH',
+      url: `/api/v1/comment-threads/${second.id}`,
+      headers: { cookie },
+      payload: { resolved: true },
+    });
+    const open = await listThreads(cookie, pageId, `?column=${STATUS}&resolved=false`);
+    expect(open.map((one) => one.comments[0]?.body)).toEqual(['On Status']);
+  });
+
+  it('keeps the thread when the column is renamed', async () => {
+    const { cookie, pageId } = await databaseWithAdmin();
+    const thread = await openColumnThread(cookie, pageId, 'Should this be a select?', STATUS);
+
+    const renamed = sampleDatabase();
+    const first = renamed.properties[0];
+    if (first === undefined) throw new Error('The sample database has no property');
+    first.name = 'State';
+    expect((await saveDatabase(cookie, pageId, renamed)).statusCode).toBe(200);
+
+    const threads = await listThreads(cookie, pageId, `?column=${STATUS}`);
+    expect(threads.map((one) => one.id)).toEqual([thread.id]);
+  });
+
+  it('refuses a column the page does not have', async () => {
+    const { cookie, pageId } = await databaseWithAdmin();
+    const response = await harness.app.inject({
+      method: 'POST',
+      url: `/api/v1/pages/${pageId}/comments`,
+      headers: { cookie },
+      payload: { body: 'Nowhere', column: newPropertyId() },
+    });
+    expect(response.statusCode).toBe(400);
+    expect(bodyOf(response, ErrorBodySchema).error.code).toBe('VALIDATION');
+  });
+
+  it('refuses a column on a page that is not a database', async () => {
+    const { cookie, pageId } = await pageWithAdmin();
+    const response = await harness.app.inject({
+      method: 'POST',
+      url: `/api/v1/pages/${pageId}/comments`,
+      headers: { cookie },
+      payload: { body: 'Nowhere', column: STATUS },
+    });
+    expect(response.statusCode).toBe(400);
+  });
+
+  it('refuses a selection and a column at once', async () => {
+    const { cookie, pageId } = await databaseWithAdmin();
+    const response = await harness.app.inject({
+      method: 'POST',
+      url: `/api/v1/pages/${pageId}/comments`,
+      headers: { cookie },
+      payload: { body: 'Both', anchor: ANCHOR, column: STATUS },
+    });
+    expect(response.statusCode).toBe(400);
+  });
+});
+
+describe('a deleted database column', () => {
+  it('takes its threads with it and leaves every other thread alone', async () => {
+    const { cookie, pageId } = await databaseWithAdmin();
+    await openColumnThread(cookie, pageId, 'On Status', STATUS);
+    await openColumnThread(cookie, pageId, 'On Notes', NOTES);
+    await openThread(cookie, pageId, 'On the page');
+
+    const shorter = sampleDatabase();
+    shorter.properties = shorter.properties.filter((one) => one.id !== STATUS);
+    expect((await saveDatabase(cookie, pageId, shorter)).statusCode).toBe(200);
+
+    const threads = await listThreads(cookie, pageId);
+    expect(threads.map((one) => one.column)).toEqual([NOTES, null]);
+  });
+
+  it('takes every column thread when the whole database goes', async () => {
+    const { cookie, pageId } = await databaseWithAdmin();
+    await openColumnThread(cookie, pageId, 'On Status', STATUS);
+    await openColumnThread(cookie, pageId, 'On Notes', NOTES);
+    await openThread(cookie, pageId, 'On the page');
+
+    const removed = await harness.app.inject({
+      method: 'DELETE',
+      url: `/api/v1/pages/${pageId}/database`,
+      headers: { cookie },
+    });
+    expect(removed.statusCode).toBe(200);
+
+    const threads = await listThreads(cookie, pageId);
+    expect(threads.map((one) => one.column)).toEqual([null]);
   });
 });

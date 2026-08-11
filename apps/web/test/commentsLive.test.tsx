@@ -64,6 +64,7 @@ function thread(body: string): CommentThread {
     id: 'ct_00000000000000000000000001',
     pageId: PAGE.id,
     anchor: null,
+    column: null,
     resolved: false,
     resolvedBy: null,
     resolvedAt: null,

@@ -54,6 +54,7 @@ import type {
   ReplyBody,
   RevisionContentResponse,
   RegisterBody,
+  RowProps,
   RowResponse,
   SearchQuery,
   SearchResponse,
@@ -467,13 +468,15 @@ export interface SetDatabaseVars {
   database?: Database;
   /** databaseRev() of the schema this edit was built from. Left out, the write replaces whole. */
   baseRev?: string;
+  /** Cells to set in the same write, so a schema change and the rows it moves land together. */
+  rows?: Record<string, RowProps>;
 }
 
 export function useSetDatabase(): UseMutationResult<PageResponse, ApiError, SetDatabaseVars> {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: ({ pageId, database, baseRev }: SetDatabaseVars) =>
-      api.setDatabase(pageId, database, baseRev),
+    mutationFn: ({ pageId, database, baseRev, rows }: SetDatabaseVars) =>
+      api.setDatabase(pageId, database, baseRev, rows),
     onSuccess: (data, vars) => {
       // Seed the schema from the response so a renamed column does not flash its old name.
       const saved = data.page.database;
@@ -483,6 +486,8 @@ export function useSetDatabase(): UseMutationResult<PageResponse, ApiError, SetD
         client.setQueryData<DatabaseResponse>(key, { ...previous, database: saved });
       }
       void client.invalidateQueries({ queryKey: key });
+      // A deleted column takes its threads with it on the server, so the count here is stale.
+      void client.invalidateQueries({ queryKey: qk.comments(vars.pageId) });
       invalidateContent(client);
     },
   });
@@ -494,6 +499,7 @@ export function useRemoveDatabase(): UseMutationResult<PageResponse, ApiError, P
     mutationFn: (pageId: PageId) => api.removeDatabase(pageId),
     onSuccess: (_data, pageId) => {
       void client.invalidateQueries({ queryKey: qk.database(pageId) });
+      void client.invalidateQueries({ queryKey: qk.comments(pageId) });
       invalidateContent(client);
     },
   });

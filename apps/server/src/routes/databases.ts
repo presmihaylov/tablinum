@@ -14,6 +14,7 @@ import {
   type PageId,
   type PageResponse,
   type RowResponse,
+  type SetDatabaseBody,
 } from '@tablinum/shared';
 import { API_PREFIX, partsOf, type RouteContext } from '../context.js';
 import { agentOf, clientOf } from '../live.js';
@@ -33,6 +34,14 @@ async function requirePageIn(store: ContentStore, id: PageId): Promise<Page> {
   const page = await store.getPageById(id);
   if (page === null) throw notFound(`No page with id ${id}`);
   return page;
+}
+
+/** The properties the write took away. Read after the merge, so a merged-in column counts as kept. */
+function droppedColumns(before: Page, after: Page): string[] {
+  const kept = new Set((after.database?.properties ?? []).map((property) => property.id));
+  return (before.database?.properties ?? [])
+    .map((property) => property.id)
+    .filter((id) => !kept.has(id));
 }
 
 export function registerDatabaseRoutes(app: FastifyInstance, ctx: RouteContext): void {
@@ -57,30 +66,35 @@ export function registerDatabaseRoutes(app: FastifyInstance, ctx: RouteContext):
 
   /** Turn a page into a database, or replace the schema and views of one that already is. */
   app.put(`${API_PREFIX}/pages/:id/database`, async (request): Promise<PageResponse> => {
-    const { store, wiring } = await partsOf(ctx, request);
+    const { record, store, wiring } = await partsOf(ctx, request);
     const { id } = parseOrThrow(IdParamsSchema, request.params, 'params');
     const before = await requirePageIn(store, id);
     // An empty body turns a plain page into a database with the starter schema, which is what
     // the slash commands send.
-    const body =
+    const body: SetDatabaseBody =
       request.body === undefined || request.body === null || Object.keys(request.body).length === 0
         ? { database: starterDatabase() }
         : parseOrThrow(SetDatabaseBodySchema, request.body, 'database');
 
     wiring.markWritten(pageFileVariants(before.path));
-    const page = await store.setDatabase(id, body.database, body.baseRev);
+    const page = await store.setDatabase(id, body.database, body.baseRev, body.rows);
     await commit(request, page, `Update the database on ${page.path}`);
+    // Last, because a thread cannot be brought back: a commit that throws here leaves the threads
+    // orphaned, which a reader can still see and act on, rather than destroyed.
+    ctx.deps.accounts.deleteThreadsForColumns(record.id, page.id, droppedColumns(before, page));
     return { page };
   });
 
   /** Make it a plain page again. The rows are records inside the file, so they go with it. */
   app.delete(`${API_PREFIX}/pages/:id/database`, async (request): Promise<PageResponse> => {
-    const { store, wiring } = await partsOf(ctx, request);
+    const { record, store, wiring } = await partsOf(ctx, request);
     const { id } = parseOrThrow(IdParamsSchema, request.params, 'params');
     const before = await requirePageIn(store, id);
     wiring.markWritten(pageFileVariants(before.path));
     const page = await store.removeDatabase(id);
     await commit(request, page, `Remove the database on ${page.path}`);
+    // Same order as the PUT, and for the same reason: the recoverable half of the write first.
+    ctx.deps.accounts.deleteThreadsForColumns(record.id, page.id, droppedColumns(before, page));
     return { page };
   });
 

@@ -9,6 +9,7 @@ import type {
   DbRow,
   Page,
   PageSummary,
+  RowProps,
   UpdatePageBody,
   UpdateRowBody,
   UpdateSpaceBody,
@@ -177,9 +178,14 @@ class PrivateContentStore implements ContentStore {
     return this.inner.getDatabase(id);
   }
 
-  async setDatabase(id: PageId, database: Database, baseRev?: string): Promise<Page> {
+  async setDatabase(
+    id: PageId,
+    database: Database,
+    baseRev?: string,
+    rows?: Record<string, RowProps>,
+  ): Promise<Page> {
     await this.#refuseHiddenPage(id);
-    return this.inner.setDatabase(id, database, baseRev);
+    return this.inner.setDatabase(id, database, baseRev, rows);
   }
 
   async removeDatabase(id: PageId): Promise<Page> {

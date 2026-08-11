@@ -176,6 +176,34 @@ status pill in the sidebar turns into a conflict button, and the dialog behind i
 with the local version, the remote version and an automatic merge of the two. Your resolution is
 written to the working tree and committed like any other change.
 
+## Comments
+
+A comment is a conversation about a page, and it never touches the markdown. Threads live in
+`accounts.db`, so a `git clone` of the content repo carries the words of the page and nothing that
+was said about them.
+
+A thread is about one of three things:
+
+- **A run of text.** Select some words and choose Comment. The thread keeps the quote, so the
+  highlight is found again on every load. Text that is edited away leaves the thread readable in
+  the panel, marked as no longer on the page.
+- **A database column.** Open the column header menu and choose "Comment on this column". The
+  header then carries a badge with the number of open threads, and a click on the badge opens the
+  usual comment panel on that thread. The thread holds the column id rather than the column name,
+  so a rename keeps the conversation.
+- **The whole page.** Open the panel and choose "Comment on the page".
+
+Reply and Resolve work the same way whatever the thread is about, and a resolved thread comes back
+with "Show resolved". Deleting a column deletes the threads about it. A column thread is recognised
+by its column alone, so once the column is gone a reader has no way to tell what the thread was
+about. A property deleted by hand in the page file never reaches the API, so the panel draws such a
+thread as a column that is gone.
+
+An `@handle` in a comment notifies that person. An agent works the same threads through the MCP
+tools, with one limit: it opens a thread about a run of text or about the whole page, never about a
+column. Column threads are read, replied to and resolved by an agent, but only a person starts one.
+See "Tell an agent it was tagged" and "How an agent edits a page".
+
 ## Accounts, invites and avatars
 
 Every person who reaches the web UI has an account. Machines are the exception: they send a bearer
@@ -253,6 +281,20 @@ its own slug and its own directory, and writing in one does not touch the other.
 Only `Main` uses `TABLINUM_GIT_REMOTE`; the others are local repositories you move with the zip.
 Deleting a workspace forgets it and its members but leaves the files on disk, so export it first if
 you want the pages.
+
+## The arrow shortcut
+
+Type `->` and it becomes `→` straight away, wherever you write: the body of a page, a page title, a
+comment, a database cell, a filter box, a dialog. Nothing to switch on. Undo gives your two
+characters back everywhere, and in the body of a page backspace does the same.
+
+Code is left exactly as you typed it: `->` inside a fenced block, a mermaid block or a code span is
+never touched. So is anything that is not prose: an address, a number, a password, a date, and the
+raw markdown you edit to settle a conflict. Pasted text is never rewritten either, only what you
+type.
+
+The file on disk holds the character `→`, so the page reads the same in a terminal, in a diff and on
+GitHub. No other substitution is applied: quotes, dashes, ellipses and fractions stay as typed.
 
 ## Mentions and Slack
 

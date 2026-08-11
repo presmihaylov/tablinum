@@ -348,6 +348,8 @@ export const SetDatabaseBodySchema = z.object({
   database: DatabaseSchema,
   /** The schema revision this edit started from. See databaseRev() in db-merge.ts. */
   baseRev: z.string().min(1).optional(),
+  /** Cells to set in the same write, so a schema change and the rows it moves land together. */
+  rows: z.record(RowIdSchema, RowPropsSchema).optional(),
 });
 
 export const CreateRowBodySchema = z.object({

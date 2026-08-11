@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   OPTION_COLORS,
   dateStart,
+  optionByName,
   type Account,
   type DbProperty,
   type OptionColor,
@@ -47,7 +48,8 @@ export function nextOptionColor(taken: readonly SelectOption[]): OptionColor {
   return OPTION_COLORS[index] ?? 'gray';
 }
 
-export function Tag({ option }: { option: SelectOption }) {
+/** A named, coloured pill. It draws an option, and anything else that reads like one. */
+export function Tag({ option }: { option: Pick<SelectOption, 'name' | 'color'> }) {
   return <span className={`db-tag db-tag--${option.color}`}>{option.name}</span>;
 }
 
@@ -94,6 +96,9 @@ function TextCell({ property, value, onChange, kind }: CellProps & { kind: 'text
       className="db-cell__input"
       type="text"
       inputMode={kind === 'number' ? 'decimal' : undefined}
+      // The box stays `text` so a half-typed address or number is never rejected, so the arrow
+      // rewrite is told here instead: a number holds no arrow, and a url would be broken by one.
+      data-no-arrow={kind === 'text' ? undefined : ''}
       aria-label={property.name}
       value={draft}
       onFocus={() => {
@@ -162,7 +167,7 @@ function SelectCell({ property, value, onChange, onCreateOption, multi }: CellPr
   const shown = property.options.filter((option) =>
     option.name.toLowerCase().includes(text.toLowerCase()),
   );
-  const exists = property.options.some((option) => option.name.toLowerCase() === text.toLowerCase());
+  const exists = optionByName(property, text) !== null;
 
   const pick = (id: string): void => {
     if (!multi) {

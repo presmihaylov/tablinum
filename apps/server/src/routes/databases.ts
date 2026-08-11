@@ -14,6 +14,7 @@ import {
   type PageId,
   type PageResponse,
   type RowResponse,
+  type SetDatabaseBody,
 } from '@tablinum/shared';
 import { API_PREFIX, partsOf, type RouteContext } from '../context.js';
 import { agentOf, clientOf } from '../live.js';
@@ -62,13 +63,13 @@ export function registerDatabaseRoutes(app: FastifyInstance, ctx: RouteContext):
     const before = await requirePageIn(store, id);
     // An empty body turns a plain page into a database with the starter schema, which is what
     // the slash commands send.
-    const body =
+    const body: SetDatabaseBody =
       request.body === undefined || request.body === null || Object.keys(request.body).length === 0
         ? { database: starterDatabase() }
         : parseOrThrow(SetDatabaseBodySchema, request.body, 'database');
 
     wiring.markWritten(pageFileVariants(before.path));
-    const page = await store.setDatabase(id, body.database, body.baseRev);
+    const page = await store.setDatabase(id, body.database, body.baseRev, body.rows);
     await commit(request, page, `Update the database on ${page.path}`);
     return { page };
   });

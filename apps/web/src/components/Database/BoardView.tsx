@@ -41,7 +41,12 @@ interface BoardViewProps {
   onDeleteRow: (row: DbRow) => void;
   onOpenRow: (row: DbRow) => void;
   onDatabaseChange: (database: Database) => void;
-  onCreateOption: (property: DbProperty, name: string) => Promise<SelectOption | null>;
+  /** `carry` names rows that land on the option in the same write as the option itself. */
+  onCreateOption: (
+    property: DbProperty,
+    name: string,
+    carry?: readonly DbRow[],
+  ) => Promise<SelectOption | null>;
 }
 
 /** A stack of cards for each option of the select property the view groups by. */
@@ -114,7 +119,7 @@ export function BoardView({
     write(rowId, { props: { [property.id]: group.id } });
   };
 
-  const renameOption = (option: SelectOption, name: string): void => {
+  const renameOption = (optionId: string, name: string): void => {
     onDatabaseChange({
       ...database,
       properties: database.properties.map((entry) =>
@@ -122,20 +127,32 @@ export function BoardView({
           ? entry
           : {
               ...entry,
-              options: entry.options.map((one) => (one.id === option.id ? { ...one, name } : one)),
+              options: entry.options.map((one) => (one.id === optionId ? { ...one, name } : one)),
             },
       ),
     });
   };
 
+  /**
+   * Give a stack a name. A named stack keeps its option and renames it. The stack that holds
+   * none earns one, and its cards land on that option in the same write.
+   */
+  const renameGroup = (group: BoardGroup, name: string): void => {
+    if (group.id !== null) {
+      renameOption(group.id, name);
+      return;
+    }
+    void onCreateOption(property, name, group.rows);
+  };
+
   /** Take a stack off the board. The cards it held keep their place and lose their option. */
-  const removeOption = (option: SelectOption): void => {
+  const removeOption = (optionId: string): void => {
     onDatabaseChange({
       ...database,
       properties: database.properties.map((entry) =>
         entry.id !== property.id
           ? entry
-          : { ...entry, options: entry.options.filter((one) => one.id !== option.id) },
+          : { ...entry, options: entry.options.filter((one) => one.id !== optionId) },
       ),
     });
   };
@@ -149,7 +166,6 @@ export function BoardView({
           groups={groups}
           properties={visible}
           people={people}
-          option={property.options.find((one) => one.id === group.id) ?? null}
           dragging={dragging}
           byHand={byHand}
           over={over?.group === group.id ? over : null}
@@ -165,7 +181,7 @@ export function BoardView({
           onCreateRow={() => onCreateRow(group.id === null ? {} : { [property.id]: group.id })}
           onDeleteRow={onDeleteRow}
           onOpenRow={onOpenRow}
-          onRename={renameOption}
+          onRename={(name) => renameGroup(group, name)}
           onRemove={removeOption}
         />
       ))}
@@ -184,8 +200,6 @@ interface ColumnProps {
   groups: BoardGroup[];
   properties: DbProperty[];
   people: Account[];
-  /** The option behind the stack, or null for the cards that hold none. */
-  option: SelectOption | null;
   dragging: string | null;
   byHand: boolean;
   over: DropAt | null;
@@ -198,8 +212,8 @@ interface ColumnProps {
   onCreateRow: () => void;
   onDeleteRow: (row: DbRow) => void;
   onOpenRow: (row: DbRow) => void;
-  onRename: (option: SelectOption, name: string) => void;
-  onRemove: (option: SelectOption) => void;
+  onRename: (name: string) => void;
+  onRemove: (optionId: string) => void;
 }
 
 function Column({
@@ -207,7 +221,6 @@ function Column({
   groups,
   properties,
   people,
-  option,
   dragging,
   byHand,
   over,
@@ -224,6 +237,8 @@ function Column({
   onRemove,
 }: ColumnProps) {
   const id = group.id ?? 'none';
+  // Bound here rather than read inside the callback, so its null check narrows the type.
+  const optionId = group.id;
 
   /** True while a card of this board is in the air. `types` is all a drop target may read. */
   const carrying = (event: DragEvent<HTMLElement>): boolean =>
@@ -263,15 +278,11 @@ function Column({
       onDrop={(event) => land(event, null)}
     >
       <header className="db-board__head">
-        {option === null ? (
-          <Tag option={{ id, name: group.name, color: group.color }} />
-        ) : (
-          <GroupMenu
-            option={option}
-            onRename={(name) => onRename(option, name)}
-            onRemove={() => onRemove(option)}
-          />
-        )}
+        <GroupMenu
+          group={group}
+          onRename={onRename}
+          onRemove={optionId === null ? null : () => onRemove(optionId)}
+        />
         <span className="db-board__count">{group.rows.length}</span>
       </header>
 
@@ -317,21 +328,27 @@ function Column({
 }
 
 interface GroupMenuProps {
-  option: SelectOption;
+  group: BoardGroup;
   onRename: (name: string) => void;
-  onRemove: () => void;
+  /** Null on the stack that holds no option, which has none to take away. */
+  onRemove: (() => void) | null;
 }
 
-/** The head of a named stack. It opens the menu that renames the option or takes it away. */
-function GroupMenu({ option, onRename, onRemove }: GroupMenuProps) {
+/** The head of a stack. It opens the menu that renames the stack or takes it off the board. */
+function GroupMenu({ group, onRename, onRemove }: GroupMenuProps) {
   const [open, setOpen] = useState(false);
-  const [name, setName] = useState(option.name);
+  const [name, setName] = useState(group.name);
   const trigger = useRef<HTMLButtonElement | null>(null);
+
+  const close = (): void => {
+    setOpen(false);
+    setName(group.name);
+  };
 
   const commit = (): void => {
     const next = name.trim();
-    if (next.length === 0 || next === option.name) {
-      setName(option.name);
+    if (next.length === 0 || next === group.name) {
+      setName(group.name);
       return;
     }
     onRename(next);
@@ -343,22 +360,15 @@ function GroupMenu({ option, onRename, onRemove }: GroupMenuProps) {
         ref={trigger}
         type="button"
         className="db-board__group"
-        aria-label={`Stack menu for ${option.name}`}
+        aria-label={`Stack menu for ${group.name}`}
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((prev) => !prev)}
       >
-        <Tag option={option} />
+        <Tag option={group} />
       </button>
       {open ? (
-        <Menu
-          label={`Stack ${option.name}`}
-          anchor={trigger}
-          onClose={() => {
-            setOpen(false);
-            setName(option.name);
-          }}
-        >
+        <Menu label={`Stack ${group.name}`} anchor={trigger} onClose={close}>
           <input
             className="input"
             autoFocus
@@ -370,22 +380,26 @@ function GroupMenu({ option, onRename, onRemove }: GroupMenuProps) {
               if (event.key !== 'Enter') return;
               event.preventDefault();
               commit();
-              setOpen(false);
+              close();
             }}
           />
-          <div className="popmenu__sep" />
-          <button
-            type="button"
-            role="menuitem"
-            className="popmenu__item popmenu__item--danger"
-            onClick={() => {
-              setOpen(false);
-              onRemove();
-            }}
-          >
-            <Trash size={12} />
-            Delete stack
-          </button>
+          {onRemove === null ? null : (
+            <>
+              <div className="popmenu__sep" />
+              <button
+                type="button"
+                role="menuitem"
+                className="popmenu__item popmenu__item--danger"
+                onClick={() => {
+                  setOpen(false);
+                  onRemove();
+                }}
+              >
+                <Trash size={12} />
+                Delete stack
+              </button>
+            </>
+          )}
         </Menu>
       ) : null}
     </>

@@ -328,6 +328,103 @@ describe('setDatabase', () => {
   });
 });
 
+describe('setDatabase with rows', () => {
+  const BACKLOG = newOptionId();
+
+  /** The same column, plus the option a person makes when the stack that holds none earns a name. */
+  function plusBacklog(): Database {
+    const database = sampleDatabase();
+    database.properties[0]!.options = [
+      ...database.properties[0]!.options,
+      { id: BACKLOG, name: 'Backlog', color: 'green' },
+    ];
+    return database;
+  }
+
+  /** Three cards on the board, none of them on an option. */
+  async function looseStack(id: PageId): Promise<DbRow[]> {
+    const first = await store.createRow(id, { title: 'First' });
+    const second = await store.createRow(id, { title: 'Second' });
+    const third = await store.createRow(id, { title: 'Third' });
+    return [first, second, third];
+  }
+
+  it('adds the option and puts every row on it in the same write', async () => {
+    const id = await makeTasksPage();
+    await store.setDatabase(id, sampleDatabase());
+    const rows = await looseStack(id);
+
+    const page = await store.setDatabase(id, plusBacklog(), undefined, {
+      [rows[0]!.id]: { [SELECT]: BACKLOG },
+      [rows[1]!.id]: { [SELECT]: BACKLOG },
+      [rows[2]!.id]: { [SELECT]: BACKLOG },
+    });
+
+    expect(page.database?.properties[0]?.options).toHaveLength(2);
+    const read = await store.getDatabase(id);
+    expect(read.rows.map((row) => row.props[SELECT])).toEqual([BACKLOG, BACKLOG, BACKLOG]);
+  });
+
+  it('leaves the file holding the option and the cells together', async () => {
+    const id = await makeTasksPage();
+    await store.setDatabase(id, sampleDatabase());
+    const rows = await looseStack(id);
+    await store.setDatabase(id, plusBacklog(), undefined, { [rows[0]!.id]: { [SELECT]: BACKLOG } });
+
+    expect(await dbOnDisk('docs/tasks.md')).toEqual(plusBacklog());
+    expect((await rowsOnDisk('docs/tasks.md'))?.[0]?.props[SELECT]).toBe(BACKLOG);
+  });
+
+  it('merges the schema first, so a cell may name an option the same write added', async () => {
+    const id = await makeTasksPage();
+    const first = await store.setDatabase(id, sampleDatabase());
+    const rows = await looseStack(id);
+
+    // The option arrives in this very request. A schema applied after the cells would refuse it.
+    await store.setDatabase(id, plusBacklog(), databaseRev(first.database!), {
+      [rows[0]!.id]: { [SELECT]: BACKLOG },
+    });
+    const read = await store.getDatabase(id);
+    expect(read.rows[0]?.props[SELECT]).toBe(BACKLOG);
+  });
+
+  it('keeps a row the patch says nothing about', async () => {
+    const id = await makeTasksPage();
+    await store.setDatabase(id, sampleDatabase());
+    const rows = await looseStack(id);
+    await store.updateRow(id, rows[2]!.id, { props: { [TEXT]: 'mine' } });
+
+    await store.setDatabase(id, plusBacklog(), undefined, {
+      [rows[0]!.id]: { [SELECT]: BACKLOG },
+    });
+    const read = await store.getDatabase(id);
+    expect(read.rows[2]?.props).toEqual({ [TEXT]: 'mine' });
+  });
+
+  it('reports a row that is not there', async () => {
+    const id = await makeTasksPage();
+    await store.setDatabase(id, sampleDatabase());
+    expect(
+      await codeOf(() =>
+        store.setDatabase(id, plusBacklog(), undefined, { [newRowId()]: { [SELECT]: BACKLOG } }),
+      ),
+    ).toBe('NOT_FOUND');
+  });
+
+  it('refuses a property the database does not have', async () => {
+    const id = await makeTasksPage();
+    await store.setDatabase(id, sampleDatabase());
+    const rows = await looseStack(id);
+    expect(
+      await codeOf(() =>
+        store.setDatabase(id, plusBacklog(), undefined, {
+          [rows[0]!.id]: { [newPropertyId()]: 'nowhere' },
+        }),
+      ),
+    ).toBe('VALIDATION');
+  });
+});
+
 describe('setDatabase with a base revision', () => {
   const OWNER = newPropertyId();
   const DUE = newPropertyId();

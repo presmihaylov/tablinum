@@ -90,6 +90,25 @@ export const DbPropertySchema = z.object({
 });
 export type DbProperty = z.infer<typeof DbPropertySchema>;
 
+/** One display name, flattened to what a person reads: no case, and every run of space one space. */
+function foldName(name: string): string {
+  return name.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+/**
+ * The option a name already answers to, ignoring case and spare space. Null when none does.
+ * A person who gives two stacks the same name means one stack, so a caller reuses what is there
+ * rather than adding a twin nobody can tell apart.
+ */
+export function optionByName(
+  property: Pick<DbProperty, 'options'>,
+  name: string,
+): SelectOption | null {
+  const wanted = foldName(name);
+  if (wanted.length === 0) return null;
+  return property.options.find((option) => foldName(option.name) === wanted) ?? null;
+}
+
 // ---------------------------------------------------------------------------
 // values
 // ---------------------------------------------------------------------------

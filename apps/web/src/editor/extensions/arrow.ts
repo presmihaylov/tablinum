@@ -14,19 +14,8 @@ import { ARROW } from '../../lib/arrow';
  */
 export const ArrowRule = Extension.create({
   name: 'tablinumArrowRule',
-  // Ahead of the history extension, whose own `Mod-z` would otherwise take the key first.
-  priority: 200,
 
   addInputRules() {
     return [rightArrow(ARROW)];
-  },
-
-  addKeyboardShortcuts() {
-    return {
-      // The typed `>` never reaches the document, so plain history undo cannot give it back.
-      // `undoInputRule` can, because the rule runner keeps the text it swallowed. It reports
-      // false when no rule just fired, and the key then falls through to history as always.
-      'Mod-z': () => this.editor.commands.undoInputRule(),
-    };
   },
 });

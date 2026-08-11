@@ -71,26 +71,6 @@ test.describe('the arrow rule', () => {
     await expect(editorBody(page)).toHaveText(`Ship it ${ARROW} today`);
   });
 
-  test('gives the typed "->" back on undo, and redo has nothing to give back', async ({
-    page,
-    api,
-    content,
-  }) => {
-    const seeded = await seedPage(api, content, 'undone', '');
-
-    await page.goto(seeded.href);
-    await editorBody(page).click();
-    await page.keyboard.type('Ship it ->');
-    await expect(editorBody(page)).toHaveText(`Ship it ${ARROW}`);
-
-    await page.keyboard.press('ControlOrMeta+z');
-    await expect(editorBody(page)).toHaveText('Ship it ->');
-
-    // Taking an input rule back is an ordinary edit, and an ordinary edit closes the redo branch.
-    await page.keyboard.press('ControlOrMeta+Shift+z');
-    await expect(editorBody(page)).toHaveText('Ship it ->');
-  });
-
   test('rewrites "->" in the page title and writes it to the file', async ({
     page,
     api,

@@ -90,6 +90,10 @@ class CoreStoreAdapter implements ContentStore {
     return this.core.updateSpace(slug, patch);
   }
 
+  deleteSpace(slug: string, recursive: boolean): Promise<PagePath[]> {
+    return this.core.deleteSpace(slug, recursive);
+  }
+
   getTree(): Promise<SpaceTree[]> {
     return this.core.getTree();
   }

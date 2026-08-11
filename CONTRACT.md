@@ -625,6 +625,16 @@ POST   /api/v1/spaces                          body { slug, name, icon? } -> { s
                                                (also writes the space home page, so the space opens at once)
 PATCH  /api/v1/spaces/:slug                    body { name?, icon?, order? } -> { space: Space }
                                                (icon: null clears it; the slug never changes)
+DELETE /api/v1/spaces/:slug                    admin, ?recursive=true
+                                               -> { slug, deleted: PagePath[], recoverable, recovery }
+                                               (takes `_space.yml` and every page in the space, so the
+                                                space is gone rather than empty; it also drops the
+                                                `.git/info/exclude` line a private space was made with)
+                                               (a space holding more than its home page needs
+                                                recursive=true, otherwise 409 CONFLICT)
+                                               (no soft delete: `recovery` says where the files went.
+                                                a private space is never committed, so `recoverable`
+                                                is false for one and git has no copy to go back to)
 
 GET    /api/v1/tree                            -> { spaces: Array<Space & { tree: TreeNode[] }> }
 GET    /api/v1/pages                           ?path=<PagePath> -> { page: Page }

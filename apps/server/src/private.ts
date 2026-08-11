@@ -115,6 +115,11 @@ class PrivateContentStore implements ContentStore {
     return this.inner.updateSpace(slug, patch);
   }
 
+  async deleteSpace(slug: string, recursive: boolean): Promise<PagePath[]> {
+    await this.#refuseHiddenSpace(slug);
+    return this.inner.deleteSpace(slug, recursive);
+  }
+
   async getTree(): Promise<SpaceTree[]> {
     const tree = await this.inner.getTree();
     return tree.filter((space) => visibleTo(space.owner, this.viewer));

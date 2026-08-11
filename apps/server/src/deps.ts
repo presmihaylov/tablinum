@@ -98,6 +98,12 @@ export interface ContentStore {
   /** Change the name, icon or order of a space. Its slug never changes. */
   updateSpace(slug: string, patch: UpdateSpaceBody): Promise<Space>;
 
+  /**
+   * Delete a space, its `_space.yml` and every page in it. Without `recursive` a space that
+   * holds more than its home page is a CONFLICT. Returns the page paths it removed.
+   */
+  deleteSpace(slug: string, recursive: boolean): Promise<PagePath[]>;
+
   /** Every space with its full page tree, ready for the sidebar. */
   getTree(): Promise<SpaceTree[]>;
 

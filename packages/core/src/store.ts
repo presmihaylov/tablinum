@@ -495,6 +495,35 @@ export class ContentStore {
     return next;
   }
 
+  async deleteSpace(slug: string, recursive = false): Promise<PagePath[]> {
+    return this.#writes.runExclusive(() => this.#deleteSpaceUnlocked(slug, recursive));
+  }
+
+  async #deleteSpaceUnlocked(slug: string, recursive: boolean): Promise<PagePath[]> {
+    const space = await this.getSpace(slug);
+    await this.#index.ensureBuilt();
+    const pages = this.#index.all().filter((page) => spaceOf(page.path) === space.slug);
+
+    // The home page is the space, so it never counts as content the flag is protecting.
+    const below = pages.filter((page) => depth(page.path) > 1);
+    if (below.length > 0 && !recursive) {
+      throw conflict(
+        `Space ${space.slug} holds ${below.length} page(s); delete it recursively to remove them`,
+      );
+    }
+
+    // The whole directory, so `_space.yml` goes too. Left behind, it would keep the space alive.
+    await removeDir(resolveInside(this.contentDir, space.slug));
+    this.#index.markStale();
+    await this.#index.rebuild();
+    // The pages are gone already, so a disk that cannot be read here must not turn a finished
+    // delete into an error. The attachments stay, and so does anything hiding them.
+    await this.#removeOrphanedAssetsUnlocked(pages.map((page) => page.id)).catch((err: unknown) => {
+      this.#logger.warn(`Could not remove the attachments of space ${space.slug}: ${String(err)}`);
+    });
+    return pages.map((page) => page.path).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  }
+
   async #ensureSpace(slug: string): Promise<void> {
     const file = path.join(this.contentDir, spaceFileRelPath(slug));
     if (await pathExists(file)) return;

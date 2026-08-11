@@ -9,6 +9,7 @@ import {
   newPropertyId,
   newOptionId,
   newViewId,
+  optionByName,
   opTakesNoValue,
   type Database,
   type DbFilter,
@@ -29,6 +30,7 @@ import {
   useSetDatabase,
   useUpdateRow,
   useUsers,
+  type SetDatabaseVars,
 } from '../../api/hooks';
 import { useToast } from '../../lib/toast';
 import { Plus } from '../ui/Icon';
@@ -150,26 +152,41 @@ export function DatabaseView({ page }: DatabaseViewProps) {
     save({ ...database, views: [...database.views, next] });
   };
 
+  /**
+   * The option a name stands for, made if the column has none by that name. Every path that
+   * names an option comes through here, so one name never makes two options nobody can tell
+   * apart. `carry` names rows that land on the option in the same write, which keeps a board
+   * rename to one file write and one commit however many cards the stack holds.
+   */
   const createOption = async (
     property: DbProperty,
     name: string,
+    carry: readonly DbRow[] = [],
   ): Promise<SelectOption | null> => {
-    const option: SelectOption = {
+    const held = optionByName(property, name);
+    if (held !== null && carry.length === 0) return held;
+
+    const option: SelectOption = held ?? {
       id: newOptionId(),
       name,
       color: nextOptionColor(property.options),
     };
+    const next: Database =
+      held !== null
+        ? database
+        : {
+            ...database,
+            properties: database.properties.map((entry) =>
+              entry.id === property.id ? { ...entry, options: [...entry.options, option] } : entry,
+            ),
+          };
+    const rows: Record<string, RowProps> = {};
+    for (const row of carry) rows[row.id] = { [property.id]: option.id };
+
     try {
-      await setDatabase.mutateAsync({
-        pageId: page.id,
-        baseRev,
-        database: {
-          ...database,
-          properties: database.properties.map((entry) =>
-            entry.id === property.id ? { ...entry, options: [...entry.options, option] } : entry,
-          ),
-        },
-      });
+      const vars: SetDatabaseVars = { pageId: page.id, baseRev, database: next };
+      if (carry.length > 0) vars.rows = rows;
+      await setDatabase.mutateAsync(vars);
       return option;
     } catch (error) {
       toast.pushError(error, 'The option could not be added');

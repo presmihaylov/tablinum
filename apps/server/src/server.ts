@@ -23,6 +23,7 @@ import {
   type PagePath,
   type PageSummary,
   type Revision,
+  type RowProps,
   type SearchHit,
   type Space,
   type UpdatePageBody,
@@ -125,8 +126,13 @@ class CoreStoreAdapter implements ContentStore {
     return this.core.getDatabase(id);
   }
 
-  setDatabase(id: PageId, database: Database, baseRev?: string): Promise<Page> {
-    return this.core.setDatabase(id, database, baseRev);
+  setDatabase(
+    id: PageId,
+    database: Database,
+    baseRev?: string,
+    rows?: Record<string, RowProps>,
+  ): Promise<Page> {
+    return this.core.setDatabase(id, database, baseRev, rows);
   }
 
   removeDatabase(id: PageId): Promise<Page> {

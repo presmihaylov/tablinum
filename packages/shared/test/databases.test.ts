@@ -355,8 +355,14 @@ describe('optionByName', () => {
     expect(optionByName(status, 'Doing')?.id).toBe(DOING.id);
   });
 
-  it('ignores case and spare space, so one name never makes two stacks', () => {
+  it('ignores case and the space at each end, so one name never makes two stacks', () => {
     expect(optionByName(status, '  doing ')?.id).toBe(DOING.id);
+  });
+
+  it('reads a run of space inside a name as one space', () => {
+    expect(optionByName({ options: [{ id: DOING.id, name: 'In  Review', color: 'blue' }] }, 'In Review')?.id).toBe(
+      DOING.id,
+    );
   });
 
   it('is null when no option carries the name', () => {

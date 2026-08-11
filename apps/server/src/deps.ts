@@ -17,6 +17,7 @@ import type {
   PagePath,
   PageSummary,
   Revision,
+  RowProps,
   SearchHit,
   Space,
   TreeNode,
@@ -119,8 +120,13 @@ export interface ContentStore {
   /** The schema and every row of a database page. A page without a `db` block is a 400. */
   getDatabase(id: PageId): Promise<{ page: Page; database: Database; rows: DbRow[] }>;
 
-  /** Give the page a `db` block, or replace the one it has. */
-  setDatabase(id: PageId, database: Database, baseRev?: string): Promise<Page>;
+  /** Give the page a `db` block, or replace the one it has. `rows` sets cells in the same write. */
+  setDatabase(
+    id: PageId,
+    database: Database,
+    baseRev?: string,
+    rows?: Record<string, RowProps>,
+  ): Promise<Page>;
 
   /** Take the `db` block away, and the rows with it. */
   removeDatabase(id: PageId): Promise<Page>;

@@ -54,6 +54,7 @@ import type {
   ReplyBody,
   ResolveThreadBody,
   RevisionContentResponse,
+  RowProps,
   RowResponse,
   SearchQuery,
   SearchResponse,
@@ -416,11 +417,17 @@ export const api = {
   /**
    * No `database` turns a plain page into one with the starter schema. `baseRev` names the
    * revision the edit started from, so the server merges it with whatever landed meanwhile.
+   * `rows` sets cells in the same write, so a schema change and the rows it moves land together.
    */
-  setDatabase: (id: PageId, database?: Database, baseRev?: string): Promise<PageResponse> =>
+  setDatabase: (
+    id: PageId,
+    database?: Database,
+    baseRev?: string,
+    rows?: Record<string, RowProps>,
+  ): Promise<PageResponse> =>
     request(`/pages/${encodeURIComponent(id)}/database`, {
       method: 'PUT',
-      body: database === undefined ? {} : { database, baseRev },
+      body: database === undefined ? {} : { database, baseRev, rows },
     }),
 
   removeDatabase: (id: PageId): Promise<PageResponse> =>

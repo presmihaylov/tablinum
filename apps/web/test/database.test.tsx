@@ -143,10 +143,10 @@ function lastCall(method: string, suffix: string): unknown {
 }
 
 /** Every schema write the browser made, oldest first. */
-function writes(): { database: Database; baseRev?: string }[] {
+function writes(): { database: Database; baseRev?: string; rows?: Record<string, DbRow['props']> }[] {
   return (server?.calls ?? [])
     .filter((call) => call.method === 'PUT' && call.url.pathname.endsWith('/database'))
-    .map((call) => call.body as { database: Database; baseRev?: string });
+    .map((call) => call.body as { database: Database; baseRev?: string; rows?: Record<string, DbRow['props']> });
 }
 
 describe('the grid', () => {
@@ -957,13 +957,9 @@ function savedOptions(): Array<{ id: string; name: string }> {
 /** Two records the select column says nothing about: the cards of the stack that holds none. */
 const LOOSE: DbRow[] = [row('la', 'Alpha'), row('lb', 'Bravo')];
 
-/** A board whose empty stack holds cards, with a route for the write each card needs. */
+/** A board whose stack that holds no option has cards on it. */
 function mountLoose(): void {
-  const routes: Routes = {};
-  for (const entry of LOOSE) {
-    routes[`PATCH /api/v1/pages/${PAGE.id}/database/rows/${entry.id}`] = () => ({ row: entry });
-  }
-  mount({ db: boardDatabase(), rows: LOOSE, routes });
+  mount({ db: boardDatabase(), rows: LOOSE });
 }
 
 /** Rename a stack through the menu in its own head. */
@@ -1035,18 +1031,22 @@ describe('the stacks of a board', () => {
     expect(writes().at(-1)?.baseRev).toBe(databaseRev(boardDatabase()));
   });
 
-  it('carries every card of that stack onto the option it made', async () => {
+  it('carries every card of that stack onto the option it made, in the one write', async () => {
     mountLoose();
     await screen.findByTestId('db-board');
 
     await renameStack('No Status', 'Backlog');
 
-    await waitFor(() => {
-      const made = savedOptions().find((one) => one.name === 'Backlog');
-      expect(made?.id).toBeTruthy();
-      expect(lastCall('PATCH', LOOSE[0]!.id)).toEqual({ props: { [STATUS]: made?.id } });
-      expect(lastCall('PATCH', LOOSE[1]!.id)).toEqual({ props: { [STATUS]: made?.id } });
+    await waitFor(() => expect(writes()).toHaveLength(1));
+    const made = savedOptions().find((one) => one.name === 'Backlog');
+    expect(made?.id).toBeTruthy();
+    expect(writes()[0]?.rows).toEqual({
+      [LOOSE[0]!.id]: { [STATUS]: made?.id },
+      [LOOSE[1]!.id]: { [STATUS]: made?.id },
     });
+    // One gesture, one request: the cards never move by a PATCH of their own.
+    expect(lastCall('PATCH', LOOSE[0]!.id)).toBeNull();
+    expect(lastCall('PATCH', LOOSE[1]!.id)).toBeNull();
   });
 
   it('gathers the cards on the stack a name already answers to, and adds no twin', async () => {
@@ -1055,10 +1055,12 @@ describe('the stacks of a board', () => {
 
     await renameStack('No Status', 'done');
 
-    await waitFor(() =>
-      expect(lastCall('PATCH', LOOSE[0]!.id)).toEqual({ props: { [STATUS]: DONE } }),
-    );
-    expect(writes()).toHaveLength(0);
+    await waitFor(() => expect(writes()).toHaveLength(1));
+    expect(savedOptions().map((one) => one.name)).toEqual(['Todo', 'Done']);
+    expect(writes()[0]?.rows).toEqual({
+      [LOOSE[0]!.id]: { [STATUS]: DONE },
+      [LOOSE[1]!.id]: { [STATUS]: DONE },
+    });
   });
 
   it('says nothing at all when the name it is given is the one it already has', async () => {
@@ -1100,6 +1102,86 @@ describe('the stacks of a board', () => {
     await user.click(screen.getByLabelText('New card in No Status'));
 
     await waitFor(() => expect(lastCall('POST', '/rows')).toEqual({}));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// one name, one option
+//
+// Every way of naming an option goes through DatabaseView.createOption, so the rule against a
+// twin nobody can tell apart is written once and holds wherever a person types a name.
+// ---------------------------------------------------------------------------
+
+/** The same column, with the stray space a paste leaves on an option name. */
+function spacedDatabase(): Database {
+  const base = database();
+  return {
+    ...base,
+    properties: base.properties.map((entry) =>
+      entry.id !== STATUS
+        ? entry
+        : {
+            ...entry,
+            options: entry.options.map((one) => (one.id === DONE ? { ...one, name: 'Done ' } : one)),
+          },
+    ),
+  };
+}
+
+/** A table over that column, with a route for the cell each test writes. */
+function mountSpaced(): void {
+  mount({
+    db: spacedDatabase(),
+    routes: {
+      [`PATCH /api/v1/pages/${PAGE.id}/database/rows/${ROWS[0]!.id}`]: () => ({ row: ROWS[0]! }),
+    },
+  });
+}
+
+describe('one name, one option', () => {
+  it('adds no stack when the board is given a name the column already holds', async () => {
+    const user = userEvent.setup();
+    mount({ db: boardDatabase() });
+    await screen.findByTestId('db-board');
+
+    await user.click(screen.getByLabelText('Add a stack'));
+    await user.type(await screen.findByLabelText('New stack name'), '  DONE  {Enter}');
+
+    await waitFor(() => expect(screen.queryByLabelText('New stack name')).toBeNull());
+    expect(writes()).toHaveLength(0);
+    expect(screen.getAllByLabelText(/^Stack menu for Done$/)).toHaveLength(1);
+  });
+
+  it('puts a cell on the option a name already answers to, rather than on its twin', async () => {
+    const user = userEvent.setup();
+    mountSpaced();
+    await screen.findByTestId('db-table');
+
+    await user.click(within(await cellOf('Ship it', STATUS)).getByLabelText('Status'));
+    await user.type(await screen.findByLabelText('Search Status options'), 'done');
+
+    // The option is stored as "Done ", so the old check let "done" through and made a second one.
+    expect(screen.queryByRole('menuitem', { name: /Create/ })).toBeNull();
+    await user.keyboard('{Enter}');
+
+    await waitFor(() =>
+      expect(lastCall('PATCH', ROWS[0]!.id)).toEqual({ props: { [STATUS]: DONE } }),
+    );
+    expect(writes()).toHaveLength(0);
+  });
+
+  it('holds the record panel to the same rule', async () => {
+    const user = userEvent.setup();
+    mountSpaced();
+    await screen.findByTestId('db-table');
+
+    await user.click(within(await rowOf('Write it')).getByRole('button', { name: 'Open' }));
+    const panel = await screen.findByRole('dialog');
+    await user.click(within(panel).getByLabelText('Status'));
+    await user.type(await screen.findByLabelText('Search Status options'), 'done');
+
+    expect(screen.queryByRole('menuitem', { name: /Create/ })).toBeNull();
+    expect(writes()).toHaveLength(0);
   });
 });
 

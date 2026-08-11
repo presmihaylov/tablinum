@@ -10,21 +10,20 @@ import { mountEditor, settle } from './mount';
  */
 describe('editor list markers', () => {
   const base = readFileSync('src/styles/base.css', 'utf8');
-  const editor = readFileSync('src/editor/editor.css', 'utf8');
+  const surface = readFileSync('src/editor/styles/surface.css', 'utf8');
+  const tasks = readFileSync('src/editor/styles/task-lists.css', 'utf8');
 
   it('the base stylesheet still resets them', () => {
     expect(base).toMatch(/ul,\s*ol\s*\{[^}]*list-style/);
   });
 
   it('the editor puts back a bullet and a number', () => {
-    expect(editor).toMatch(/\.gd-editor-surface ul\s*\{[^}]*list-style-type:\s*disc/);
-    expect(editor).toMatch(/\.gd-editor-surface ol\s*\{[^}]*list-style-type:\s*decimal/);
+    expect(surface).toMatch(/\.gd-editor-surface ul\s*\{[^}]*list-style-type:\s*disc/);
+    expect(surface).toMatch(/\.gd-editor-surface ol\s*\{[^}]*list-style-type:\s*decimal/);
   });
 
   it('keeps the checkbox as the only marker on a to-do list', () => {
-    expect(editor).toMatch(
-      /\.gd-editor-surface \.gd-editor-tasks\s*\{[^}]*list-style-type:\s*none/,
-    );
+    expect(tasks).toMatch(/\.gd-editor-surface \.gd-editor-tasks\s*\{[^}]*list-style-type:\s*none/);
   });
 });
 

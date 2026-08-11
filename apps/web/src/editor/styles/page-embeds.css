@@ -1,0 +1,88 @@
+/* ------------------------------------------------------------------ */
+/* page embeds                                                         */
+/* ------------------------------------------------------------------ */
+
+.gd-editor-pageembed {
+  margin: var(--space-1) 0;
+}
+
+/* Without a node view the node is still a block of markdown source. */
+.gd-editor-pageembed--flat {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.gd-editor-pageembed__link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.gd-editor-pageembed__link:hover {
+  background: var(--bg-hover);
+}
+
+.gd-editor-pageembed__icon {
+  flex: none;
+  font-size: 1.1em;
+  line-height: 1;
+}
+
+.gd-editor-pageembed__title {
+  min-width: 0;
+  overflow: hidden;
+  border-bottom: 1px solid var(--border-strong);
+  color: var(--text-strong);
+  font-weight: var(--weight-medium);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A target with no page behind it stays readable, but says it is broken. */
+.gd-editor-pageembed__link.is-missing .gd-editor-pageembed__title {
+  border-bottom-style: dashed;
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+/* An embedded database draws the grid here, so it needs the block, not the link chrome. */
+.gd-editor-pageembed__db {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: var(--space-4) 0;
+}
+
+.gd-editor-pageembed__open {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-strong);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+}
+
+.gd-editor-pageembed__open:hover {
+  color: var(--accent);
+}

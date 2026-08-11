@@ -1,0 +1,57 @@
+/* ------------------------------------------------------------------ */
+/* Remote carets                                                       */
+/* ------------------------------------------------------------------ */
+
+.gd-caret {
+  position: relative;
+  display: inline-block;
+  width: 0;
+  height: 0;
+  vertical-align: baseline;
+  pointer-events: none;
+}
+
+.gd-caret::before {
+  content: '';
+  position: absolute;
+  top: -0.15em;
+  bottom: -0.25em;
+  left: -1px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--gd-caret-color, var(--accent));
+}
+
+.gd-caret__name {
+  position: absolute;
+  bottom: 100%;
+  left: -1px;
+  margin-bottom: 2px;
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--gd-caret-color, var(--accent));
+  color: #fff;
+  font-family: var(--font-sans);
+  font-size: var(--text-2xs);
+  line-height: 1.4;
+  font-weight: 500;
+  white-space: nowrap;
+  user-select: none;
+  opacity: 0;
+  transform: translateY(2px);
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease;
+}
+
+/* The label would cover the text it sits above, so it only shows while the caret moves. */
+.gd-caret--active .gd-caret__name,
+.gd-editor-surface:hover .gd-caret__name {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.gd-caret__range {
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--gd-caret-color, var(--accent)) 22%, transparent);
+}

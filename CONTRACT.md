@@ -621,10 +621,23 @@ POST   /api/v1/workspaces/import               admin, multipart file + optional 
                                                (name falls back to the file name; the slug is always free)
 
 GET    /api/v1/spaces                          -> { spaces: Space[] }
-POST   /api/v1/spaces                          body { slug, name, icon? } -> { space: Space }
+POST   /api/v1/spaces                          body { slug, name, icon?, order?, private? }
+                                               -> { space: Space }
                                                (also writes the space home page, so the space opens at once)
+                                               (admin for a space everybody reads, the same as the
+                                                delete. `private: true` needs only a signed-in
+                                                person: the owner comes from the session, never
+                                                from the body, so an agent or an operator token
+                                                answers 401 for one)
+                                               (NOT a boundary on the slug: POST /api/v1/pages
+                                                writes a `_space.yml` for a first path segment that
+                                                does not exist yet, so any writer still starts a
+                                                space that way)
 PATCH  /api/v1/spaces/:slug                    body { name?, icon?, order? } -> { space: Space }
                                                (icon: null clears it; the slug never changes)
+                                               (admin, except on the caller's own private space,
+                                                which its owner keeps. A private space somebody
+                                                else owns answers NOT_FOUND, admin or not)
 DELETE /api/v1/spaces/:slug                    admin, ?recursive=true
                                                -> { slug, deleted: PagePath[], recoverable, recovery }
                                                (takes `_space.yml` and every page in the space, so the

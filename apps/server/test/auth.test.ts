@@ -4,10 +4,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  AuthResponseSchema,
   ErrorBodySchema,
   HealthResponseSchema,
+  InviteResponseSchema,
   OkResponseSchema,
   PageListResponseSchema,
+  SpaceResponseSchema,
   SpacesResponseSchema,
 } from '@tablinum/shared';
 import { SESSION_COOKIE } from '../src/auth.js';
@@ -288,6 +291,186 @@ describe('mutation audit', () => {
 
     // Setup, login, logout and register stay reachable without a credential; the rest is audited.
     expect(verbs).toHaveLength(MUTATIONS.length + 4);
+  });
+});
+
+describe('space role gates', () => {
+  const ADMIN = { email: 'ada@example.com', name: 'Ada Lovelace', password: 'stack-of-pancakes' };
+
+  /** Claim a fresh server. The first account is the admin. */
+  async function claimAdmin(harness: Harness): Promise<string> {
+    const response = await harness.app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/setup',
+      payload: ADMIN,
+    });
+    expect(response.statusCode).toBe(200);
+    return cookiePair(response);
+  }
+
+  /** Invite a second person and sign them in. They are a member, not an admin. */
+  async function inviteMember(harness: Harness, adminCookie: string, email: string): Promise<string> {
+    const created = await harness.app.inject({
+      method: 'POST',
+      url: '/api/v1/invites',
+      headers: { cookie: adminCookie },
+      payload: { email },
+    });
+    const issued = bodyOf(created, InviteResponseSchema);
+    const token = issued.url.slice(issued.url.lastIndexOf('/') + 1);
+
+    const registered = await harness.app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/register',
+      payload: { token, name: 'Grace Hopper', password: 'nanoseconds-please' },
+    });
+    expect(bodyOf(registered, AuthResponseSchema).user?.role).toBe('member');
+    return cookiePair(registered);
+  }
+
+  function createSpace(harness: Harness, cookie: string, body: Record<string, unknown>) {
+    return harness.app.inject({
+      method: 'POST',
+      url: '/api/v1/spaces',
+      headers: { cookie },
+      payload: body,
+    });
+  }
+
+  function renameSpace(harness: Harness, cookie: string, slug: string, name: string) {
+    return harness.app.inject({
+      method: 'PATCH',
+      url: `/api/v1/spaces/${slug}`,
+      headers: { cookie },
+      payload: { name },
+    });
+  }
+
+  async function nameOf(harness: Harness, cookie: string, slug: string): Promise<string | undefined> {
+    const response = await harness.app.inject({
+      method: 'GET',
+      url: '/api/v1/spaces',
+      headers: { cookie },
+    });
+    return bodyOf(response, SpacesResponseSchema).spaces.find((space) => space.slug === slug)?.name;
+  }
+
+  it('lets an admin create a space everybody reads', async () => {
+    const harness = await harnessFor();
+    const admin = await claimAdmin(harness);
+
+    const created = await createSpace(harness, admin, { slug: 'eng', name: 'Engineering' });
+    expect(created.statusCode).toBe(200);
+    expect(bodyOf(created, SpaceResponseSchema).space.owner).toBeUndefined();
+  });
+
+  it('refuses a member the space everybody reads, with the shape the delete refuses in', async () => {
+    const harness = await harnessFor();
+    const admin = await claimAdmin(harness);
+    const member = await inviteMember(harness, admin, 'grace@example.com');
+
+    const created = await createSpace(harness, member, { slug: 'eng', name: 'Engineering' });
+    expect(created.statusCode).toBe(401);
+    expect(bodyOf(created, ErrorBodySchema).error.code).toBe('UNAUTHORIZED');
+
+    // The refusal is the same one DELETE /api/v1/spaces/:slug already produces.
+    const deleted = await harness.app.inject({
+      method: 'DELETE',
+      url: '/api/v1/spaces/eng',
+      headers: { cookie: member },
+    });
+    expect(deleted.statusCode).toBe(401);
+    expect(bodyOf(deleted, ErrorBodySchema).error.code).toBe('UNAUTHORIZED');
+
+    expect(existsSync(join(harness.contentDir, 'eng'))).toBe(false);
+    expect(await nameOf(harness, admin, 'eng')).toBeUndefined();
+  });
+
+  /** The gate must not reach the private bucket: every person keeps a corner of their own. */
+  it('still lets a member create their own private space', async () => {
+    const harness = await harnessFor();
+    const admin = await claimAdmin(harness);
+    const member = await inviteMember(harness, admin, 'grace@example.com');
+
+    const created = await createSpace(harness, member, {
+      slug: 'notes',
+      name: 'Notes',
+      private: true,
+    });
+    expect(created.statusCode).toBe(200);
+    expect(bodyOf(created, SpaceResponseSchema).space.owner).toBeDefined();
+  });
+
+  it('lets an admin rename a space everybody reads', async () => {
+    const harness = await harnessFor();
+    const admin = await claimAdmin(harness);
+    expect((await createSpace(harness, admin, { slug: 'eng', name: 'Engineering' })).statusCode).toBe(200);
+
+    const renamed = await renameSpace(harness, admin, 'eng', 'Platform');
+    expect(renamed.statusCode).toBe(200);
+    expect(bodyOf(renamed, SpaceResponseSchema).space.name).toBe('Platform');
+  });
+
+  it('refuses a member the rename of a space everybody reads', async () => {
+    const harness = await harnessFor();
+    const admin = await claimAdmin(harness);
+    expect((await createSpace(harness, admin, { slug: 'eng', name: 'Engineering' })).statusCode).toBe(200);
+    const member = await inviteMember(harness, admin, 'grace@example.com');
+
+    const renamed = await renameSpace(harness, member, 'eng', 'Taken over');
+    expect(renamed.statusCode).toBe(401);
+    expect(bodyOf(renamed, ErrorBodySchema).error.code).toBe('UNAUTHORIZED');
+    expect(await nameOf(harness, admin, 'eng')).toBe('Engineering');
+  });
+
+  it('still lets a member rename the private space they own', async () => {
+    const harness = await harnessFor();
+    const admin = await claimAdmin(harness);
+    const member = await inviteMember(harness, admin, 'grace@example.com');
+    expect(
+      (await createSpace(harness, member, { slug: 'notes', name: 'Notes', private: true })).statusCode,
+    ).toBe(200);
+
+    const renamed = await renameSpace(harness, member, 'notes', 'Ledger');
+    expect(renamed.statusCode).toBe(200);
+    expect(bodyOf(renamed, SpaceResponseSchema).space.name).toBe('Ledger');
+  });
+
+  /** A 401 here would say the slug is taken, which is the one thing a private space must not do. */
+  it('keeps answering NOT_FOUND for a private space the caller cannot see', async () => {
+    const harness = await harnessFor();
+    const admin = await claimAdmin(harness);
+    const member = await inviteMember(harness, admin, 'grace@example.com');
+    expect(
+      (await createSpace(harness, member, { slug: 'notes', name: 'Notes', private: true })).statusCode,
+    ).toBe(200);
+
+    // The admin holds the install and still may not touch somebody else's private space.
+    const renamed = await renameSpace(harness, admin, 'notes', 'Taken over');
+    expect(renamed.statusCode).toBe(404);
+    expect(bodyOf(renamed, ErrorBodySchema).error.code).toBe('NOT_FOUND');
+  });
+
+  /** An operator token is the install talking, so it keeps the authority it always had. */
+  it('lets the operator token create and rename a space everybody reads', async () => {
+    const harness = await harnessFor();
+    const headers = harness.authHeaders();
+
+    const created = await harness.app.inject({
+      method: 'POST',
+      url: '/api/v1/spaces',
+      headers,
+      payload: { slug: 'eng', name: 'Engineering' },
+    });
+    expect(created.statusCode).toBe(200);
+
+    const renamed = await harness.app.inject({
+      method: 'PATCH',
+      url: '/api/v1/spaces/eng',
+      headers,
+      payload: { name: 'Platform' },
+    });
+    expect(renamed.statusCode).toBe(200);
   });
 });
 

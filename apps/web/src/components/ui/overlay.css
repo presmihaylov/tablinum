@@ -51,9 +51,8 @@
   background: var(--bg-inset);
 }
 
+/* Menu.tsx draws it in a layer on the body, so only the look belongs here. */
 .context-menu {
-  position: fixed;
-  z-index: 80;
   min-width: 12rem;
   padding: var(--space-1);
   border-radius: var(--radius-md);

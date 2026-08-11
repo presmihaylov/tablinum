@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLogout } from '../../api/hooks';
 import { useAuth } from '../../lib/auth';
+import { Menu } from '../ui/Menu';
 import { Settings, SignOut } from '../ui/Icon';
 import { Avatar } from './Avatar';
 import './account.css';
@@ -12,24 +13,7 @@ export function AccountMenu() {
   const logout = useLogout();
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
-  const ref = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    const onDown = (event: MouseEvent): void => {
-      if (ref.current?.contains(event.target as Node)) return;
-      setMenuOpen(false);
-    };
-    const onKey = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') setMenuOpen(false);
-    };
-    window.addEventListener('mousedown', onDown);
-    window.addEventListener('keydown', onKey);
-    return () => {
-      window.removeEventListener('mousedown', onDown);
-      window.removeEventListener('keydown', onKey);
-    };
-  }, [menuOpen]);
+  const button = useRef<HTMLButtonElement | null>(null);
 
   const signOut = (): void => {
     logout.mutate(undefined, {
@@ -42,8 +26,9 @@ export function AccountMenu() {
   if (user === null) return null;
 
   return (
-    <div className="account-menu" ref={ref}>
+    <div className="account-menu">
       <button
+        ref={button}
         type="button"
         className="account-menu__button"
         onClick={() => setMenuOpen((prev) => !prev)}
@@ -54,8 +39,16 @@ export function AccountMenu() {
         <Avatar person={user} size={24} title={user.name} />
       </button>
 
-      {!menuOpen ? null : (
-        <div className="account-menu__panel" role="menu">
+      {menuOpen ? (
+        // The avatar sits at the left of the sidebar, so a panel hung off its right edge ran off
+        // the screen. Lined up on the right edge of the avatar, it keeps clear of every edge.
+        <Menu
+          label="Your account"
+          anchor={button}
+          align="right"
+          className="account-menu__panel"
+          onClose={() => setMenuOpen(false)}
+        >
           <div className="account-menu__who">
             <Avatar person={user} size={32} />
             <div>
@@ -88,8 +81,8 @@ export function AccountMenu() {
             <SignOut />
             Log out
           </button>
-        </div>
-      )}
+        </Menu>
+      ) : null}
     </div>
   );
 }

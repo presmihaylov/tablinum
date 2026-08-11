@@ -3,6 +3,7 @@ import { depth as pathDepth } from '@tablinum/shared';
 import type { PagePath, TreeNode } from '@tablinum/shared';
 import { sortNodes } from '../../lib/tree';
 import type { DropPosition } from '../../lib/treeMove';
+import type { TriggerBox } from '../../lib/menuPlacement';
 import { useContent } from '../../lib/content';
 import { EmojiGlyph } from '../ui/EmojiGlyph';
 import { ContextMenu, type MenuItem } from '../ui/Overlay';
@@ -21,8 +22,8 @@ interface PageTreeProps {
 }
 
 interface MenuState {
-  x: number;
-  y: number;
+  /** The button that asked for the menu, or the bare spot a right-click hit. */
+  at: TriggerBox;
   node: TreeNode;
 }
 
@@ -117,7 +118,12 @@ export function PageTree({ nodes, expanded, currentPath, onToggle, onExpand, onO
       </ul>
 
       {menu ? (
-        <ContextMenu x={menu.x} y={menu.y} items={menuItems(menu.node)} onClose={() => setMenu(null)} />
+        <ContextMenu
+          label="Page options"
+          anchor={menu.at}
+          items={menuItems(menu.node)}
+          onClose={() => setMenu(null)}
+        />
       ) : null}
     </>
   );
@@ -189,7 +195,8 @@ function TreeItem(props: TreeItemProps) {
 
   const onContextMenu = (event: MouseEvent<HTMLDivElement>): void => {
     event.preventDefault();
-    props.onMenu({ x: event.clientX, y: event.clientY, node });
+    const { clientX, clientY } = event;
+    props.onMenu({ at: { top: clientY, bottom: clientY, left: clientX, right: clientX }, node });
   };
 
   return (
@@ -237,8 +244,7 @@ function TreeItem(props: TreeItemProps) {
             aria-label={`Page options for ${node.title}`}
             onClick={(event) => {
               event.stopPropagation();
-              const rect = event.currentTarget.getBoundingClientRect();
-              props.onMenu({ x: rect.left, y: rect.bottom + 4, node });
+              props.onMenu({ at: event.currentTarget.getBoundingClientRect(), node });
             }}
           >
             <Dots size={12} />

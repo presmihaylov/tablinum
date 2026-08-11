@@ -26,6 +26,30 @@ test.describe('the settings page', () => {
     await expect(page.getByRole('menuitem')).toHaveText(['Settings', 'Log out']);
   });
 
+  // The avatar sits at the left of the sidebar, and its menu is almost as wide as the sidebar.
+  // Hung off the right edge of the avatar, the menu used to run off the side of the window.
+  test('the account menu opens inside the window, even on a small screen', async ({ page }) => {
+    await page.setViewportSize({ width: 880, height: 520 });
+    await page.goto('/');
+
+    await page.getByRole('button', { name: 'Your account' }).click();
+    const menu = page.getByRole('menu');
+    await expect(menu).toBeVisible();
+
+    const box = await menu.boundingBox();
+    const size = page.viewportSize();
+    expect(box).not.toBeNull();
+    expect(size).not.toBeNull();
+    if (box === null || size === null) return;
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.y).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(size.width);
+    expect(box.y + box.height).toBeLessThanOrEqual(size.height);
+
+    // It hangs off the body, so nothing in the sidebar can clip it.
+    await expect(page.locator('.sidebar').getByRole('menu')).toHaveCount(0);
+  });
+
   test('Settings opens a page, not a dialog', async ({ page }) => {
     await page.goto('/');
 

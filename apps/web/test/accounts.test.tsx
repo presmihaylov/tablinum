@@ -288,6 +288,17 @@ describe('the account menu', () => {
     ]);
   });
 
+  // The sidebar clipped a panel drawn inside it, and the panel is nearly as wide as the sidebar.
+  // Where it lands is menuPlacement's job; that it hangs off the body is this component's.
+  it('opens the panel in a layer on the body', async () => {
+    start({ 'GET /api/v1/auth/state': authState({ user: ADA }) });
+    const user = userEvent.setup();
+    renderWithAuth(<AccountMenu />);
+    await user.click(await screen.findByRole('button', { name: 'Your account' }));
+
+    expect(screen.getByRole('menu').parentElement).toBe(document.body);
+  });
+
   it('sends you to the settings page', async () => {
     start({ 'GET /api/v1/auth/state': authState({ user: ADA }) });
     const user = userEvent.setup();
@@ -321,7 +332,6 @@ describe('the account menu', () => {
       expect(mock.calls.some((item) => item.url.pathname === '/api/v1/auth/logout')).toBe(true);
       expect(assign).toHaveBeenCalledWith('/');
     });
-    vi.restoreAllMocks();
   });
 });
 

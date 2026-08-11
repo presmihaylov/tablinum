@@ -13,14 +13,10 @@ interface Seeded {
   reference: string;
 }
 
-/** The space the running test owns, so the afterEach hook can take it away again. */
-let seededSlug: string | null = null;
-
 /** A space of its own for every test, so no spec ever waits on another one's pages. */
 async function seedSpace(api: ApiClient): Promise<Seeded> {
   const space = await api.createSpace({ slug: uniqueSlug('tree'), name: SPACE_NAME });
   const slug = space.slug;
-  seededSlug = slug;
 
   await api.createPage({ path: `${slug}/guides`, title: 'Guides', order: 1 });
   await api.createPage({ path: `${slug}/guides/install`, title: 'Install', order: 1 });
@@ -62,17 +58,6 @@ async function openSpaceHome(page: Page, home: string): Promise<void> {
 }
 
 test.describe('page tree and navigation', () => {
-  // A space has no delete endpoint, so its directory goes from disk and the watcher re-indexes.
-  test.afterEach(async ({ api, content }) => {
-    const slug = seededSlug;
-    seededSlug = null;
-    if (slug === null) return;
-    await content.remove(slug);
-    await expect
-      .poll(async () => (await api.spaces()).map((space) => space.slug))
-      .not.toContain(slug);
-  });
-
   test('the tree renders the pages of the content directory', async ({ page, api, content }) => {
     const seeded = await seedSpace(api);
     await page.goto(`/p/${seeded.home}`);

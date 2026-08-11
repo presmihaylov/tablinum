@@ -55,6 +55,9 @@
   --content-measure: 46rem;
   --row-height: 1.75rem;
 
+  /* Every menu on the body sits on one layer, above the modal at 70. */
+  --z-menu: 90;
+
   /* colour: light */
   --bg: #ffffff;
   --bg-raised: #ffffff;

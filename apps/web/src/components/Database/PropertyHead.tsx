@@ -10,7 +10,7 @@ import {
 } from '@tablinum/shared';
 import { useComments } from '../../lib/comments';
 import { Bubble, Trash } from '../ui/Icon';
-import { Pop } from './Pop';
+import { Menu } from '../ui/Menu';
 
 export const TYPE_LABEL: Record<PropertyType, string> = {
   text: 'Text',
@@ -133,7 +133,7 @@ export function PropertyHead({
         </button>
       ) : null}
       {open ? (
-        <Pop label={`${property.name} column`} anchor={trigger} onClose={() => setOpen(false)}>
+        <Menu label={`${property.name} column`} anchor={trigger} onClose={() => setOpen(false)}>
           <input
             className="input"
             autoFocus
@@ -148,7 +148,7 @@ export function PropertyHead({
               setOpen(false);
             }}
           />
-          <div className="db-pop__label">Type</div>
+          <div className="popmenu__label">Type</div>
           <select
             className="db__select"
             aria-label="Property type"
@@ -161,17 +161,17 @@ export function PropertyHead({
               </option>
             ))}
           </select>
-          <div className="db-pop__sep" />
-          <button type="button" role="menuitem" className="db-pop__item" onClick={() => sortBy('asc')}>
+          <div className="popmenu__sep" />
+          <button type="button" role="menuitem" className="popmenu__item" onClick={() => sortBy('asc')}>
             Sort ascending
           </button>
-          <button type="button" role="menuitem" className="db-pop__item" onClick={() => sortBy('desc')}>
+          <button type="button" role="menuitem" className="popmenu__item" onClick={() => sortBy('desc')}>
             Sort descending
           </button>
           <button
             type="button"
             role="menuitem"
-            className="db-pop__item"
+            className="popmenu__item"
             onClick={() => {
               patchView({ hidden: [...view.hidden, property.id] });
               setOpen(false);
@@ -183,7 +183,7 @@ export function PropertyHead({
             <button
               type="button"
               role="menuitem"
-              className="db-pop__item"
+              className="popmenu__item"
               onClick={() => {
                 comments.startDraft({ anchor: null, column: property.id });
                 setOpen(false);
@@ -193,17 +193,17 @@ export function PropertyHead({
               Comment on this column
             </button>
           ) : null}
-          <div className="db-pop__sep" />
+          <div className="popmenu__sep" />
           <button
             type="button"
             role="menuitem"
-            className="db-pop__item db-pop__item--danger"
+            className="popmenu__item popmenu__item--danger"
             onClick={remove}
           >
             <Trash size={12} />
             Delete property
           </button>
-        </Pop>
+        </Menu>
       ) : null}
     </>
   );

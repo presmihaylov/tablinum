@@ -32,9 +32,9 @@ import {
 } from '../../api/hooks';
 import { useToast } from '../../lib/toast';
 import { Plus } from '../ui/Icon';
+import { Menu } from '../ui/Menu';
 import { nextOptionColor } from './Cell';
 import { BoardView, type RowMove } from './BoardView';
-import { Pop } from './Pop';
 import { RecordPanel } from './RecordPanel';
 import { TableView } from './TableView';
 import { TYPE_LABEL } from './PropertyHead';
@@ -401,7 +401,7 @@ function ViewTab({ database, view, onChange, onDelete }: ViewTabProps) {
         {view.name}
       </button>
       {open ? (
-        <Pop label="View menu" anchor={trigger} onClose={() => setOpen(false)}>
+        <Menu label="View menu" anchor={trigger} onClose={() => setOpen(false)}>
           <input
             className="input"
             autoFocus
@@ -416,7 +416,7 @@ function ViewTab({ database, view, onChange, onDelete }: ViewTabProps) {
               setOpen(false);
             }}
           />
-          <div className="db-pop__label">Layout</div>
+          <div className="popmenu__label">Layout</div>
           <select
             className="db__select"
             aria-label="View layout"
@@ -428,7 +428,7 @@ function ViewTab({ database, view, onChange, onDelete }: ViewTabProps) {
           </select>
           {view.type === 'board' ? (
             <>
-              <div className="db-pop__label">Group by</div>
+              <div className="popmenu__label">Group by</div>
               <select
                 className="db__select"
                 aria-label="Group by"
@@ -446,11 +446,11 @@ function ViewTab({ database, view, onChange, onDelete }: ViewTabProps) {
           ) : null}
           {onDelete === null ? null : (
             <>
-              <div className="db-pop__sep" />
+              <div className="popmenu__sep" />
               <button
                 type="button"
                 role="menuitem"
-                className="db-pop__item db-pop__item--danger"
+                className="popmenu__item popmenu__item--danger"
                 onClick={() => {
                   setOpen(false);
                   onDelete();
@@ -460,7 +460,7 @@ function ViewTab({ database, view, onChange, onDelete }: ViewTabProps) {
               </button>
             </>
           )}
-        </Pop>
+        </Menu>
       ) : null}
     </>
   );
@@ -484,13 +484,13 @@ function AddView({ onAdd }: { onAdd: (type: ViewType) => void }) {
         <Plus size={12} />
       </button>
       {open ? (
-        <Pop label="New view" anchor={trigger} onClose={() => setOpen(false)}>
+        <Menu label="New view" anchor={trigger} onClose={() => setOpen(false)}>
           {(['table', 'board'] as const).map((type) => (
             <button
               key={type}
               type="button"
               role="menuitem"
-              className="db-pop__item"
+              className="popmenu__item"
               onClick={() => {
                 setOpen(false);
                 onAdd(type);
@@ -499,7 +499,7 @@ function AddView({ onAdd }: { onAdd: (type: ViewType) => void }) {
               {type === 'board' ? 'Board' : 'Table'}
             </button>
           ))}
-        </Pop>
+        </Menu>
       ) : null}
     </>
   );

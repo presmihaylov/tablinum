@@ -29,7 +29,7 @@ import { ListShortcuts, OrderedListParen } from './lists';
 import { MdEscape } from './mdEscape';
 import { Mention } from './mention';
 import { MentionSuggestion } from './mentionSuggestion';
-import type { MentionItem } from './mentionSuggestion';
+import type { MentionCandidate } from '../../components/ui/PersonRow';
 import { createPageEmbed } from './pageEmbed';
 import type { EmbeddedPage } from './pageEmbed';
 import { SlashMenuExtension } from './slashMenu';
@@ -58,7 +58,7 @@ export interface EditorExtensionOptions {
   uploadImage: (file: File) => Promise<string | null>;
   searchPages: (query: string) => Promise<WikilinkItem[]>;
   /** Resolves people for the `@` menu. */
-  searchPeople: (query: string) => Promise<MentionItem[]>;
+  searchPeople: (query: string) => Promise<MentionCandidate[]>;
   /** Fetches the page an embed names, or null when there is no page at that path. */
   loadPage: (path: string) => Promise<EmbeddedPage | null>;
   /** Opens a page in the shell, from an embed's header. */
@@ -192,7 +192,7 @@ export { DRAFT_SPAN_ID } from './commentHighlight';
 export type { CommentSpan } from './commentHighlight';
 export { insertEmoji } from './customEmoji';
 export type { WikilinkItem } from './wikilinkSuggestion';
-export type { MentionItem } from './mentionSuggestion';
+export type { MentionCandidate } from '../../components/ui/PersonRow';
 export type { EmbeddedPage } from './pageEmbed';
 export type { DiagramRequest } from './diagram';
 export { SLASH_COMMANDS, filterSlashCommands } from './slashMenu';

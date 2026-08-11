@@ -262,6 +262,22 @@ export class FsContentStore implements ContentStore {
     return next;
   }
 
+  /** The mirror of the real store's: the whole directory goes, `_space.yml` included. */
+  async deleteSpace(slug: string, recursive: boolean): Promise<PagePath[]> {
+    const dir = join(this.contentDir, slug);
+    if (!existsSync(dir)) throw notFound(`No space ${slug}`);
+
+    const pages = (await this.listPages()).filter((page) => page.space === slug);
+    const below = pages.filter((page) => depth(page.path) > 1);
+    if (below.length > 0 && !recursive) {
+      throw conflict(`Space ${slug} holds ${below.length} page(s). Pass recursive=true to delete them.`);
+    }
+
+    await rm(dir, { recursive: true, force: true });
+    await this.removeOrphanedAssets(pages.map((page) => page.id)).catch(() => null);
+    return pages.map((page) => page.path).sort();
+  }
+
   async getTree(): Promise<SpaceTree[]> {
     const spaces = await this.listSpaces();
     const pages = await this.listPages();

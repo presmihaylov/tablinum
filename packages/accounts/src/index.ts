@@ -4,13 +4,13 @@ export {
   SESSION_TTL_MS,
   defaultAccountsDbPath,
 } from './store.js';
+export type { CreateThreadInput } from './comments.js';
 export type {
   AccountStoreOptions,
   Avatar,
   CreateAgentInput,
   CreateCustomEmojiInput,
   CreateInviteInput,
-  CreateThreadInput,
   CreateUserInput,
   CreateWorkspaceInput,
   CustomEmojiActor,

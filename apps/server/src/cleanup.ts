@@ -12,10 +12,14 @@ import type { ContentStore, GitEngine } from './deps.js';
  * so whether the subject is really gone is settled here, against the store.
  *
  * Which references keep an attachment alive: any page file that names `/_assets/<id>/`,
- * frontmatter and body alike. Comment bodies are NOT scanned. They live in the account database,
- * which the content store cannot see, and a comment renders markdown, so an `![x](/_assets/…)`
- * typed into a comment on a surviving page does not save the file. Nothing in the UI uploads an
- * attachment from a comment, so such a url can only get there by hand.
+ * frontmatter and body alike, and anything the caller's `assetRefs` source reports. A comment
+ * renders markdown, so an `![x](/_assets/…)` typed into a comment on a surviving page is a
+ * reference like any other; but comment bodies live in the account database, which the content
+ * store cannot see. The source is injected rather than imported so that separation holds.
+ *
+ * A source that cannot answer keeps every candidate. A private space is excluded from git and
+ * is never committed, so an attachment deleted there is gone for good, while one kept by
+ * mistake only costs disk. A failed lookup must never read as "nothing points at this".
  */
 
 /** Subjects a delete may have removed. Each one is checked before anything is deleted. */
@@ -24,12 +28,24 @@ export interface DeletedSubjects {
   spaceSlugs?: Iterable<string>;
 }
 
+/**
+ * Of these page ids, the ones an `/_assets/<id>/` url outside the content tree still names.
+ *
+ * Throwing is how a source that cannot answer says so, and it is the only way to say it: an
+ * empty result means "nothing points at any of these", which is what deletes the files.
+ */
+export type AssetRefSource = (
+  candidates: readonly PageId[],
+) => Iterable<PageId> | Promise<Iterable<PageId>>;
+
 export interface CleanupParts {
   /** The unfiltered store: a private space somebody else owns still owns its files. */
   store: ContentStore;
   git: GitEngine;
   /** Told the files about to go, so the watcher does not read them back as an outside change. */
   markWritten?: (files: string[]) => void;
+  /** References the content tree cannot see. Left out, only page files keep an attachment. */
+  assetRefs?: AssetRefSource;
 }
 
 /**
@@ -48,14 +64,39 @@ export async function cleanUpAfterDelete(
   const gone = await deadPages(parts.store, new Set(deleted.pageIds ?? []));
   if (gone.length === 0) return [];
 
-  const { removed, kept } = await parts.store.removeOrphanedAssets(gone);
+  // Held outside the content tree, so the store would never see it and would delete the files.
+  const held = await heldOutsideContent(parts, gone);
+  const collectable = gone.filter((id) => !held.has(id));
+  if (collectable.length === 0) return [];
+
+  const { removed, kept } = await parts.store.removeOrphanedAssets(collectable);
   parts.markWritten?.(removed);
   const survives = new Set(kept);
-  for (const id of gone) {
+  for (const id of collectable) {
     // Nothing left on disk to hide, so the line that hid it is stale whatever links to it.
     if (!survives.has(id)) await parts.git.unexcludePath(assetDirRelPath(id));
   }
   return removed;
+}
+
+/**
+ * Of `candidates`, the ids something outside the content tree still points at.
+ *
+ * A source that throws holds every candidate. It has just said it cannot see its references,
+ * and the alternative reading, that it has none, is the one that deletes files nobody can get
+ * back out of a private space.
+ */
+async function heldOutsideContent(
+  parts: CleanupParts,
+  candidates: readonly PageId[],
+): Promise<Set<PageId>> {
+  const source = parts.assetRefs;
+  if (source === undefined) return new Set();
+  try {
+    return new Set(await source(candidates));
+  } catch {
+    return new Set(candidates);
+  }
 }
 
 /**

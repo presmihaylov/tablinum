@@ -519,3 +519,41 @@ describe('mentions in comments', () => {
     expect(accounts.renameCommentMentions('ada_lovelace', 'ada.king')).toBe(1);
   });
 });
+
+/**
+ * What the orphan attachment sweep reads. A comment renders markdown, so a body that embeds
+ * `/_assets/<id>/…` is a reference keeping that file alive, and the content store cannot see it.
+ */
+describe('bodies that carry a needle', () => {
+  it('finds one in any workspace, so a sweep never misses a reference next door', () => {
+    const accounts = store();
+    const main = workspace(accounts);
+    const other = workspace(accounts, 'Handbook', '/content/handbook');
+    const embedded = `![a](/_assets/${PAGE}/a.png)`;
+    const next = '![b](/_assets/pg_b/b.png)';
+    accounts.createThread(main.id, { pageId: PAGE, author: ADA, body: embedded });
+    accounts.createThread(other.id, { pageId: PAGE, author: GRACE, body: next });
+    accounts.createThread(main.id, { pageId: PAGE, author: ADA, body: 'no url here' });
+
+    const bodies = accounts.commentBodiesContaining('/_assets/');
+
+    expect(bodies).toHaveLength(2);
+    expect(bodies).toContain(embedded);
+  });
+
+  it('reads the underscore literally, which LIKE would otherwise take as a wildcard', () => {
+    const accounts = store();
+    const main = workspace(accounts);
+    accounts.createThread(main.id, { pageId: PAGE, author: ADA, body: 'see /xassets/a.png' });
+
+    expect(accounts.commentBodiesContaining('/_assets/')).toEqual([]);
+  });
+
+  it('answers nothing for an empty needle rather than every body there is', () => {
+    const accounts = store();
+    const main = workspace(accounts);
+    accounts.createThread(main.id, { pageId: PAGE, author: ADA, body: 'anything' });
+
+    expect(accounts.commentBodiesContaining('')).toEqual([]);
+  });
+});

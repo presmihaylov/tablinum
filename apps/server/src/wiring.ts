@@ -6,6 +6,7 @@ import {
   ASSETS_DIR,
   PAGE_EXT,
   SPACE_FILE,
+  assetDirRelPath,
   pagePathToRelFile,
   relFileToPagePath,
   type LiveAgent,
@@ -267,7 +268,32 @@ export class Wiring {
       store: this.deps.store,
       git: this.deps.git,
       markWritten: (files) => this.markWritten(files),
+      assetRefs: (candidates) => this.#assetRefsInComments(candidates),
     };
+  }
+
+  /**
+   * Of these page ids, the ones a comment still shows an attachment of.
+   *
+   * A comment body is markdown in the account database, so `![x](/_assets/<id>/y.png)` renders
+   * as a picture there and the file behind it is in use, even though no page file names it.
+   * A comment body is the only markdown the account database holds; every other free-text
+   * column in it is shown as plain text, so no url in one of those can render a file.
+   *
+   * A failed read is logged and then rethrown. The rethrow is what keeps the attachments: the
+   * cleanup reads a throw as "cannot say", and an empty answer would read as "no references".
+   */
+  #assetRefsInComments(candidates: readonly PageId[]): PageId[] {
+    try {
+      const bodies = this.deps.accounts.commentBodiesContaining(`/${ASSETS_DIR}/`);
+      if (bodies.length === 0) return [];
+      return candidates.filter((id) =>
+        bodies.some((body) => body.includes(`/${assetDirRelPath(id)}/`)),
+      );
+    } catch (err) {
+      this.log.warn({ err }, 'could not read comment bodies; keeping every attachment');
+      throw err;
+    }
   }
 
   /** Rebuild the whole index from the store. Used at boot and after a pull. */

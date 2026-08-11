@@ -20,6 +20,7 @@ import { LiveHub, registerLiveRoutes } from './live.js';
 import { createMentionNotifier } from './mentions.js';
 import { privateSpacesOf } from './private.js';
 import { createSlackApi, type SlackApi } from './slack.js';
+import { createWebhookSender, type WebhookSender } from './webhooks.js';
 import { registerAgentRoutes } from './routes/agents.js';
 import { registerAssetRoutes, MAX_ASSET_BYTES } from './routes/assets.js';
 import { registerAuthRoutes } from './routes/auth.js';
@@ -78,6 +79,13 @@ function resolveSlack(deps: ServerDeps, log: FastifyBaseLogger): SlackApi | null
   if (deps.slack !== undefined) return deps.slack;
   const token = deps.config.slackBotToken;
   return token === null ? null : createSlackApi({ token, log });
+}
+
+/** Null turns agent webhooks off: without a secret nothing may be signed, so nothing is sent. */
+function resolveWebhooks(deps: ServerDeps, log: FastifyBaseLogger): WebhookSender | null {
+  if (deps.webhooks !== undefined) return deps.webhooks;
+  const secret = deps.config.webhookSecret;
+  return secret === null ? null : createWebhookSender({ secret, log });
 }
 
 function resolveWebDist(deps: ServerDeps): string | null {
@@ -158,6 +166,7 @@ export async function buildApp(deps: ServerDeps): Promise<FastifyInstance> {
   });
 
   const slack = resolveSlack(deps, app.log);
+  const webhooks = resolveWebhooks(deps, app.log);
   const ctx: RouteContext = {
     deps,
     workspaces,
@@ -168,6 +177,7 @@ export async function buildApp(deps: ServerDeps): Promise<FastifyInstance> {
     mentions: createMentionNotifier({
       accounts: deps.accounts,
       slack,
+      webhooks,
       log: app.log,
       publicUrl: deps.config.publicUrl,
     }),

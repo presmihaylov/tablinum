@@ -140,12 +140,16 @@ export interface CreateAgentInput {
   identity?: string;
   /** Derived from the name when it is absent. A taken handle gets a numeric suffix. */
   handle?: string;
+  /** Where a signed event goes when this agent is tagged. */
+  webhookUrl?: string;
 }
 
 export interface UpdateAgentInput {
   name?: string;
   identity?: string;
   disabled?: boolean;
+  /** Null takes the webhook away. Absent leaves whatever is there. */
+  webhookUrl?: string | null;
 }
 
 /** An agent as it is handed to the admin who made it. The token never appears again. */
@@ -224,6 +228,7 @@ interface AgentRow {
   handle: string;
   identity: string;
   workspace_id: string;
+  webhook_url: string | null;
   avatar_rev: string | null;
   created: number;
   updated: number;
@@ -306,7 +311,7 @@ const USER_COLUMNS_QUALIFIED = USER_COLUMNS.split(', ')
   .join(', ');
 
 const AGENT_COLUMNS =
-  'id, name, handle, identity, workspace_id, avatar_rev, created, updated, last_used';
+  'id, name, handle, identity, workspace_id, webhook_url, avatar_rev, created, updated, last_used';
 
 const WORKSPACE_COLUMNS = 'id, slug, name, icon, dir, created, updated';
 
@@ -350,6 +355,7 @@ function toAgent(row: AgentRow): Agent {
     workspaceId: row.workspace_id,
     color: colorForId(row.id),
     avatarRev: row.avatar_rev,
+    webhookUrl: row.webhook_url,
     created: iso(row.created),
     updated: iso(row.updated),
     lastUsed: row.last_used === null ? null : iso(row.last_used),
@@ -549,6 +555,7 @@ export class AccountStore {
         handle       TEXT NOT NULL UNIQUE,
         identity     TEXT NOT NULL DEFAULT '',
         token_hash   TEXT NOT NULL UNIQUE,
+        webhook_url  TEXT,
         avatar_mime  TEXT,
         avatar_bytes BLOB,
         avatar_rev   TEXT,
@@ -633,6 +640,9 @@ export class AccountStore {
     addColumn(db, 'agents', 'avatar_mime', 'TEXT');
     addColumn(db, 'agents', 'avatar_bytes', 'BLOB');
     addColumn(db, 'agents', 'avatar_rev', 'TEXT');
+
+    // Where an agent is told that a page or a comment tagged it.
+    addColumn(db, 'agents', 'webhook_url', 'TEXT');
 
     db.pragma(`user_version = ${SCHEMA_VERSION}`);
   }
@@ -1226,8 +1236,8 @@ export class AccountStore {
     const token = AGENT_TOKEN_PREFIX + newToken();
     this.#handle
       .prepare(
-        `INSERT INTO agents (id, name, handle, identity, workspace_id, token_hash, created, updated)
-         VALUES (@id, @name, @handle, @identity, @workspace, @hash, @now, @now)`,
+        `INSERT INTO agents (id, name, handle, identity, workspace_id, webhook_url, token_hash, created, updated)
+         VALUES (@id, @name, @handle, @identity, @workspace, @webhook, @hash, @now, @now)`,
       )
       .run({
         id,
@@ -1235,6 +1245,7 @@ export class AccountStore {
         handle,
         identity: input.identity?.trim() ?? '',
         workspace: input.workspaceId,
+        webhook: input.webhookUrl?.trim() ?? null,
         hash: hashToken(token),
         now,
       });
@@ -1252,12 +1263,14 @@ export class AccountStore {
     const next = {
       name: patch.name?.trim() ?? current.name,
       identity: patch.identity?.trim() ?? current.identity,
+      webhook: webhookOf(patch, current.webhookUrl),
     };
     this.#handle
       .prepare(
-        `UPDATE agents SET name = @name, identity = @identity, updated = @now WHERE id = @id`,
+        `UPDATE agents SET name = @name, identity = @identity, webhook_url = @webhook,
+         updated = @now WHERE id = @id`,
       )
-      .run({ id, name: next.name, identity: next.identity, now });
+      .run({ id, name: next.name, identity: next.identity, webhook: next.webhook, now });
 
     const updated = this.getAgent(id);
     if (updated === null) throw notFound(`No agent with id ${id}`);
@@ -1758,6 +1771,14 @@ interface ColumnRow {
 function isUniqueViolation(cause: unknown): boolean {
   if (!(cause instanceof Error) || !('code' in cause)) return false;
   return typeof cause.code === 'string' && cause.code.startsWith('SQLITE_CONSTRAINT');
+}
+
+/** Absent leaves the webhook alone; null takes it away; a URL replaces it. */
+function webhookOf(patch: UpdateAgentInput, current: string | null): string | null {
+  if (patch.webhookUrl === undefined) return current;
+  if (patch.webhookUrl === null) return null;
+  const trimmed = patch.webhookUrl.trim();
+  return trimmed.length === 0 ? null : trimmed;
 }
 
 function addColumn(db: Db, table: string, column: string, type: string): void {

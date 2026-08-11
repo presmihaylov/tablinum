@@ -325,10 +325,33 @@ describe('agents', () => {
     expect(agent.identity).toBe('You keep the runbooks tidy.');
     expect(agent.workspaceId).toBe(main.id);
     expect(agent.avatarRev).toBeNull();
+    expect(agent.webhookUrl).toBeNull();
     expect(agent.color).toMatch(/^#/);
     expect(agent.lastUsed).toBeNull();
     expect(token.startsWith('gda_')).toBe(true);
     expect(JSON.stringify(accounts.listAgents())).not.toContain(token);
+  });
+
+  it('keeps a webhook address, replaces it, and takes it away again', () => {
+    const accounts = store();
+    const main = workspace(accounts);
+    const { agent } = accounts.createAgent({
+      name: 'Doc Bot',
+      workspaceId: main.id,
+      webhookUrl: '  https://example.com/hook  ',
+    });
+    expect(agent.webhookUrl).toBe('https://example.com/hook');
+    expect(accounts.getAgentByHandle('doc.bot')?.webhookUrl).toBe('https://example.com/hook');
+
+    // An absent field leaves it alone, so renaming an agent never unhooks it.
+    expect(accounts.updateAgent(agent.id, { name: 'Runbook Bot' }).webhookUrl).toBe(
+      'https://example.com/hook',
+    );
+    expect(accounts.updateAgent(agent.id, { webhookUrl: 'https://example.com/other' }).webhookUrl).toBe(
+      'https://example.com/other',
+    );
+    expect(accounts.updateAgent(agent.id, { webhookUrl: null }).webhookUrl).toBeNull();
+    expect(accounts.getAgent(agent.id)?.webhookUrl).toBeNull();
   });
 
   it('refuses an empty name and an unknown workspace', () => {

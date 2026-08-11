@@ -131,7 +131,12 @@ export function registerPageRoutes(app: FastifyInstance, ctx: RouteContext): voi
       by: clientOf(request),
       agent: agentOf(request),
     });
-    ctx.mentions.pageSaved({ page, before: null, by: writerOf(request) });
+    ctx.mentions.pageSaved({
+      page,
+      before: null,
+      by: writerOf(request),
+      workspaceId: request.workspace.id,
+    });
 
     reply.status(201);
     return { page };
@@ -162,7 +167,12 @@ export function registerPageRoutes(app: FastifyInstance, ctx: RouteContext): voi
       agent: agentOf(request),
       ...(page.path === before.path ? {} : { removedPaths: [before.path] }),
     });
-    ctx.mentions.pageSaved({ page, before: before.markdown, by: writerOf(request) });
+    ctx.mentions.pageSaved({
+      page,
+      before: before.markdown,
+      by: writerOf(request),
+      workspaceId: request.workspace.id,
+    });
 
     return { page };
   });

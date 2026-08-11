@@ -289,6 +289,7 @@ export interface Agent {
   identity: string;       // the brief the MCP server hands back as its instructions. May be ''.
   color: string;          // derived from the id, so it looks the same in every browser
   avatarRev: string | null;  // changes on every upload; null means "draw the initials"
+  webhookUrl: string | null; // where a signed event goes when it is tagged; null = never told
   created: string; updated: string;
   lastUsed: string | null;   // refreshed at most once a minute
 }
@@ -300,6 +301,40 @@ export interface Agent {
 ```
 
 Helper in the same file: `mcpUrl(origin)` -> `<origin>/api/v1/mcp`.
+
+`packages/shared/src/webhooks.ts` — how an agent is told it was tagged:
+
+```ts
+export const WEBHOOK_SIGNATURE_HEADER = 'x-tablinum-signature';  // t=<seconds>,v1=<hex>
+export const WEBHOOK_EVENT_HEADER = 'x-tablinum-event';          // the type, for routing
+export const WEBHOOK_DELIVERY_HEADER = 'x-tablinum-delivery';    // = event.id, for dedupe
+export const WEBHOOK_TOLERANCE_SECONDS = 300;
+export const WEBHOOK_DELIVERY_PREFIX = 'whd_';
+
+export type WebhookEventType = 'mention.page' | 'mention.comment';
+
+export interface WebhookEvent {
+  id: string;             // "whd_" + ULID, repeated when the same event is delivered again
+  type: WebhookEventType;
+  created: string;        // ISO
+  agent: { id: string; name: string; handle: string };
+  workspace: { id: string; slug: string; name: string };
+  page: { id: string; path: string; title: string; url: string | null };
+  by: { id: string; name: string; handle: string | null } | null;  // null under an operator token
+  thread: { id: string } | null;   // null for a page mention
+  text: string;           // the whole page body, or the comment
+}
+```
+
+Signing helpers, all built on `crypto.subtle` so the module stays isomorphic:
+`signedPayload(timestamp, body)` -> `` `${timestamp}.${body}` ``,
+`signWebhook(secret, timestamp, body)` -> the header value,
+`verifyWebhook(secret, header, body, now?, tolerance?)`,
+`webhookKeyId(secret)` -> 16 hex of a salted SHA-256, which names a secret without revealing it.
+`WebhookUrlSchema` takes only `http://` and `https://`, up to `MAX_WEBHOOK_URL_LENGTH` (2000).
+
+Nothing is ever delivered unsigned: with no `TABLINUM_WEBHOOK_SECRET` no webhook goes out at all,
+and `GET /api/v1/webhooks/signing` answers `enabled: false`.
 
 `packages/shared/src/emoji.ts` holds custom emoji, the images anybody may upload:
 
@@ -497,16 +532,20 @@ DELETE /api/v1/invites/:id                     admin -> { ok: true }
 
 GET    /api/v1/agents                          any credential -> { agents: Agent[] } of this workspace
                                                (a byline turns an agent id into a name and a picture)
-POST   /api/v1/agents                          admin, body { name, identity?, handle? }
+POST   /api/v1/agents                          admin, body { name, identity?, handle?, webhookUrl? }
                                                -> { agent: Agent, token, url }  (token appears once)
-PATCH  /api/v1/agents/:id                      admin, body { name?, identity? }
-                                               -> { agent: Agent }   (the handle never changes)
+PATCH  /api/v1/agents/:id                      admin, body { name?, identity?, webhookUrl? }
+                                               -> { agent: Agent }   (the handle never changes;
+                                                webhookUrl: null takes the webhook away)
 DELETE /api/v1/agents/:id                      admin -> { ok: true }
 POST   /api/v1/agents/:id/token                admin -> { agent, token, url }
                                                (the old token stops working at once)
 GET    /api/v1/agents/:id/avatar               ?v=<rev> -> the image bytes, immutable cache, 404 when none
 POST   /api/v1/agents/:id/avatar               admin, multipart field `file` -> { url, rev }
 DELETE /api/v1/agents/:id/avatar               admin -> { ok: true }
+
+GET    /api/v1/webhooks/signing                any credential -> WebhookSigningResponse
+                                               (carries no secret; enabled:false when unconfigured)
 
 GET    /api/v1/emoji                           -> { emoji: CustomEmoji[] }   (oldest first)
 POST   /api/v1/emoji                           account, multipart field `shortcode` + field `file`
@@ -725,5 +764,6 @@ Read from env, all packages use `@tablinum/shared`'s `loadConfig()`:
 | `TABLINUM_AUTOPULL_MS` | periodic pull interval, default `60000`, `0` = off |
 | `TABLINUM_AUTOPUSH_MS` | quiet period after a commit before the push, default `5000`, `0` = off |
 | `TABLINUM_SLACK_BOT_TOKEN` | Slack bot token. Unset turns mention notifications off |
+| `TABLINUM_WEBHOOK_SECRET` | Signs every agent webhook, at least 16 characters. Unset turns agent webhooks off |
 | `TABLINUM_PUBLIC_URL` | origin used in a notification link, e.g. `https://docs.example.com` |
 | `TABLINUM_TRUST_PROXY` | trust `X-Forwarded-*`, default `false`. Behind a TLS-terminating proxy this is what marks the session cookie `Secure` and gives the login throttle a real client address. The Docker image defaults it to `true` |

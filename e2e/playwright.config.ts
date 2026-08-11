@@ -9,6 +9,7 @@ import {
   RESULTS_DIR,
   RUN_DIR,
   STORAGE_STATE,
+  WEBHOOK_SECRET,
 } from './env';
 
 /** Server logs are pino JSON and drown the report, so they are opt-in. */
@@ -79,6 +80,7 @@ export default defineConfig({
       // No remote in a test run, so a pull or a push would only add noise.
       TABLINUM_AUTOPULL_MS: '0',
       TABLINUM_AUTOPUSH_MS: '0',
+      TABLINUM_WEBHOOK_SECRET: WEBHOOK_SECRET,
       TABLINUM_E2E_RUN_DIR: RUN_DIR,
     },
   },

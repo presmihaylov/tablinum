@@ -84,15 +84,16 @@ export function registerCommentRoutes(app: FastifyInstance, ctx: RouteContext): 
    */
   async function notify(
     request: FastifyRequest,
-    pageId: PageId,
+    thread: CommentThread,
     body: string,
     before: string | null,
     by: Writer,
+    workspaceId: string,
   ): Promise<void> {
     const { store } = await partsOf(ctx, request);
-    const page = await store.getPageById(pageId);
+    const page = await store.getPageById(thread.pageId);
     if (page === null) return;
-    ctx.mentions.commentPosted({ page, body, before, by });
+    ctx.mentions.commentPosted({ page, body, before, by, workspaceId, threadId: thread.id });
   }
 
   app.get(`${API_PREFIX}/pages/:id/comments`, async (request): Promise<CommentThreadsResponse> => {
@@ -120,7 +121,7 @@ export function registerCommentRoutes(app: FastifyInstance, ctx: RouteContext): 
       anchor: body.anchor ?? null,
     });
     await announce(request, pageId);
-    await notify(request, pageId, body.body, null, writer);
+    await notify(request, thread, body.body, null, writer, workspaceId);
 
     reply.status(201);
     return { thread };
@@ -135,7 +136,7 @@ export function registerCommentRoutes(app: FastifyInstance, ctx: RouteContext): 
 
       const thread = accounts.addReply(workspaceId, id, writer.id, body.body);
       await announce(request, thread.pageId);
-      await notify(request, thread.pageId, body.body, null, writer);
+      await notify(request, thread, body.body, null, writer, workspaceId);
       reply.status(201);
       return { thread };
     },
@@ -165,7 +166,7 @@ export function registerCommentRoutes(app: FastifyInstance, ctx: RouteContext): 
     const thread = accounts.updateComment(workspaceId, id, body.body);
     await announce(request, thread.pageId);
     // Only what the edit adds: a handle that was already there was told about once.
-    await notify(request, thread.pageId, body.body, comment.body, writer);
+    await notify(request, thread, body.body, comment.body, writer, workspaceId);
     return { thread };
   });
 

@@ -71,6 +71,7 @@ import type {
   UpdateUserBody,
   UserResponse,
   UsersResponse,
+  WebhookSigningResponse,
   AddWorkspaceMemberBody,
   CreateWorkspaceBody,
   UpdateWorkspaceBody,
@@ -301,6 +302,9 @@ export const api = {
     request(`/invites/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
   listAgents: (signal?: AbortSignal): Promise<AgentsResponse> => request('/agents', { signal }),
+
+  webhookSigning: (signal?: AbortSignal): Promise<WebhookSigningResponse> =>
+    request('/webhooks/signing', { signal }),
 
   createAgent: (body: CreateAgentBody): Promise<AgentTokenResponse> =>
     request('/agents', { method: 'POST', body }),

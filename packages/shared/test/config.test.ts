@@ -94,6 +94,7 @@ describe('loadConfig validation', () => {
     ['short session secret', { TABLINUM_SESSION_SECRET: 'short' }],
     ['negative autocommit', { TABLINUM_AUTOCOMMIT_MS: '-1' }],
     ['unreadable boolean', { TABLINUM_TRUST_PROXY: 'maybe' }],
+    ['short webhook secret', { TABLINUM_WEBHOOK_SECRET: 'too-short' }],
   ];
 
   it.each(bad)('throws on %s', (_label, env) => {
@@ -102,6 +103,19 @@ describe('loadConfig validation', () => {
 
   it('reports the offending variable', () => {
     expect(() => loadConfig({ TABLINUM_PORT: 'nope' })).toThrow(/TABLINUM_PORT/);
+  });
+});
+
+describe('TABLINUM_WEBHOOK_SECRET', () => {
+  it('is unset by default, which turns agent webhooks off', () => {
+    expect(loadConfig({}).webhookSecret).toBeNull();
+  });
+
+  it('is kept when it is long enough, and never printed', () => {
+    const config = loadConfig({ TABLINUM_WEBHOOK_SECRET: 'a-signing-secret-long-enough' });
+    expect(config.webhookSecret).toBe('a-signing-secret-long-enough');
+    expect(redactConfig(config).webhookSecret).toBe('set');
+    expect(JSON.stringify(redactConfig(config))).not.toContain('a-signing-secret');
   });
 });
 

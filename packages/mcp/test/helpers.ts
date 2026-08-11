@@ -221,6 +221,7 @@ export function makeAgent(overrides: Partial<Agent> = {}): Agent {
     workspaceId: 'ws_01J8XYZABCDEFGHJKMNPQRSTVW',
     color: '#a855f7',
     avatarRev: null,
+    webhookUrl: null,
     created: '2026-08-01T09:00:00.000Z',
     updated: '2026-08-01T09:00:00.000Z',
     lastUsed: null,

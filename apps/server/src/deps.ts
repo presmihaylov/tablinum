@@ -1,5 +1,6 @@
 import type { AccountStore, WorkspaceRecord } from '@tablinum/accounts';
 import type { SlackApi } from './slack.js';
+import type { WebhookSender } from './webhooks.js';
 import type { WorkspaceInstance } from './workspaces.js';
 import type {
   Backlink,
@@ -226,4 +227,6 @@ export interface ServerDeps {
   trustProxy?: boolean;
   /** Slack transport for mention notifications. Built from the config when absent. */
   slack?: SlackApi | null;
+  /** Webhook transport for agent notifications. Built from the config when absent. */
+  webhooks?: WebhookSender | null;
 }

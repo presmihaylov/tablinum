@@ -179,6 +179,8 @@ export interface Config {
   autopushMs: number;
   /** Slack bot token (`xoxb-…`). Null disables the mention notifications. */
   slackBotToken: string | null;
+  /** Signs every agent webhook. Null leaves the webhooks undelivered, never unsigned. */
+  webhookSecret: string | null;
   /** Origin tablinum is reached on, used for the page link in a notification. */
   publicUrl: string | null;
   /**

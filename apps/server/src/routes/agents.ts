@@ -5,16 +5,22 @@ import {
   AgentIdSchema,
   CreateAgentBodySchema,
   UpdateAgentBodySchema,
+  WEBHOOK_DELIVERY_HEADER,
+  WEBHOOK_EVENT_HEADER,
+  WEBHOOK_SIGNATURE_HEADER,
+  WEBHOOK_TOLERANCE_SECONDS,
   avatarUrl,
   mcpUrl,
   notFound,
   parseOrThrow,
+  webhookKeyId,
   type Agent,
   type AgentResponse,
   type AgentTokenResponse,
   type AgentsResponse,
   type AvatarResponse,
   type OkResponse,
+  type WebhookSigningResponse,
 } from '@tablinum/shared';
 import { requireAdmin } from '../auth.js';
 import { AvatarQuerySchema, readAvatarUpload, sendAvatar } from '../avatars.js';
@@ -47,6 +53,23 @@ export function registerAgentRoutes(app: FastifyInstance, ctx: RouteContext): vo
     // The auth hook already turned away a caller with no credentials.
     // An agent belongs to one workspace, so this lists the current one only.
     return { agents: accounts.listAgents(request.workspace.id) };
+  });
+
+  /**
+   * How an agent webhook is signed, so a receiver can be built against it. Everything here is
+   * public by design: the key id is a hash of the secret, never the secret.
+   */
+  app.get(`${API_PREFIX}/webhooks/signing`, async (): Promise<WebhookSigningResponse> => {
+    const secret = ctx.deps.config.webhookSecret;
+    return {
+      enabled: secret !== null,
+      algorithm: 'hmac-sha256',
+      keyId: secret === null ? null : await webhookKeyId(secret),
+      signatureHeader: WEBHOOK_SIGNATURE_HEADER,
+      eventHeader: WEBHOOK_EVENT_HEADER,
+      deliveryHeader: WEBHOOK_DELIVERY_HEADER,
+      toleranceSeconds: WEBHOOK_TOLERANCE_SECONDS,
+    };
   });
 
   app.post(`${API_PREFIX}/agents`, async (request): Promise<AgentTokenResponse> => {

@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import {
+  ChangeHandleBodySchema,
   ChangePasswordBodySchema,
   ConnectSlackBodySchema,
   UpdateMeBodySchema,
@@ -12,6 +13,8 @@ import {
   parseOrThrow,
   unauthorized,
   type AvatarResponse,
+  type HandleChangeResponse,
+  type HandlePreviewResponse,
   type MeResponse,
   type OkResponse,
   type SlackStateResponse,
@@ -21,6 +24,7 @@ import {
 import { requireAccount, requireAdmin, setAccountCookie } from '../auth.js';
 import { AvatarQuerySchema, readAvatarUpload, sendAvatar } from '../avatars.js';
 import { API_PREFIX, type RouteContext } from '../context.js';
+import { countMentions, rewriteMentions } from '../handles.js';
 
 const UserParamsSchema = z.object({ id: UserIdSchema });
 
@@ -54,6 +58,57 @@ export function registerUserRoutes(app: FastifyInstance, ctx: RouteContext): voi
     const session = accounts.createSession(me.id);
     setAccountCookie(reply, session.token, isSecureRequest(request));
     return { ok: true };
+  });
+
+  /**
+   * Change a handle and rewrite every mention of the old one.
+   *
+   * The account database moves first and the content follows, so a sweep that fails part way
+   * leaves stale text rather than a page pointing at a handle nobody holds. The old handle is
+   * reserved either way, so a mention that was missed still names the same person.
+   */
+  async function applyHandle(
+    request: FastifyRequest,
+    id: string,
+  ): Promise<HandleChangeResponse> {
+    const body = parseOrThrow(ChangeHandleBodySchema, request.body, 'handle');
+    const change = accounts.changeHandle(id, body.handle);
+    if (change.previous === null) {
+      return {
+        user: change.account,
+        previous: null,
+        rewritten: { pages: 0, comments: 0, skipped: 0 },
+      };
+    }
+
+    const rewritten = await rewriteMentions(ctx, change.previous, change.account.handle);
+    return { user: change.account, previous: change.previous, rewritten };
+  }
+
+  /** What a change would cost: how much text carries the handle, and when it may be changed. */
+  app.get(`${API_PREFIX}/me/handle`, async (request): Promise<HandlePreviewResponse> => {
+    const me = requireAccount(request);
+    const counts = await countMentions(ctx, request, me.handle);
+    const ready = accounts.handleChangeableAt(me.id);
+    return {
+      handle: me.handle,
+      pages: counts.pages,
+      comments: counts.comments,
+      changeableAt: ready === null ? null : new Date(ready).toISOString(),
+    };
+  });
+
+  app.post(`${API_PREFIX}/me/handle`, async (request): Promise<HandleChangeResponse> => {
+    const me = requireAccount(request);
+    return applyHandle(request, me.id);
+  });
+
+  /** An admin fixes anybody's handle. The same cooldown applies, so neither route can churn. */
+  app.post(`${API_PREFIX}/users/:id/handle`, async (request): Promise<HandleChangeResponse> => {
+    requireAdmin(request);
+    const { id } = parseOrThrow(UserParamsSchema, request.params, 'user id');
+    if (accounts.getUser(id) === null) throw notFound(`No account with id ${id}`);
+    return applyHandle(request, id);
   });
 
   app.post(`${API_PREFIX}/me/avatar`, async (request): Promise<AvatarResponse> => {

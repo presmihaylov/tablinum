@@ -162,6 +162,15 @@ export interface GitEngine {
   /** Debounced commit. Safe to call on every write. */
   scheduleCommit(message?: string): void;
 
+  /**
+   * Commit whatever the debounce is still holding, right now.
+   *
+   * A caller about to make a commit with a message of its own calls this first. Otherwise
+   * `git add -A` would sweep the pending saves into that commit, and the message would then
+   * describe work nobody did there.
+   */
+  flushCommit(): Promise<string | null>;
+
   /** Commits that touched one content-relative file, newest first, renames followed. */
   history(relFile: string, limit: number): Promise<Revision[]>;
 

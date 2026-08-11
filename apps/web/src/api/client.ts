@@ -34,7 +34,10 @@ import type {
   GitResolveBody,
   GitResolveResponse,
   GitStatusResponse,
+  HandleChangeResponse,
+  HandlePreviewResponse,
   HealthResponse,
+  ChangeHandleBody,
   ChangePasswordBody,
   CreateAgentBody,
   CreateInviteBody,
@@ -269,6 +272,12 @@ export const api = {
 
   changePassword: (body: ChangePasswordBody): Promise<OkResponse> =>
     request('/me/password', { method: 'POST', body, ignoreUnauthorized: true }),
+
+  handlePreview: (signal?: AbortSignal): Promise<HandlePreviewResponse> =>
+    request('/me/handle', { signal }),
+
+  changeHandle: (body: ChangeHandleBody): Promise<HandleChangeResponse> =>
+    request('/me/handle', { method: 'POST', body }),
 
   uploadAvatar: (file: File): Promise<AvatarResponse> => {
     const form = new FormData();

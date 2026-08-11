@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { newUlid } from './ids.js';
 import { LIVE_COLORS } from './live.js';
+import { HandleSchema } from './mentions.js';
 import { IsoDateSchema } from './schemas.js';
 
 /**
@@ -67,7 +68,10 @@ export const AccountSchema = z.object({
   id: UserIdSchema,
   email: z.string(),
   name: z.string(),
-  /** The `@handle` used to mention this person. Set once, then never changed. */
+  /**
+   * The `@handle` used to mention this person. Derived from the name at sign-up, and changed
+   * only through POST /me/handle, which rewrites every mention that carries the old one.
+   */
   handle: z.string(),
   role: AccountRoleSchema,
   color: z.string(),
@@ -126,6 +130,9 @@ export const ChangePasswordBodySchema = z.object({
   next: PasswordSchema,
 });
 
+/** The wanted handle. Same rules as a handle the server derives, so `@Ada` becomes `ada`. */
+export const ChangeHandleBodySchema = z.object({ handle: HandleSchema });
+
 export const CreateInviteBodySchema = z.object({
   email: EmailSchema.optional(),
   role: AccountRoleSchema.optional(),
@@ -179,6 +186,35 @@ export const InvitePreviewResponseSchema = z.object({
 
 export const AvatarResponseSchema = z.object({ url: z.string().min(1), rev: z.string().min(1) });
 
+/**
+ * What a handle change would do, so the person sees the cost before they agree to it. `pages`
+ * and `comments` count what carries the handle today; `changeableAt` is set only while the
+ * cooldown still runs.
+ */
+export const HandlePreviewResponseSchema = z.object({
+  handle: z.string(),
+  pages: z.number().int(),
+  comments: z.number().int(),
+  changeableAt: IsoDateSchema.nullable(),
+});
+
+/**
+ * What a handle change did. `previous` is null when the wanted handle was already theirs.
+ *
+ * `skipped` counts pages the sweep could not rewrite, almost always because somebody was
+ * editing one while it ran. Those pages keep the old handle, which still names the same person
+ * through the reservation, so the number is a prompt to try again rather than a failure.
+ */
+export const HandleChangeResponseSchema = z.object({
+  user: AccountSchema,
+  previous: z.string().nullable(),
+  rewritten: z.object({
+    pages: z.number().int(),
+    comments: z.number().int(),
+    skipped: z.number().int(),
+  }),
+});
+
 // ---------------------------------------------------------------------------
 // inferred types
 // ---------------------------------------------------------------------------
@@ -190,6 +226,7 @@ export type SetupBody = z.infer<typeof SetupBodySchema>;
 export type RegisterBody = z.infer<typeof RegisterBodySchema>;
 export type UpdateMeBody = z.infer<typeof UpdateMeBodySchema>;
 export type ChangePasswordBody = z.infer<typeof ChangePasswordBodySchema>;
+export type ChangeHandleBody = z.infer<typeof ChangeHandleBodySchema>;
 export type CreateInviteBody = z.infer<typeof CreateInviteBodySchema>;
 export type UpdateUserBody = z.infer<typeof UpdateUserBodySchema>;
 
@@ -202,6 +239,8 @@ export type InvitesResponse = z.infer<typeof InvitesResponseSchema>;
 export type InviteResponse = z.infer<typeof InviteResponseSchema>;
 export type InvitePreviewResponse = z.infer<typeof InvitePreviewResponseSchema>;
 export type AvatarResponse = z.infer<typeof AvatarResponseSchema>;
+export type HandlePreviewResponse = z.infer<typeof HandlePreviewResponseSchema>;
+export type HandleChangeResponse = z.infer<typeof HandleChangeResponseSchema>;
 
 export const newUserId = (now?: number): string => USER_ID_PREFIX + newUlid(now);
 export const newInviteId = (now?: number): string => INVITE_ID_PREFIX + newUlid(now);

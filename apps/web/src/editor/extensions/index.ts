@@ -12,6 +12,8 @@ import TableRow from '@tiptap/extension-table-row';
 import Underline from '@tiptap/extension-underline';
 import { Markdown } from 'tiptap-markdown';
 
+import { ArrowRule } from './arrow';
+import { UndoRedo } from './undoRedo';
 import { BlockLink } from './blockLink';
 import { BlockSelect } from './blockSelection';
 import { Callout } from './callout';
@@ -88,9 +90,10 @@ export const DEFAULT_EXTENSION_OPTIONS: EditorExtensionOptions = {
 };
 
 /**
- * The full schema. Typography, colour and text-align extensions are deliberately
- * absent: none of them has a markdown representation, and Typography actively
- * rewrites characters, which would break the byte-identical round trip.
+ * The full schema, and the one list every editor surface is built from. Colour and text-align
+ * extensions are deliberately absent: neither has a markdown representation. Typography is
+ * absent for the same reason plus a worse one, since it rewrites characters and would break the
+ * byte-identical round trip; only its `->` rule is taken, through `ArrowRule`.
  */
 export function buildExtensions(overrides: Partial<EditorExtensionOptions> = {}): Extensions {
   const options: EditorExtensionOptions = { ...DEFAULT_EXTENSION_OPTIONS, ...overrides };
@@ -113,6 +116,8 @@ export function buildExtensions(overrides: Partial<EditorExtensionOptions> = {})
     ListItem.extend({ content: 'block+' }),
     ListShortcuts,
     OrderedListParen,
+    ArrowRule,
+    UndoRedo,
     createCodeBlock(options.interactive),
     Underline,
     Link.configure({

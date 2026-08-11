@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, screen } from '@testing-library/react';
-import type { Editor } from '@tiptap/core';
-import { BAND_CLASS, BlockSelection } from '../../src/editor/extensions';
+import { Editor } from '@tiptap/core';
+import { BAND_CLASS, BlockSelection, buildExtensions } from '../../src/editor/extensions';
 import { serializeFragment } from '../../src/editor/markdown';
 import { mountEditor, settle } from './mount';
 
@@ -15,6 +15,19 @@ afterEach(() => {
   cleanup();
   document.querySelector(`.${BAND_CLASS}`)?.remove();
 });
+
+/** The blank room around the document, which is the box a band drag starts on. */
+function canvas(): HTMLElement {
+  const box = document.querySelector('.editor__canvas');
+  if (!(box instanceof HTMLElement)) throw new Error('the harness mounted no canvas');
+  return box;
+}
+
+/** Press and let go under the last block, without moving: a click, not a drag. */
+async function clickUnder(): Promise<void> {
+  await settle(() => fireEvent.mouseDown(canvas(), { clientX: 10, clientY: 10 }));
+  await settle(() => fireEvent.mouseUp(window, { clientX: 10, clientY: 10 }));
+}
 
 function band(): HTMLElement | null {
   return document.querySelector(`.${BAND_CLASS}`);
@@ -58,7 +71,7 @@ describe('the box a drag paints beside the document', () => {
   it('follows the pointer, and goes away when the button comes up', async () => {
     await mountEditor({ content: 'one\n\ntwo\n\nthree\n' });
 
-    await settle(() => fireEvent.mouseDown(document.body, { clientX: 0, clientY: 0 }));
+    await settle(() => fireEvent.mouseDown(canvas(), { clientX: 0, clientY: 0 }));
     expect(band()).toBeNull();
 
     await settle(() => fireEvent.mouseMove(window, { clientX: 30, clientY: 90 }));
@@ -76,7 +89,7 @@ describe('the box a drag paints beside the document', () => {
   it('is drawn from whichever corner the drag started in', async () => {
     await mountEditor({ content: 'one\n\ntwo\n' });
 
-    await settle(() => fireEvent.mouseDown(document.body, { clientX: 20, clientY: 20 }));
+    await settle(() => fireEvent.mouseDown(canvas(), { clientX: 20, clientY: 20 }));
     await settle(() => fireEvent.mouseMove(window, { clientX: 4, clientY: 6 }));
 
     expect(band()?.style.left).toBe('4px');
@@ -101,6 +114,100 @@ describe('the box a drag paints beside the document', () => {
     await settle(() => fireEvent.mouseMove(window, { clientX: 30, clientY: 90 }));
 
     expect(band()).toBeNull();
+  });
+
+  it('never starts on a box the shell has not marked as blank room', async () => {
+    await mountEditor({ content: 'one\n\ntwo\n' });
+    // The scroller and the page around it are unmarked, and a press on a scrollbar is
+    // reported as a press on its scroller. Unmarked means the band leaves the press alone.
+    await settle(() => fireEvent.mouseDown(document.body, { clientX: 10, clientY: 10 }));
+    await settle(() => fireEvent.mouseMove(window, { clientX: 10, clientY: 90 }));
+
+    expect(band()).toBeNull();
+  });
+});
+
+describe('a click in the room under the last block', () => {
+  it('leaves a line to write on, and a second click leaves no more', async () => {
+    const editor = await mountEditor({ content: 'one\n' });
+    expect(editor.state.doc.childCount).toBe(1);
+
+    await clickUnder();
+    expect(editor.state.doc.childCount).toBe(2);
+    expect(editor.state.doc.lastChild?.textContent).toBe('');
+    expect(editor.state.selection.$from.parent).toBe(editor.state.doc.lastChild);
+
+    // The line is already there, so a second click only puts the caret back on it.
+    await clickUnder();
+    expect(editor.state.doc.childCount).toBe(2);
+  });
+
+  it('adds nothing when the press turns into a drag', async () => {
+    const editor = await mountEditor({ content: 'one\n\ntwo\n' });
+
+    await settle(() => fireEvent.mouseDown(canvas(), { clientX: 10, clientY: 10 }));
+    await settle(() => fireEvent.mouseMove(window, { clientX: 10, clientY: 90 }));
+    await settle(() => fireEvent.mouseUp(window, { clientX: 10, clientY: 90 }));
+
+    expect(editor.state.doc.childCount).toBe(2);
+  });
+
+  it('adds nothing to a document nobody may edit', async () => {
+    const editor = await mountEditor({ content: 'one\n', editable: false });
+
+    await clickUnder();
+
+    expect(editor.state.doc.childCount).toBe(1);
+  });
+
+  it('keeps the line out of the undo stack, so Cmd+Z takes back the last real edit', async () => {
+    const editor = await mountEditor({ content: 'one\n' });
+    editor.commands.insertContentAt(editor.state.doc.content.size - 1, ' more');
+    expect(editor.state.doc.textContent).toBe('one more');
+
+    await clickUnder();
+    expect(editor.state.doc.childCount).toBe(2);
+
+    await settle(() => {
+      editor.commands.undo();
+    });
+
+    // The words the reader typed come back off, and the line the click made stays put.
+    expect(editor.state.doc.textContent).toBe('one');
+    expect(editor.state.doc.childCount).toBe(2);
+  });
+});
+
+describe('a document the shell put in no marked room', () => {
+  const hosts: HTMLElement[] = [];
+  const editors: Editor[] = [];
+
+  /** Straight in the body, inside no marked box, which is the mistake the guard shouts at. */
+  async function mountUnmarked(): Promise<Editor> {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    hosts.push(host);
+    const editor = new Editor({ element: host, extensions: buildExtensions({}), content: '' });
+    editors.push(editor);
+    await settle(() => {});
+    return editor;
+  }
+
+  afterEach(() => {
+    for (const editor of editors.splice(0)) editor.destroy();
+    for (const host of hosts.splice(0)) host.remove();
+  });
+
+  it('says so once, however many editors the page mounts', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    await mountUnmarked();
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]?.[0]).toContain('data-band-canvas');
+
+    // The second one is the same mistake, and saying it again helps nobody.
+    await mountUnmarked();
+    expect(warn).toHaveBeenCalledTimes(1);
   });
 });
 

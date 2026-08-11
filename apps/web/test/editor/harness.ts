@@ -28,6 +28,24 @@ export function roundtrip(source: string): string {
   }
 }
 
+/**
+ * The same round trip, with one empty paragraph appended to the document first. A click in the
+ * blank room below the document adds exactly that, so this is what such a click would write.
+ */
+export function roundtripWithTrailingLine(source: string): string {
+  const { body, frame } = readMarkdown(source);
+  const editor = createTestEditor(body);
+  try {
+    const paragraph = editor.schema.nodes.paragraph;
+    if (paragraph === undefined) throw new Error('the schema holds no paragraph');
+    const { doc } = editor.state;
+    editor.view.dispatch(editor.state.tr.insert(doc.content.size, paragraph.create()));
+    return writeMarkdown(editor.state.doc, frame);
+  } finally {
+    editor.destroy();
+  }
+}
+
 /** Serialize whatever is currently in the editor, with a plain single-newline frame. */
 export function toMarkdown(editor: Editor): string {
   return writeMarkdown(editor.state.doc);

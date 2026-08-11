@@ -66,7 +66,8 @@ function Harness({
     if (editor) onReady(editor);
   }, [editor, onReady]);
   return (
-    <div className="editor__canvas" ref={canvas}>
+    // Marked exactly as the shell marks it: the band and the handles both read the mark.
+    <div className="editor__canvas" data-band-canvas ref={canvas}>
       <EditorContent editor={editor} />
       {editor ? (
         <BlockHandles

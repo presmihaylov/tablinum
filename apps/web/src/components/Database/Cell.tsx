@@ -96,6 +96,9 @@ function TextCell({ property, value, onChange, kind }: CellProps & { kind: 'text
       className="db-cell__input"
       type="text"
       inputMode={kind === 'number' ? 'decimal' : undefined}
+      // The box stays `text` so a half-typed address or number is never rejected, so the arrow
+      // rewrite is told here instead: a number holds no arrow, and a url would be broken by one.
+      data-no-arrow={kind === 'text' ? undefined : ''}
       aria-label={property.name}
       value={draft}
       onFocus={() => {

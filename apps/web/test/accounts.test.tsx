@@ -590,6 +590,144 @@ describe('the people panel', () => {
   });
 });
 
+describe('renaming somebody else', () => {
+  const SAM_PREVIEW = { handle: SAM.handle, pages: 4, comments: 1, changeableAt: null };
+  const SAM_HANDLE = `/api/v1/users/${SAM.id}/handle`;
+
+  const routes: MockRoutes = {
+    'GET /api/v1/auth/state': authState({ user: ADA }),
+    'GET /api/v1/users': { users: [ADA, SAM] },
+    'GET /api/v1/invites': { invites: [] },
+    [`GET ${SAM_HANDLE}`]: SAM_PREVIEW,
+  };
+
+  /** Open the handle field of one person, the way an admin does. */
+  async function openHandle(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+    await user.click(await screen.findByRole('button', { name: `Change the handle of ${SAM.name}` }));
+  }
+
+  it('asks for nothing until a row is opened', async () => {
+    const mock = start(routes);
+    renderWithAuth(<PeoplePanel me={ADA} />);
+
+    await screen.findByText(SAM.name);
+    // A preview reads every page of every open workspace. One per row would crawl the whole
+    // repository once for each person on the roster.
+    expect(mock.calls.some((item) => item.url.pathname.endsWith('/handle'))).toBe(false);
+  });
+
+  it('says what a rename would rewrite once the row is open', async () => {
+    const mock = start(routes);
+    const user = userEvent.setup();
+    renderWithAuth(<PeoplePanel me={ADA} />);
+    await openHandle(user);
+
+    await screen.findByText(/rewrites 4 pages and 1 comment in one commit/);
+    expect(screen.getByLabelText(`Handle of ${SAM.name}`)).toHaveValue(SAM.handle);
+    expect(mock.calls.some((item) => item.url.pathname === SAM_HANDLE)).toBe(true);
+  });
+
+  it('asks before it rewrites, then posts the new handle', async () => {
+    const mock = start({
+      ...routes,
+      [`POST ${SAM_HANDLE}`]: {
+        user: { ...SAM, handle: 'sam.r' },
+        previous: SAM.handle,
+        rewritten: { pages: 4, comments: 1, skipped: 0 },
+      },
+    });
+    const user = userEvent.setup();
+    renderWithAuth(<PeoplePanel me={ADA} />);
+    await openHandle(user);
+    await screen.findByText(/rewrites 4 pages and 1 comment in one commit/);
+
+    const field = screen.getByLabelText(`Handle of ${SAM.name}`);
+    await user.clear(field);
+    await user.type(field, 'sam.r');
+    await user.click(screen.getByRole('button', { name: 'Change handle' }));
+
+    // Nothing is sent until the dialog says what it costs and the admin agrees.
+    await screen.findByText(/@sam.rivers stays reserved for Sam Rivers/);
+    expect(mock.calls.some((item) => item.method === 'POST')).toBe(false);
+
+    await user.click(screen.getByRole('button', { name: 'Rewrite the mentions' }));
+
+    await waitFor(() => {
+      const call = mock.calls.find((item) => item.method === 'POST');
+      expect(call?.url.pathname).toBe(SAM_HANDLE);
+      expect(bodyOf(call ?? { body: null })).toEqual({ handle: 'sam.r' });
+    });
+    await screen.findByText('Sam Rivers is now @sam.r');
+  });
+
+  it('says how many pages kept the old handle', async () => {
+    start({
+      ...routes,
+      [`POST ${SAM_HANDLE}`]: {
+        user: { ...SAM, handle: 'sam.r' },
+        previous: SAM.handle,
+        rewritten: { pages: 3, comments: 1, skipped: 1 },
+      },
+    });
+    const user = userEvent.setup();
+    renderWithAuth(<PeoplePanel me={ADA} />);
+    await openHandle(user);
+    await screen.findByText(/rewrites 4 pages and 1 comment in one commit/);
+
+    const field = screen.getByLabelText(`Handle of ${SAM.name}`);
+    await user.clear(field);
+    await user.type(field, 'sam.r');
+    await user.click(screen.getByRole('button', { name: 'Change handle' }));
+    await user.click(await screen.findByRole('button', { name: 'Rewrite the mentions' }));
+
+    await screen.findByText('Sam Rivers is now @sam.r. 1 page kept the old one');
+  });
+
+  it('shows the refusal when the handle is taken', async () => {
+    start({ ...routes, [`POST ${SAM_HANDLE}`]: () => fail(409, 'CONFLICT', '@ada.lovelace is taken') });
+    const user = userEvent.setup();
+    renderWithAuth(<PeoplePanel me={ADA} />);
+    await openHandle(user);
+    await screen.findByText(/rewrites 4 pages and 1 comment in one commit/);
+
+    const field = screen.getByLabelText(`Handle of ${SAM.name}`);
+    await user.clear(field);
+    await user.type(field, 'ada.lovelace');
+    await user.click(screen.getByRole('button', { name: 'Change handle' }));
+    await user.click(await screen.findByRole('button', { name: 'Rewrite the mentions' }));
+
+    await screen.findByText('@ada.lovelace is taken');
+  });
+
+  it('refuses a handle that breaks the rules before it asks the server', async () => {
+    const mock = start(routes);
+    const user = userEvent.setup();
+    renderWithAuth(<PeoplePanel me={ADA} />);
+    await openHandle(user);
+
+    const field = await screen.findByLabelText(`Handle of ${SAM.name}`);
+    await user.clear(field);
+    await user.type(field, 'sam rivers');
+    await user.click(screen.getByRole('button', { name: 'Change handle' }));
+
+    await screen.findByText(/A handle looks like "ada.lovelace"/);
+    expect(mock.calls.some((item) => item.method === 'POST')).toBe(false);
+  });
+
+  it('will not change again until the cooldown is over', async () => {
+    start({
+      ...routes,
+      [`GET ${SAM_HANDLE}`]: { ...SAM_PREVIEW, changeableAt: '2099-01-01T00:00:00.000Z' },
+    });
+    const user = userEvent.setup();
+    renderWithAuth(<PeoplePanel me={ADA} />);
+    await openHandle(user);
+
+    await screen.findByText(/the next change is possible after/);
+    expect(screen.getByRole('button', { name: 'Change handle' })).toBeDisabled();
+  });
+});
+
 describe('the roster rows', () => {
   it('names each person beside their own avatar', async () => {
     start({

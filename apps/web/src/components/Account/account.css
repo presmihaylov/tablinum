@@ -163,6 +163,15 @@
   white-space: nowrap;
 }
 
+/** The rename field, indented under the row it belongs to. */
+.people-handle {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  align-items: flex-start;
+  padding: 0 0 var(--space-3) var(--space-6);
+}
+
 .emoji-row__glyph {
   display: inline-flex;
   align-items: center;

@@ -85,22 +85,50 @@ export function registerUserRoutes(app: FastifyInstance, ctx: RouteContext): voi
     return { user: change.account, previous: change.previous, rewritten };
   }
 
-  /** What a change would cost: how much text carries the handle, and when it may be changed. */
-  app.get(`${API_PREFIX}/me/handle`, async (request): Promise<HandlePreviewResponse> => {
-    const me = requireAccount(request);
-    const counts = await countMentions(ctx, request, me.handle);
-    const ready = accounts.handleChangeableAt(me.id);
+  /**
+   * What a change to this person's handle would cost: how much text carries it, and when it
+   * may be changed.
+   *
+   * Both preview routes answer through here, the way both change routes answer through
+   * applyHandle() above. The count is read against `request`, so a private space the caller
+   * cannot open never raises it, whoever the handle belongs to.
+   */
+  async function previewHandle(
+    request: FastifyRequest,
+    id: string,
+  ): Promise<HandlePreviewResponse> {
+    const account = accounts.getUser(id);
+    if (account === null) throw notFound(`No account with id ${id}`);
+    const counts = await countMentions(ctx, request, account.handle);
+    const ready = accounts.handleChangeableAt(id);
     return {
-      handle: me.handle,
+      handle: account.handle,
       pages: counts.pages,
       comments: counts.comments,
       changeableAt: ready === null ? null : new Date(ready).toISOString(),
     };
+  }
+
+  app.get(`${API_PREFIX}/me/handle`, async (request): Promise<HandlePreviewResponse> => {
+    const me = requireAccount(request);
+    return previewHandle(request, me.id);
   });
 
   app.post(`${API_PREFIX}/me/handle`, async (request): Promise<HandleChangeResponse> => {
     const me = requireAccount(request);
     return applyHandle(request, me.id);
+  });
+
+  /**
+   * What an admin's change to somebody else's handle would cost.
+   *
+   * The route below rewrites other people's committed text without asking them, so it needs
+   * the warning the self-service one already has, not less of it.
+   */
+  app.get(`${API_PREFIX}/users/:id/handle`, async (request): Promise<HandlePreviewResponse> => {
+    requireAdmin(request);
+    const { id } = parseOrThrow(UserParamsSchema, request.params, 'user id');
+    return previewHandle(request, id);
   });
 
   /** An admin fixes anybody's handle. The same cooldown applies, so neither route can churn. */

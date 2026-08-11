@@ -16,6 +16,8 @@ export const qk = {
   workspaceMembers: (id: string) => ['workspaces', id, 'members'] as const,
   slack: ['me', 'slack'] as const,
   handlePreview: ['me', 'handle'] as const,
+  /** What an admin's rename of somebody else would rewrite. One key per person. */
+  userHandlePreview: (id: string) => ['users', id, 'handle'] as const,
   invitePreview: (token: string) => ['invite', token] as const,
   spaces: ['spaces'] as const,
   tree: ['tree'] as const,

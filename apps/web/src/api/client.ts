@@ -303,6 +303,12 @@ export const api = {
   deleteUser: (id: string): Promise<OkResponse> =>
     request(`/users/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
+  userHandlePreview: (id: string, signal?: AbortSignal): Promise<HandlePreviewResponse> =>
+    request(`/users/${encodeURIComponent(id)}/handle`, { signal }),
+
+  changeUserHandle: (id: string, body: ChangeHandleBody): Promise<HandleChangeResponse> =>
+    request(`/users/${encodeURIComponent(id)}/handle`, { method: 'POST', body }),
+
   listInvites: (signal?: AbortSignal): Promise<InvitesResponse> => request('/invites', { signal }),
 
   createInvite: (body: CreateInviteBody): Promise<InviteResponse> =>

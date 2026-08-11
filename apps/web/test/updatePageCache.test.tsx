@@ -3,7 +3,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { PageId, PagePath } from '@tablinum/shared';
-import { useUpdatePage } from '../src/api/hooks';
+import { useUpdatePage } from '../src/api/content';
 import { qk } from '../src/api/keys';
 import { page } from './fixtures';
 import { installFetch, type MockServer } from './mockFetch';

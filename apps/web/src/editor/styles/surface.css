@@ -1,0 +1,261 @@
+/* ------------------------------------------------------------------ */
+/* the document surface                                                */
+/* ------------------------------------------------------------------ */
+
+.gd-editor-surface {
+  outline: none;
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--leading-relaxed);
+  padding-bottom: var(--space-8);
+  caret-color: var(--text-strong);
+}
+
+/*
+ * base.css loads after this file, so its `:focus-visible` rule wins the tie against
+ * the plain `outline: none` above and boxes in the whole document while it is edited.
+ * The caret is the focus indicator for both of these.
+ */
+.editor__title:focus-visible,
+.gd-editor-surface:focus-visible {
+  outline: none;
+}
+
+.gd-editor-surface > * + * {
+  margin-top: var(--space-2);
+}
+
+.gd-editor-surface p {
+  margin: 0;
+  min-height: 1.5em;
+}
+
+.gd-editor-surface h1,
+.gd-editor-surface h2,
+.gd-editor-surface h3,
+.gd-editor-surface h4,
+.gd-editor-surface h5,
+.gd-editor-surface h6 {
+  margin: var(--space-5) 0 var(--space-1);
+  color: var(--text-strong);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-tight);
+  letter-spacing: -0.01em;
+}
+
+.gd-editor-surface > :first-child {
+  margin-top: 0;
+}
+
+.gd-editor-surface h1 {
+  font-size: var(--text-2xl);
+}
+
+.gd-editor-surface h2 {
+  font-size: var(--text-xl);
+}
+
+.gd-editor-surface h3 {
+  font-size: var(--text-lg);
+}
+
+.gd-editor-surface h4,
+.gd-editor-surface h5,
+.gd-editor-surface h6 {
+  font-size: var(--text-md);
+}
+
+/* The reset drops every marker, so the editor puts back the two it needs. A task list keeps
+   the reset: its checkbox is the marker. */
+.gd-editor-surface ul,
+.gd-editor-surface ol {
+  margin: 0;
+  padding-left: var(--space-5);
+  list-style-position: outside;
+}
+
+.gd-editor-surface ul {
+  list-style-type: disc;
+}
+
+.gd-editor-surface ol {
+  list-style-type: decimal;
+}
+
+.gd-editor-surface ul ul {
+  list-style-type: circle;
+}
+
+.gd-editor-surface ul ul ul {
+  list-style-type: square;
+}
+
+.gd-editor-surface li::marker {
+  color: var(--text-muted);
+}
+
+.gd-editor-surface li {
+  margin: 0;
+}
+
+.gd-editor-surface li > p {
+  margin: 0;
+}
+
+.gd-editor-surface blockquote {
+  margin: 0;
+  padding-left: var(--space-4);
+  border-left: 3px solid var(--border-strong);
+  color: var(--text);
+}
+
+.gd-editor-surface hr {
+  margin: var(--space-5) 0;
+  border: 0;
+  border-top: 1px solid var(--border-strong);
+}
+
+.gd-editor-surface a,
+.gd-editor-link {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 3px;
+  cursor: text;
+}
+
+.gd-editor-wikilink {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid var(--accent-soft);
+  padding: 0 1px;
+  cursor: pointer;
+}
+
+.gd-editor-mention {
+  padding: 0 3px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.gd-editor-mention.ProseMirror-selectednode {
+  outline: 2px solid var(--accent);
+}
+
+/* An uploaded emoji sits on the line like a letter, not like a picture in its own block. */
+.gd-editor-emoji-inline {
+  display: inline-block;
+  width: 1.25em;
+  height: 1.25em;
+  vertical-align: -0.25em;
+  object-fit: contain;
+}
+
+.gd-editor-emoji-inline.ProseMirror-selectednode {
+  outline: 2px solid var(--accent);
+}
+
+.gd-editor-surface code {
+  padding: 0.15em 0.35em;
+  border-radius: var(--radius-sm);
+  background: var(--code-bg);
+  color: var(--code-text);
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+}
+
+.gd-editor-image {
+  display: inline-block;
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-md);
+}
+
+.gd-editor-image.ProseMirror-selectednode {
+  outline: 2px solid var(--accent);
+}
+
+.gd-editor-surface .ProseMirror-selectednode {
+  background: var(--bg-selected);
+  border-radius: var(--radius-sm);
+}
+
+/*
+ * A run of whole blocks, picked by dragging beside them or across them. The band reaches into
+ * the gutter so it reads as the block itself, not as the words the block happens to hold.
+ */
+.gd-editor-surface .gd-block-selected {
+  background: var(--bg-selected);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 0 0 4px var(--bg-selected);
+}
+
+/*
+ * The box the pointer paints while it picks blocks. It hangs off the body, so no scroller of
+ * the page clips it, and it takes no pointer events so the drag under it keeps running.
+ */
+.gd-block-band {
+  position: fixed;
+  z-index: 40;
+  pointer-events: none;
+  background: var(--bg-selected);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+}
+
+/*
+ * ProseMirror hides the native highlight while a block selection is up, which it asks for with
+ * this class. Without the rule the browser would paint its own band over the one above.
+ */
+.gd-editor-surface.ProseMirror-hideselection ::selection {
+  background: transparent;
+}
+
+.gd-editor-surface.ProseMirror-hideselection {
+  caret-color: transparent;
+}
+
+/*
+ * The block a link opened. The band fades on its own, so nothing has to take it away again
+ * once the reader has seen which block the link meant.
+ */
+.gd-editor-surface .gd-block-linked {
+  animation: gd-block-flash 2.4s ease-out forwards;
+  border-radius: var(--radius-sm);
+}
+
+@keyframes gd-block-flash {
+  0%,
+  55% {
+    background: var(--bg-selected);
+    box-shadow: 0 0 0 4px var(--bg-selected);
+  }
+
+  100% {
+    background: transparent;
+    box-shadow: 0 0 0 4px transparent;
+  }
+}
+
+/*
+ * ProseMirror keeps a node selected after the box is blurred, so a clicked diagram or image
+ * stayed lit up long after the pointer had gone somewhere else. Nothing is lit unless the
+ * caret is still in here.
+ */
+.gd-editor-surface:not(.ProseMirror-focused) .ProseMirror-selectednode {
+  outline: none;
+  background: none;
+}
+
+/* placeholder */
+.gd-editor-surface .is-empty::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  color: var(--text-faint);
+  pointer-events: none;
+}

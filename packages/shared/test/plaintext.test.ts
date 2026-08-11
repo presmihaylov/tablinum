@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { findMentions } from '../src/mentions.js';
 import { escapeHtml, markdownToPlainText } from '../src/plaintext.js';
 
 describe('markdownToPlainText', () => {
@@ -248,6 +249,59 @@ describe('bounded work', () => {
     const text = markdownToPlainText(`Intro.\n\n${'x'.repeat(300 * 1024)}`);
     expect(text.startsWith('Intro.')).toBe(true);
   });
+});
+
+/**
+ * Why the handle preview counts by reading the pages, not by asking the search index.
+ *
+ * The index stores markdownToPlainText(body), so a shortlist drawn from it can only find a
+ * handle that survived that projection. These cases are the ones where it does not survive:
+ * findMentions() renames them, the index cannot see them, and a shortlist would undercount
+ * what a rename is about to rewrite. Delete a case here only when the shortlist is proven
+ * safe for it.
+ */
+describe('markdownToPlainText against findMentions', () => {
+  const HANDLE = 'ada.lovelace';
+
+  /** The best a shortlist could do: `@` and `.` are separators, so match the word parts. */
+  function couldBeShortlisted(markdown: string): boolean {
+    const parts = HANDLE.split(/[._-]/).join('[^a-z0-9]+');
+    return new RegExp(parts, 'i').test(markdownToPlainText(markdown));
+  }
+
+  const survives = [
+    ['prose', 'Ask @ada.lovelace about it.'],
+    ['a heading', '## Ask @ada.lovelace'],
+    ['a bullet', '- Ask @ada.lovelace.'],
+    ['a blockquote', '> Ask @ada.lovelace.'],
+    ['emphasis', '*@ada.lovelace* and **@ada.lovelace**'],
+    ['link text', '[@ada.lovelace](/p/x)'],
+    ['a table cell', '| who |\n| --- |\n| @ada.lovelace |'],
+    ['a footnote', '[^1]: see @ada.lovelace'],
+  ] as const;
+
+  for (const [where, markdown] of survives) {
+    it(`keeps a handle written in ${where}`, () => {
+      expect(findMentions(markdown)).toContain(HANDLE);
+      expect(couldBeShortlisted(markdown)).toBe(true);
+    });
+  }
+
+  const destroyed = [
+    ['a link destination', '[owner](@ada.lovelace)'],
+    ['an image destination', '![alt](@ada.lovelace)'],
+    ['an HTML attribute', '<div title="@ada.lovelace">hi</div>'],
+    ['an HTML comment', '<!-- owner: @ada.lovelace -->'],
+    ['a link definition', '[owner]: https://example.com "@ada.lovelace"'],
+    ['a body past the index budget', `${'x'.repeat(300 * 1024)}\n\nAsk @ada.lovelace.`],
+  ] as const;
+
+  for (const [where, markdown] of destroyed) {
+    it(`loses a handle written in ${where}, which a rename would still rewrite`, () => {
+      expect(findMentions(markdown)).toContain(HANDLE);
+      expect(couldBeShortlisted(markdown)).toBe(false);
+    });
+  }
 });
 
 describe('escapeHtml', () => {

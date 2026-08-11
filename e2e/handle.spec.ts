@@ -144,4 +144,61 @@ test.describe('an editable handle', () => {
     expect(taken.status()).toBe(409);
     expect(await taken.text()).toContain(`@${before} is taken`);
   });
+
+  test('an admin is told what renaming somebody else costs, and agrees to it first', async ({
+    api,
+    browser,
+    page,
+    request,
+  }) => {
+    const invited = await createInvite(request);
+    const member = await joinFromLink(browser, invited, 'E2E Renamed');
+    const who = member.account.name;
+    const before = member.account.handle;
+    const after = uniqueSlug('e2e.byadmin');
+
+    const space = await api.createUniqueSpace('handle');
+    const path = `${space.slug}/rota`;
+    const seeded = await api.createPage({
+      path,
+      title: 'Rota',
+      markdown: `Ask @${before} about the rota.\n`,
+    });
+    pages.push(seeded.id);
+    await commentOn(request, seeded.id, `Handing over to @${before}.`);
+
+    await page.goto('/settings/workspace');
+    const row = page.locator('.people-row').filter({ hasText: who });
+    await row.getByRole('button', { name: `Change the handle of ${who}` }).click();
+
+    // The same count the person gets about themselves, in the same words.
+    const field = page.getByRole('textbox', { name: `Handle of ${who}`, exact: true });
+    await expect(field).toHaveValue(before);
+    await expect(
+      page.getByText('A change rewrites 1 page and 1 comment in one commit.'),
+    ).toBeVisible();
+
+    await field.fill(after);
+    await page.getByRole('button', { name: 'Change handle' }).click();
+    await expect(page.getByText(`Change the handle of ${who} to @${after}?`)).toBeVisible();
+    await expect(page.getByText(`@${before} stays reserved for ${who}`)).toBeVisible();
+
+    // Nothing is rewritten until the admin agrees to that sentence.
+    expect((await api.getPage(path))?.markdown).toContain(`@${before}`);
+
+    await page.getByRole('button', { name: 'Rewrite the mentions' }).click();
+    await expect(page.getByText(`${who} is now @${after}`)).toBeVisible();
+
+    await expect
+      .poll(async () => ((await api.getPage(path))?.markdown ?? '').trim(), {
+        message: 'the page still carries the old handle',
+      })
+      .toBe(`Ask @${after} about the rota.`);
+
+    // The person sees the new handle on their own settings page, and cannot change it again
+    // today: one change a day, whoever asked for it.
+    const field2 = await openHandleField(member.page);
+    await expect(field2).toHaveValue(after);
+    await expect(member.page.getByRole('button', { name: 'Change handle' })).toBeDisabled();
+  });
 });

@@ -1,0 +1,16 @@
+/* ------------------------------------------------------------------ */
+/* page picker                                                         */
+/* ------------------------------------------------------------------ */
+
+.gd-editor-picker {
+  max-height: 15rem;
+  margin-top: var(--space-3);
+  overflow-y: auto;
+}
+
+.gd-editor-picker__empty {
+  margin: 0;
+  padding: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}

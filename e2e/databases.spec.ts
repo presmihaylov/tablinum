@@ -207,8 +207,8 @@ test.describe('databases', () => {
     await expect(grid(page)).toBeVisible();
 
     await grid(page).getByRole('button', { name: /^Notes/ }).click();
-    await page.getByLabel('Property name').fill('Detail');
-    await page.getByLabel('Property name').press('Enter');
+    await page.getByLabel('Column name').fill('Detail');
+    await page.getByLabel('Column name').press('Enter');
     await expect(grid(page).getByRole('button', { name: /^Detail/ })).toBeVisible();
 
     await grid(page).getByRole('button', { name: /^Detail/ }).click();
@@ -218,6 +218,30 @@ test.describe('databases', () => {
     const file = await content.waitForPageFile(path);
     await expect.poll(async () => (await content.read(file)) ?? '').toContain('name: Detail');
     expect((await content.read(file)) ?? '').toContain('hidden:');
+  });
+
+  test('renames the title column and sorts by it', async ({ page, content }) => {
+    await page.goto(`/p/${path}`);
+    await expect(grid(page)).toBeVisible();
+    await addRow(page, 'Write it');
+    await addRow(page, 'Ship it');
+
+    await grid(page).getByRole('button', { name: /^Name/ }).click();
+    await page.getByLabel('Column name').fill('Task');
+    await page.getByLabel('Column name').press('Enter');
+    await expect(grid(page).getByRole('button', { name: /^Task/ })).toBeVisible();
+
+    await grid(page).getByRole('button', { name: /^Task/ }).click();
+    await page.getByRole('menuitem', { name: 'Sort ascending' }).click();
+    await expect.poll(async () => titles(page)).toEqual(['Ship it', 'Write it']);
+
+    const file = await content.waitForPageFile(path);
+    await expect.poll(async () => (await content.read(file)) ?? '').toContain('titleName: Task');
+
+    // The name belongs to the database, so it comes back with the page rather than with the tab.
+    await page.reload();
+    await expect(grid(page).getByRole('button', { name: /^Task/ })).toBeVisible();
+    await expect.poll(async () => titles(page)).toEqual(['Ship it', 'Write it']);
   });
 
   test('filters the rows a view shows', async ({ page }) => {

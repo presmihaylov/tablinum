@@ -13,7 +13,7 @@ import {
   useTree,
   useUpdatePage,
   useUpdateSpace,
-} from '../api/hooks';
+} from '../api/content';
 import { ConfirmDialog, type ConfirmRequest } from '../components/ui/ConfirmDialog';
 import { PromptDialog, type PromptRequest } from '../components/ui/PromptDialog';
 import { SpaceDialog, type SpaceDialogRequest } from '../components/ui/SpaceDialog';

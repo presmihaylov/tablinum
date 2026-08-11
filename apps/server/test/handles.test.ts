@@ -496,6 +496,137 @@ describe('POST /me/handle', () => {
   });
 });
 
+/**
+ * The cost of renaming somebody else.
+ *
+ * The route below rewrites pages and comments other people wrote, and the person who holds the
+ * handle is not there to agree to it, so the admin is told the same numbers the person renaming
+ * themselves is told.
+ */
+describe('GET /users/:id/handle', () => {
+  it('counts the pages and comments that carry somebody else handle', async () => {
+    const harness = await harnessFor();
+    const cookie = await claim(harness);
+    const grace = await invite(harness, cookie, { email: 'g@example.com', name: 'Grace Hopper' });
+    await makeSpace(harness);
+    const page = await makePage(harness, `Ask @${grace.handle} about the build.`);
+    await makePage(harness, 'Nobody is named here.', 'eng/other');
+
+    await harness.app.inject({
+      method: 'POST',
+      url: `/api/v1/pages/${page.id}/comments`,
+      headers: { cookie },
+      payload: { body: `and @${grace.handle} again` },
+    });
+
+    const response = await harness.app.inject({
+      method: 'GET',
+      url: `/api/v1/users/${grace.id}/handle`,
+      headers: { cookie },
+    });
+    const preview = bodyOf(response, HandlePreviewResponseSchema);
+    expect(preview.handle).toBe(grace.handle);
+    expect(preview.pages).toBe(1);
+    expect(preview.comments).toBe(1);
+    expect(preview.changeableAt).toBeNull();
+  });
+
+  it('says the same as the person own preview does', async () => {
+    const harness = await harnessFor();
+    const cookie = await claim(harness);
+    const grace = await invite(harness, cookie, { email: 'g@example.com', name: 'Grace Hopper' });
+    await makeSpace(harness);
+    await makePage(harness, `Ask @${grace.handle} about the build.`);
+
+    const asAdmin = await harness.app.inject({
+      method: 'GET',
+      url: `/api/v1/users/${grace.id}/handle`,
+      headers: { cookie },
+    });
+    // One implementation answers both routes, so the two can never drift apart.
+    expect(bodyOf(asAdmin, HandlePreviewResponseSchema)).toEqual(
+      await previewHandle(harness, grace.cookie),
+    );
+  });
+
+  it('reports the cooldown, so the button matches the route', async () => {
+    const harness = await harnessFor();
+    const cookie = await claim(harness);
+    const grace = await invite(harness, cookie, { email: 'g@example.com', name: 'Grace Hopper' });
+
+    const changed = await harness.app.inject({
+      method: 'POST',
+      url: `/api/v1/users/${grace.id}/handle`,
+      headers: { cookie },
+      payload: { handle: 'amazing.grace' },
+    });
+    expect(changed.statusCode).toBe(200);
+
+    const response = await harness.app.inject({
+      method: 'GET',
+      url: `/api/v1/users/${grace.id}/handle`,
+      headers: { cookie },
+    });
+    const preview = bodyOf(response, HandlePreviewResponseSchema);
+    expect(preview.handle).toBe('amazing.grace');
+    expect(preview.changeableAt).not.toBeNull();
+  });
+
+  it('never counts a page in a private space the admin cannot open', async () => {
+    const harness = await harnessFor();
+    const cookie = await claim(harness);
+    const grace = await invite(harness, cookie, { email: 'g@example.com', name: 'Grace Hopper' });
+    await makePrivatePage(harness, grace.cookie, `Pay @${grace.handle} more.`);
+
+    // The count is read as the caller, never as the subject. Answering 1 here would tell an
+    // admin that a space they may not open exists and how much of it names Grace.
+    const response = await harness.app.inject({
+      method: 'GET',
+      url: `/api/v1/users/${grace.id}/handle`,
+      headers: { cookie },
+    });
+    expect(bodyOf(response, HandlePreviewResponseSchema).pages).toBe(0);
+  });
+
+  it('refuses a member asking about somebody else', async () => {
+    const harness = await harnessFor();
+    const cookie = await claim(harness);
+    const grace = await invite(harness, cookie, { email: 'g@example.com', name: 'Grace Hopper' });
+    const sam = await invite(harness, cookie, { email: 's@example.com', name: 'Sam Rivers' });
+
+    const response = await harness.app.inject({
+      method: 'GET',
+      url: `/api/v1/users/${grace.id}/handle`,
+      headers: { cookie: sam.cookie },
+    });
+    expect(response.statusCode).toBe(401);
+  });
+
+  it('refuses a caller with no credential at all', async () => {
+    const harness = await harnessFor();
+    const cookie = await claim(harness);
+    const grace = await invite(harness, cookie, { email: 'g@example.com', name: 'Grace Hopper' });
+
+    const response = await harness.app.inject({
+      method: 'GET',
+      url: `/api/v1/users/${grace.id}/handle`,
+    });
+    expect(response.statusCode).toBe(401);
+  });
+
+  it('reports an unknown account', async () => {
+    const harness = await harnessFor();
+    const cookie = await claim(harness);
+
+    const response = await harness.app.inject({
+      method: 'GET',
+      url: '/api/v1/users/us_01J8XYZABCDEFGHJKMNPQRSTVW/handle',
+      headers: { cookie },
+    });
+    expect(response.statusCode).toBe(404);
+  });
+});
+
 describe('POST /users/:id/handle', () => {
   it('lets an admin change somebody else', async () => {
     const harness = await harnessFor();

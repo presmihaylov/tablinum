@@ -164,6 +164,8 @@ export interface MutationRecord {
   removedIds?: PageId[];
   /** Page paths that no longer exist, so open tabs can be told. */
   removedPaths?: PagePath[];
+  /** Space slugs that no longer exist, so the line that hid a private one goes too. */
+  removedSpaces?: string[];
   /** Extra content-relative files the request touched, e.g. `_space.yml` or an attachment. */
   files?: string[];
   /** Commit message for the debounced commit. */
@@ -216,7 +218,10 @@ export class Wiring {
     for (const id of removedIds) {
       await this.#removePage(id);
     }
-    await this.cleanUpAfterDelete({ pageIds: removedIds });
+    await this.cleanUpAfterDelete({
+      pageIds: removedIds,
+      spaceSlugs: record.removedSpaces ?? [],
+    });
 
     const agent = record.agent ?? null;
     for (const page of pages) {

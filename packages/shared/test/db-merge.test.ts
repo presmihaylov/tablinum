@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   DatabaseSchema,
+  TITLE_COLUMN_ID,
   newPropertyId,
   newViewId,
+  renameTitleColumn,
   type Database,
   type DbProperty,
   type DbView,
@@ -198,5 +200,42 @@ describe('mergeDatabases', () => {
     const merged = mergeDatabases(base(), base(), base());
     expect(merged.clean).toBe(true);
     expect(merged.database).toEqual(base());
+  });
+
+  it('keeps a sort on the title column, which no side can take away', () => {
+    const start = base();
+    start.views = [view(TABLE, 'Table', { sorts: [{ property: TITLE_COLUMN_ID, direction: 'asc' }] })];
+    const mine = structuredClone(start);
+    mine.properties = [property(STATUS, 'Status')];
+
+    const merged = mergeDatabases(start, mine, structuredClone(start));
+    expect(merged.clean).toBe(true);
+    expect(merged.database.views[0]?.sorts).toEqual([
+      { property: TITLE_COLUMN_ID, direction: 'asc' },
+    ]);
+  });
+
+  it('takes the name of the title column from the side that changed it', () => {
+    const mine = renameTitleColumn(base(), 'Task');
+    const merged = mergeDatabases(base(), mine, base());
+    expect(merged.clean).toBe(true);
+    expect(merged.database.titleName).toBe('Task');
+  });
+
+  it('keeps a name neither side touched, and carries none when neither ever set one', () => {
+    const start = renameTitleColumn(base(), 'Task');
+    const merged = mergeDatabases(start, structuredClone(start), structuredClone(start));
+    expect(merged.database.titleName).toBe('Task');
+    expect(mergeDatabases(base(), base(), base()).database.titleName).toBeUndefined();
+  });
+
+  it('refuses the title column renamed differently on both sides', () => {
+    const merged = mergeDatabases(
+      base(),
+      renameTitleColumn(base(), 'Task'),
+      renameTitleColumn(base(), 'Ticket'),
+    );
+    expect(merged.clean).toBe(false);
+    expect(merged.database.titleName).toBe('Ticket');
   });
 });

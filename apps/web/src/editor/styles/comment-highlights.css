@@ -1,0 +1,36 @@
+/* ------------------------------------------------------------------ */
+/* comment highlights                                                  */
+/* ------------------------------------------------------------------ */
+
+.editor__comments {
+  flex: none;
+  margin-top: var(--space-1);
+  padding: 0 var(--space-2);
+  color: var(--text-muted);
+}
+
+.editor__comments-count {
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Decorations, never marks: nothing here can reach the markdown file. */
+.gd-comment {
+  border-bottom: 2px solid var(--warning);
+  background: color-mix(in srgb, var(--warning) 14%, transparent);
+  cursor: pointer;
+}
+
+.gd-comment--active {
+  background: color-mix(in srgb, var(--warning) 32%, transparent);
+}
+
+.gd-comment--resolved {
+  border-bottom-color: var(--border-strong);
+  background: none;
+}
+
+.gd-comment--draft {
+  border-bottom-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}

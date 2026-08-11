@@ -1,5 +1,14 @@
 import { useState } from 'react';
-import { DEFAULT_INVITE_DAYS, type Account, type AccountRole, type Invite } from '@tablinum/shared';
+import {
+  DEFAULT_INVITE_DAYS,
+  HANDLE_HINT,
+  isHandle,
+  normalizeHandle,
+  type Account,
+  type AccountRole,
+  type Invite,
+} from '@tablinum/shared';
+import { useChangeUserHandle, useUserHandlePreview } from '../../api/handles';
 import {
   useCreateInvite,
   useDeleteUser,
@@ -7,12 +16,13 @@ import {
   useRevokeInvite,
   useUpdateUser,
   useUsers,
-} from '../../api/hooks';
+} from '../../api/accounts';
 import { absoluteTime } from '../../lib/format';
 import { describeError, useToast } from '../../lib/toast';
 import { ConfirmDialog, type ConfirmRequest } from '../ui/ConfirmDialog';
 import { Copy, Trash } from '../ui/Icon';
 import { Avatar } from './Avatar';
+import { describeReservation, describeRewrite, holderNamed } from './handleCost';
 import './account.css';
 
 interface PeoplePanelProps {
@@ -40,6 +50,9 @@ export function PeoplePanel({ me }: PeoplePanelProps) {
   const [link, setLink] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
+  // Whose handle is open for editing. One at a time: a preview reads every page of every open
+  // workspace, so a roster that asked for one per row would crawl the content once per person.
+  const [renaming, setRenaming] = useState<string | null>(null);
 
   const invite = (): void => {
     setError(null);
@@ -137,34 +150,49 @@ export function PeoplePanel({ me }: PeoplePanelProps) {
       <section className="account-section" aria-label="Accounts">
         <div className="account-section__title">Accounts</div>
         {(users.data?.users ?? []).map((user) => (
-          <div className="people-row" key={user.id}>
-            <Avatar person={user} size={26} />
-            <div className="people-row__who">
-              <div className="people-row__name">
-                {user.name}
-                {user.id === me?.id ? ' (you)' : ''}
+          <div key={user.id}>
+            <div className="people-row">
+              <Avatar person={user} size={26} />
+              <div className="people-row__who">
+                <div className="people-row__name">
+                  {user.name}
+                  {user.id === me?.id ? ' (you)' : ''}
+                </div>
+                <div className="people-row__email">
+                  {user.email} · @{user.handle}
+                </div>
               </div>
-              <div className="people-row__email">{user.email}</div>
+              <select
+                className="input"
+                value={user.role}
+                onChange={(event) => setRoleOf(user, event.target.value === 'admin' ? 'admin' : 'member')}
+                aria-label={`Role of ${user.name}`}
+              >
+                <option value="member">Member</option>
+                <option value="admin">Admin</option>
+              </select>
+              <button
+                type="button"
+                className="btn btn--outline"
+                onClick={() => setRenaming(renaming === user.id ? null : user.id)}
+                aria-label={`Change the handle of ${user.name}`}
+              >
+                Handle
+              </button>
+              <button
+                type="button"
+                className="btn btn--icon"
+                onClick={() => remove(user)}
+                disabled={user.id === me?.id}
+                title={user.id === me?.id ? 'You cannot remove yourself' : `Remove ${user.name}`}
+                aria-label={`Remove ${user.name}`}
+              >
+                <Trash />
+              </button>
             </div>
-            <select
-              className="input"
-              value={user.role}
-              onChange={(event) => setRoleOf(user, event.target.value === 'admin' ? 'admin' : 'member')}
-              aria-label={`Role of ${user.name}`}
-            >
-              <option value="member">Member</option>
-              <option value="admin">Admin</option>
-            </select>
-            <button
-              type="button"
-              className="btn btn--icon"
-              onClick={() => remove(user)}
-              disabled={user.id === me?.id}
-              title={user.id === me?.id ? 'You cannot remove yourself' : `Remove ${user.name}`}
-              aria-label={`Remove ${user.name}`}
-            >
-              <Trash />
-            </button>
+            {renaming === user.id ? (
+              <HandleEditor user={user} onAsk={setConfirm} onDone={() => setRenaming(null)} />
+            ) : null}
           </div>
         ))}
       </section>
@@ -196,5 +224,100 @@ export function PeoplePanel({ me }: PeoplePanelProps) {
 
       <ConfirmDialog request={confirm} onClose={() => setConfirm(null)} />
     </>
+  );
+}
+
+interface HandleEditorProps {
+  user: Account;
+  onAsk: (request: ConfirmRequest) => void;
+  onDone: () => void;
+}
+
+/**
+ * Rename somebody else, having been told what it costs first.
+ *
+ * The sweep behind this rewrites pages and comments other people wrote and committed, and the
+ * person who holds the handle is not here to agree to it. So the admin sees the same count and
+ * agrees to the same sentence a person renaming themselves does.
+ */
+function HandleEditor({ user, onAsk, onDone }: HandleEditorProps) {
+  const toast = useToast();
+  const preview = useUserHandlePreview(user.id);
+  const changeHandle = useChangeUserHandle();
+  const [handle, setHandle] = useState(user.handle);
+  const [error, setError] = useState<string | null>(null);
+
+  const holder = holderNamed(user.name);
+  const wanted = normalizeHandle(handle);
+  const changeableAt = preview.data?.changeableAt ?? null;
+  const current = preview.data?.handle ?? user.handle;
+
+  const submit = (next: string): void => {
+    changeHandle.mutate(
+      { id: user.id, body: { handle: next } },
+      {
+        onSuccess: (data) => {
+          const left = data.rewritten.skipped;
+          // Those pages keep the old handle, which is still reserved, so they still name the
+          // right person. Saying so is the point of counting them.
+          const note =
+            left === 0 ? '' : `. ${left} ${left === 1 ? 'page' : 'pages'} kept the old one`;
+          toast.push(`${user.name} is now @${data.user.handle}${note}`, 'success');
+          onDone();
+        },
+        onError: (cause) => setError(describeError(cause, 'Could not change that handle.')),
+      },
+    );
+  };
+
+  const ask = (): void => {
+    if (wanted === current) return;
+    if (!isHandle(wanted)) {
+      setError(HANDLE_HINT);
+      return;
+    }
+
+    setError(null);
+    onAsk({
+      title: `Change the handle of ${user.name} to @${wanted}?`,
+      message: `${describeRewrite(preview.data, holder)} ${describeReservation(current, holder)}`,
+      confirmLabel: 'Rewrite the mentions',
+      onConfirm: () => submit(wanted),
+    });
+  };
+
+  return (
+    <div className="people-handle">
+      <label className="field">
+        <span className="field__label">Handle of {user.name}</span>
+        <input
+          className="input"
+          value={handle}
+          spellCheck={false}
+          autoCapitalize="none"
+          onChange={(event) => setHandle(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key !== 'Enter') return;
+            event.preventDefault();
+            ask();
+          }}
+        />
+      </label>
+      <p className="account-form__note">
+        {describeRewrite(preview.data, holder)}
+        {changeableAt === null
+          ? ''
+          : ` ${user.name} changed it recently, so the next change is possible after ${new Date(changeableAt).toLocaleString()}.`}
+      </p>
+      {error === null ? null : <p className="account-form__error">{error}</p>}
+      <button
+        type="button"
+        className="btn btn--primary"
+        onClick={ask}
+        disabled={changeHandle.isPending || changeableAt !== null || wanted === current}
+      >
+        Change handle
+      </button>
+    </div>
   );
 }

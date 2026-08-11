@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from 'react';
 import {
+  columnName,
   threadTarget,
   type Account,
   type Agent,
@@ -17,15 +18,14 @@ import {
   type CreateThreadBody,
   type ThreadTarget,
 } from '@tablinum/shared';
+import { useAgents, useUsers } from '../../api/accounts';
 import {
-  useAgents,
   useCreateThread,
   useDeleteComment,
   useReplyToThread,
   useResolveThread,
   useUpdateComment,
-  useUsers,
-} from '../../api/hooks';
+} from '../../api/content';
 import { useAuth } from '../../lib/auth';
 import { useComments, type CommentDraft } from '../../lib/comments';
 import { absoluteTime, relativeTime } from '../../lib/format';
@@ -605,9 +605,9 @@ export function CommentsPanel() {
   // A thread whose words are still on the page is drawn beside them. One about the whole page,
   // one about a column, and one whose words are gone have nowhere to point, so they stay at the
   // top of the panel.
-  const columns = comments.columns;
+  const schema = comments.schema;
   const nameOfColumn = (id: string | null): string | null =>
-    id === null ? null : (columns?.find((one) => one.id === id)?.name ?? null);
+    id === null || schema === null ? null : columnName(schema, id);
   const orphaned = (thread: CommentThread): boolean => {
     const target = threadTarget(thread);
     if (target.kind === 'column') return nameOfColumn(target.column) === null;

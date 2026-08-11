@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import type { Page } from '@tablinum/shared';
-import { useBacklinks } from '../../api/hooks';
+import { useBacklinks } from '../../api/content';
 import { absoluteTime, relativeTime } from '../../lib/format';
 import { pageHref } from '../../lib/href';
 import type { PanelState } from '../../lib/panels';

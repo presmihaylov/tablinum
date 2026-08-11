@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { PropertyIdSchema } from './databases.js';
+import { ColumnIdSchema } from './databases.js';
 import { newUlid } from './ids.js';
 import { IsoDateSchema, PageIdSchema } from './schemas.js';
 
@@ -18,7 +18,7 @@ import { IsoDateSchema, PageIdSchema } from './schemas.js';
  * fuzzy match is attempted, so a comment can never point at a sentence it was not written about.
  *
  * A thread can also be about a column of a database instead of about a run of text. It holds the
- * property id, not the column name, so renaming the column keeps the conversation.
+ * column id, not the column name, so renaming the column keeps the conversation.
  */
 
 /** Prefix of a comment thread id, in the style of the page and user ids. */
@@ -81,10 +81,10 @@ export const CommentThreadSchema = z.object({
   /** Null for a thread about the whole page rather than about one selection. */
   anchor: CommentAnchorSchema.nullable(),
   /**
-   * The property id of the database column this thread is about, or null. An id rather than a
-   * name, so a renamed column keeps its thread. Never set together with `anchor`.
+   * The id of the database column this thread is about, or null. An id rather than a name, so a
+   * renamed column keeps its thread. Never set together with `anchor`.
    */
-  column: PropertyIdSchema.nullable(),
+  column: ColumnIdSchema.nullable(),
   resolved: z.boolean(),
   resolvedBy: z.string().nullable(),
   resolvedAt: IsoDateSchema.nullable(),
@@ -106,7 +106,7 @@ export const CreateThreadBodySchema = z
     /** Omit both for a comment about the whole page. */
     anchor: CommentAnchorSchema.optional(),
     /** The database column the thread is about. */
-    column: PropertyIdSchema.optional(),
+    column: ColumnIdSchema.optional(),
   })
   // A thread is about one thing. Both at once has no place to be drawn and no meaning.
   .refine(
@@ -124,7 +124,7 @@ export const CommentsQuerySchema = z.object({
   /** Leave it out for every thread. `true` or `false` narrows to one side. */
   resolved: z.enum(['true', 'false']).optional(),
   /** Narrow to the threads about one database column. */
-  column: PropertyIdSchema.optional(),
+  column: ColumnIdSchema.optional(),
 });
 
 // ---------------------------------------------------------------------------

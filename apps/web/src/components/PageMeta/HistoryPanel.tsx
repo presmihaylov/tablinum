@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { PageId } from '@tablinum/shared';
-import { useHistory, useRevision } from '../../api/hooks';
+import { useHistory, useRevision } from '../../api/content';
 import { absoluteTime, relativeTime, shortSha } from '../../lib/format';
 import { Modal } from '../ui/Overlay';
 

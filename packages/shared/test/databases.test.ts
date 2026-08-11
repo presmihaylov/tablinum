@@ -1,13 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_BOARD_NAME,
+  DEFAULT_TITLE_NAME,
   DatabaseSchema,
   OPS_FOR_TYPE,
+  TITLE_COLUMN_ID,
   applyView,
   boardGroups,
   boardProperty,
   coerceProps,
   coerceValue,
+  columnName,
   compareValues,
   dateEnd,
   dateStart,
@@ -21,8 +24,11 @@ import {
   newViewId,
   optionByName,
   opTakesNoValue,
+  renameTitleColumn,
   starterBoard,
   starterDatabase,
+  titleColumnName,
+  withView,
   type Database,
   type DbProperty,
   type DbRow,
@@ -337,6 +343,140 @@ describe('applyView sorts', () => {
       rows,
     );
     expect(sorted.map((entry) => entry.id)).toEqual(['b', 'a']);
+  });
+});
+
+describe('applyView sorts by the title column', () => {
+  const ids = (direction: 'asc' | 'desc', rows: DbRow[], on = database): string[] =>
+    applyView(on, { ...view, sorts: [{ property: TITLE_COLUMN_ID, direction }] }, rows).map(
+      (entry) => entry.id,
+    );
+
+  /** A row named something other than its id, which every other test here leans on. */
+  const named = (id: string, title: string): DbRow => ({ ...row(id, {}), title });
+
+  it('sorts the row titles ascending and descending', () => {
+    const rows = [named('a', 'Zulu'), named('b', 'Alpha')];
+    expect(ids('asc', rows)).toEqual(['b', 'a']);
+    expect(ids('desc', rows)).toEqual(['a', 'b']);
+  });
+
+  it('reads a title the way it reads a text cell: no case, and 2 before 10', () => {
+    const rows = [named('a', 'item 10'), named('b', 'ITEM 9')];
+    expect(ids('asc', rows)).toEqual(['b', 'a']);
+  });
+
+  it('puts a row nobody has named last whichever way it sorts', () => {
+    const rows = [named('empty', ''), named('filled', 'Ship it')];
+    expect(ids('asc', rows)[1]).toBe('empty');
+    expect(ids('desc', rows)[1]).toBe('empty');
+  });
+
+  it('keeps the sort on a database that lists no property at all', () => {
+    const bare: Database = { properties: [], views: [view] };
+    expect(ids('asc', [named('a', 'Zulu'), named('b', 'Alpha')], bare)).toEqual(['b', 'a']);
+  });
+
+  it('falls through to a property sort when two rows share a title', () => {
+    const rows = [
+      { ...row('a', { [score.id]: 2 }), title: 'Same' },
+      { ...row('b', { [score.id]: 1 }), title: 'Same' },
+    ];
+    const sorted = applyView(
+      database,
+      {
+        ...view,
+        sorts: [
+          { property: TITLE_COLUMN_ID, direction: 'asc' },
+          { property: score.id, direction: 'asc' },
+        ],
+      },
+      rows,
+    );
+    expect(sorted.map((entry) => entry.id)).toEqual(['b', 'a']);
+  });
+
+  it('still drops a sort on a property the schema no longer has', () => {
+    const rows = [named('a', 'Zulu'), named('b', 'Alpha')];
+    const sorted = applyView(
+      database,
+      { ...view, sorts: [{ property: newPropertyId(), direction: 'asc' }] },
+      rows,
+    );
+    expect(sorted.map((entry) => entry.id)).toEqual(['a', 'b']);
+  });
+});
+
+describe('the title column', () => {
+  it('is called Name until somebody renames it', () => {
+    expect(titleColumnName(database)).toBe(DEFAULT_TITLE_NAME);
+    expect(titleColumnName({ titleName: 'Task' })).toBe('Task');
+  });
+
+  it('stores a new name, trimmed', () => {
+    expect(renameTitleColumn(database, '  Task  ').titleName).toBe('Task');
+  });
+
+  it('stores the default name as no name at all, so an untouched database carries no field', () => {
+    const renamed = renameTitleColumn(database, 'Task');
+    expect(Object.keys(renameTitleColumn(renamed, DEFAULT_TITLE_NAME))).toEqual([
+      'properties',
+      'views',
+    ]);
+    expect(Object.keys(renameTitleColumn(renamed, '   '))).toEqual(['properties', 'views']);
+  });
+
+  it('leaves the properties and the views exactly as they were', () => {
+    const renamed = renameTitleColumn(database, 'Task');
+    expect(renamed.properties).toBe(database.properties);
+    expect(renamed.views).toBe(database.views);
+  });
+
+  it('passes its own schema with a name and with a sort that points at it', () => {
+    const renamed: Database = {
+      ...renameTitleColumn(database, 'Task'),
+      views: [{ ...view, sorts: [{ property: TITLE_COLUMN_ID, direction: 'desc' }] }],
+    };
+    expect(() => DatabaseSchema.parse(renamed)).not.toThrow();
+  });
+
+  it('takes no filter, because no menu offers one', () => {
+    const filtered: Database = {
+      ...database,
+      views: [{ ...view, filters: [{ property: TITLE_COLUMN_ID, op: 'is', value: 'x' }] }],
+    };
+    expect(() => DatabaseSchema.parse(filtered)).toThrow();
+  });
+
+  it('refuses a name longer than a property name may be', () => {
+    expect(() => DatabaseSchema.parse({ ...database, titleName: 'x'.repeat(101) })).toThrow();
+  });
+});
+
+describe('columnName', () => {
+  it('names the title column and every property', () => {
+    expect(columnName(database, TITLE_COLUMN_ID)).toBe('Name');
+    expect(columnName(renameTitleColumn(database, 'Task'), TITLE_COLUMN_ID)).toBe('Task');
+    expect(columnName(database, status.id)).toBe('Status');
+  });
+
+  it('is null for a column the database does not have', () => {
+    expect(columnName(database, newPropertyId())).toBeNull();
+  });
+});
+
+describe('withView', () => {
+  it('changes the one view it names and leaves the rest of the database alone', () => {
+    const second: DbView = { ...view, id: newViewId(), name: 'Board' };
+    const two: Database = { ...database, views: [view, second] };
+    const next = withView(two, second.id, { sorts: [{ property: TITLE_COLUMN_ID, direction: 'asc' }] });
+    expect(next.views[0]).toBe(view);
+    expect(next.views[1]?.sorts).toEqual([{ property: TITLE_COLUMN_ID, direction: 'asc' }]);
+    expect(next.properties).toBe(database.properties);
+  });
+
+  it('changes nothing when no view carries the id', () => {
+    expect(withView(database, newViewId(), { hidden: [status.id] }).views).toEqual(database.views);
   });
 });
 

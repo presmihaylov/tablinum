@@ -1,0 +1,18 @@
+/* ------------------------------------------------------------------ */
+/* save indicator (shared component, styled here)                      */
+/* ------------------------------------------------------------------ */
+
+.save-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+  padding-top: var(--space-2);
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.save-indicator--error {
+  color: var(--warning);
+}

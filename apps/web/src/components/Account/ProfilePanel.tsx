@@ -6,7 +6,6 @@ import {
   isHandle,
   normalizeHandle,
   type Account,
-  type HandlePreviewResponse,
 } from '@tablinum/shared';
 import { useChangeHandle, useHandlePreview } from '../../api/handles';
 import {
@@ -17,10 +16,11 @@ import {
   useSlackState,
   useUpdateMe,
   useUploadAvatar,
-} from '../../api/hooks';
+} from '../../api/accounts';
 import { describeError, useToast } from '../../lib/toast';
 import { ConfirmDialog, type ConfirmRequest } from '../ui/ConfirmDialog';
 import { Avatar } from './Avatar';
+import { YOURSELF, describeReservation, describeRewrite } from './handleCost';
 import './account.css';
 
 interface ProfilePanelProps {
@@ -86,7 +86,7 @@ export function ProfilePanel({ user }: ProfilePanelProps) {
     setError(null);
     setConfirm({
       title: `Change your handle to @${wantedHandle}?`,
-      message: `${describeRewrite(handlePreview.data)} @${currentHandle} stays reserved for you, so nobody else can take it and an old copy of a page still points at you.`,
+      message: `${describeRewrite(handlePreview.data, YOURSELF)} ${describeReservation(currentHandle, YOURSELF)}`,
       confirmLabel: 'Rewrite the mentions',
       onConfirm: () => submitHandle(wantedHandle),
     });
@@ -215,7 +215,8 @@ export function ProfilePanel({ user }: ProfilePanelProps) {
           />
         </label>
         <p className="account-form__note">
-          Other people write this to mention you on a page. {describeRewrite(handlePreview.data)}
+          Other people write this to mention you on a page.{' '}
+          {describeRewrite(handlePreview.data, YOURSELF)}
           {changeableAt === null
             ? ''
             : ` You changed it recently, so the next change is possible after ${readableTime(changeableAt)}.`}
@@ -294,21 +295,6 @@ export function ProfilePanel({ user }: ProfilePanelProps) {
       <ConfirmDialog request={confirm} onClose={() => setConfirm(null)} />
     </div>
   );
-}
-
-function counted(n: number, noun: string): string {
-  return `${n} ${noun}${n === 1 ? '' : 's'}`;
-}
-
-/** What a change would do to the text that already names this person. */
-function describeRewrite(preview: HandlePreviewResponse | undefined): string {
-  if (preview === undefined) return 'A change rewrites every mention of your old handle.';
-  if (preview.pages === 0 && preview.comments === 0) {
-    return 'Nothing mentions you yet, so a change rewrites nothing.';
-  }
-  const parts = counted(preview.pages, 'page');
-  const rest = counted(preview.comments, 'comment');
-  return `A change rewrites ${parts} and ${rest} in one commit.`;
 }
 
 function readableTime(iso: string): string {

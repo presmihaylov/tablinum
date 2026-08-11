@@ -1,0 +1,67 @@
+/* ------------------------------------------------------------------ */
+/* callouts                                                            */
+/* ------------------------------------------------------------------ */
+
+.gd-editor-callout {
+  margin: var(--space-3) 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--text-muted);
+  border-radius: var(--radius-md);
+  background: var(--bg-subtle);
+}
+
+.gd-editor-callout::before {
+  content: attr(data-callout);
+  display: block;
+  margin-bottom: var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.08em;
+}
+
+.gd-editor-callout[data-callout='NOTE'] {
+  border-left-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.gd-editor-callout[data-callout='NOTE']::before {
+  color: var(--accent);
+}
+
+.gd-editor-callout[data-callout='TIP'] {
+  border-left-color: var(--success);
+  background: var(--success-soft);
+}
+
+.gd-editor-callout[data-callout='TIP']::before {
+  color: var(--success);
+}
+
+.gd-editor-callout[data-callout='IMPORTANT'] {
+  border-left-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.gd-editor-callout[data-callout='IMPORTANT']::before {
+  color: var(--accent);
+}
+
+.gd-editor-callout[data-callout='WARNING'] {
+  border-left-color: var(--warning);
+  background: var(--warning-soft);
+}
+
+.gd-editor-callout[data-callout='WARNING']::before {
+  color: var(--warning);
+}
+
+.gd-editor-callout[data-callout='CAUTION'] {
+  border-left-color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.gd-editor-callout[data-callout='CAUTION']::before {
+  color: var(--danger);
+}

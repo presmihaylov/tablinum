@@ -1,4 +1,5 @@
 import {
+  DEFAULT_TITLE_NAME,
   DEFAULT_VIEW_NAME,
   FILTER_OPS,
   MAX_ROWS,
@@ -7,6 +8,7 @@ import {
   PROPERTY_TYPES,
   UNTITLED_ROW,
   VIEW_TYPES,
+  isColumnId,
   isOptionId,
   isPropertyId,
   isRowId,
@@ -137,7 +139,8 @@ function readFilter(raw: unknown): DbFilter | null {
 function readSort(raw: unknown): DbSort | null {
   if (!isRecord(raw)) return null;
   const property = raw['property'];
-  if (!isPropertyId(property)) return null;
+  // A sort is the one place a view names the title column, which no property list holds.
+  if (!isColumnId(property)) return null;
   const direction = raw['direction'] === 'desc' ? 'desc' : 'asc';
   return { property, direction };
 }
@@ -225,7 +228,14 @@ export function readDatabase(raw: unknown, now?: number): ReadResult<Database> {
     exact = false;
   }
 
-  return { value: { properties, views }, exact };
+  const database: Database = { properties, views };
+  // The default name is never written, so a database nobody renamed keeps the file it had. One
+  // that says the default anyway is read as unnamed, and the spare line is dropped on the rewrite.
+  const titleName = readName(raw['titleName']);
+  if (titleName !== null && titleName !== DEFAULT_TITLE_NAME) database.titleName = titleName;
+  if (raw['titleName'] !== undefined && database.titleName !== raw['titleName']) exact = false;
+
+  return { value: database, exact };
 }
 
 /** The `props` block of one row. Values are kept loosely; the schema narrows them later. */
@@ -333,6 +343,9 @@ function emitValue(value: PropValue, indent: string, lines: string[], key: strin
 /** The `db:` block, without a trailing newline. */
 export function stringifyDatabase(database: Database): string {
   const lines: string[] = ['db:'];
+  if (database.titleName !== undefined) {
+    lines.push(`${INDENT}titleName: ${emitString(database.titleName)}`);
+  }
 
   lines.push(`${INDENT}properties:`);
   for (const property of database.properties) {
@@ -440,7 +453,11 @@ export function databaseEqual(a: Database | undefined, b: Database | undefined):
     sameList(x.sorts, y.sorts, (s, t) => s.property === t.property && s.direction === t.direction) &&
     sameList(x.hidden, y.hidden, (h, i) => h === i);
 
-  return sameList(a.properties, b.properties, sameProperty) && sameList(a.views, b.views, sameView);
+  return (
+    (a.titleName ?? null) === (b.titleName ?? null) &&
+    sameList(a.properties, b.properties, sameProperty) &&
+    sameList(a.views, b.views, sameView)
+  );
 }
 
 export function rowPropsEqual(a: RowProps | undefined, b: RowProps | undefined): boolean {

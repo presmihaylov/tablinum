@@ -295,6 +295,12 @@ export const PagesQuerySchema = z.object({ path: PagePathSchema.optional() });
 
 export const DeletePageQuerySchema = z.object({ recursive: boolParam.optional() });
 
+/**
+ * `recursive=true` takes the pages inside the space with it. Without it a space that holds
+ * more than its home page is refused, so dropping a whole space is never one request away.
+ */
+export const DeleteSpaceQuerySchema = z.object({ recursive: boolParam.optional() });
+
 /** A column of the search index. `body` is the plain text of the page. */
 export const SearchFieldSchema = z.enum(['title', 'body', 'path']);
 
@@ -380,6 +386,16 @@ export const PageResponseSchema = z.object({ page: PageSchema });
 export const PageListResponseSchema = z.object({ pages: z.array(PageSummarySchema) });
 export const DeletePageResponseSchema = z.object({ deleted: z.array(PagePathSchema) });
 
+export const DeleteSpaceResponseSchema = z.object({
+  slug: SpaceSlugSchema,
+  /** Every page the delete removed, shallowest first. */
+  deleted: z.array(PagePathSchema),
+  /** True when the git history still holds the files. A private space was never committed. */
+  recoverable: z.boolean(),
+  /** Where the content went. There is no soft delete, so this is the only way back. */
+  recovery: z.string(),
+});
+
 export const SearchResponseSchema = z.object({ hits: z.array(SearchHitSchema) });
 export const BacklinksResponseSchema = z.object({ backlinks: z.array(BacklinkSchema) });
 export const HistoryResponseSchema = z.object({ revisions: z.array(RevisionSchema) });
@@ -435,6 +451,7 @@ export type GitResolveBody = z.infer<typeof GitResolveBodySchema>;
 
 export type PagesQuery = z.infer<typeof PagesQuerySchema>;
 export type DeletePageQuery = z.infer<typeof DeletePageQuerySchema>;
+export type DeleteSpaceQuery = z.infer<typeof DeleteSpaceQuerySchema>;
 export type SearchQuery = z.infer<typeof SearchQuerySchema>;
 export type SearchField = z.infer<typeof SearchFieldSchema>;
 export type HistoryQuery = z.infer<typeof HistoryQuerySchema>;
@@ -447,6 +464,7 @@ export type TreeResponse = z.infer<typeof TreeResponseSchema>;
 export type PageResponse = z.infer<typeof PageResponseSchema>;
 export type PageListResponse = z.infer<typeof PageListResponseSchema>;
 export type DeletePageResponse = z.infer<typeof DeletePageResponseSchema>;
+export type DeleteSpaceResponse = z.infer<typeof DeleteSpaceResponseSchema>;
 export type SearchResponse = z.infer<typeof SearchResponseSchema>;
 export type BacklinksResponse = z.infer<typeof BacklinksResponseSchema>;
 export type HistoryResponse = z.infer<typeof HistoryResponseSchema>;

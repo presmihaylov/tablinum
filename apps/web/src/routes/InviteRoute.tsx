@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { MIN_PASSWORD_LENGTH } from '@tablinum/shared';
-import { useInvitePreview, useRegister } from '../api/hooks';
+import { useInvitePreview, useRegister } from '../api/accounts';
 import { useAuth } from '../lib/auth';
 import { describeError } from '../lib/toast';
 import './login.css';

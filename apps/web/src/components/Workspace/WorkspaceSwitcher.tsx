@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { Workspace } from '@tablinum/shared';
-import { useCreateWorkspace } from '../../api/hooks';
+import { useCreateWorkspace } from '../../api/accounts';
 import { describeError, useToast } from '../../lib/toast';
 import { useWorkspace } from '../../lib/workspaces';
 import { EmojiGlyph } from '../ui/EmojiGlyph';

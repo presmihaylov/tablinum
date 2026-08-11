@@ -11,9 +11,6 @@ import { ContextMenu, type MenuItem } from '../ui/Overlay';
 import { Check, Dots, Moon, MoveTo, PanelLeft, Search, Star, Sun, Trash } from '../ui/Icon';
 import './topbar.css';
 
-/** The nominal width of a context menu, so the menu hangs off the right edge of its button. */
-const MENU_WIDTH = 192;
-
 interface TopBarProps {
   sidebarOpen: boolean;
   panels: PanelState;
@@ -112,7 +109,6 @@ interface PageMenuProps {
 function PageMenu({ panels, onTogglePanel }: PageMenuProps) {
   const { spaces, currentPath, isFavorite, toggleFavorite, moveToSpace, deletePage } = useContent();
   const [open, setOpen] = useState(false);
-  const [menuAt, setMenuAt] = useState({ x: 0, y: 0 });
   const buttonRef = useRef<HTMLButtonElement | null>(null);
 
   const node = useMemo(() => (currentPath ? findNode(spaces, currentPath) : null), [spaces, currentPath]);
@@ -153,28 +149,29 @@ function PageMenu({ panels, onTogglePanel }: PageMenuProps) {
   const first = actions[0];
   if (first !== undefined) items.push({ ...first, divider: true }, ...actions.slice(1));
 
-  const show = (): void => {
-    const rect = buttonRef.current?.getBoundingClientRect();
-    if (rect === undefined) return;
-    setOpen(true);
-    setMenuAt({ x: rect.right - MENU_WIDTH, y: rect.bottom + 4 });
-  };
-
   return (
     <>
       <button
         ref={buttonRef}
         type="button"
         className={open ? 'btn btn--icon btn--on' : 'btn btn--icon'}
-        onClick={show}
+        onClick={() => setOpen((prev) => !prev)}
         title="Page options"
         aria-label="Page options"
+        aria-haspopup="menu"
+        aria-expanded={open}
       >
         <Dots />
       </button>
 
       {open ? (
-        <ContextMenu x={menuAt.x} y={menuAt.y} items={items} onClose={() => setOpen(false)} />
+        <ContextMenu
+          label="Page options"
+          anchor={buttonRef}
+          align="right"
+          items={items}
+          onClose={() => setOpen(false)}
+        />
       ) : null}
     </>
   );

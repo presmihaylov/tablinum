@@ -1,10 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+  DEFAULT_TITLE_NAME,
+  TITLE_COLUMN_ID,
   databaseRev,
   newOptionId,
   newPropertyId,
   newRowId,
   newViewId,
+  renameTitleColumn,
   starterDatabase,
   type Database,
   type DbRow,
@@ -94,6 +97,56 @@ describe('stringifyDatabase and readDatabase', () => {
     expect(parsed.frontmatter.db?.properties[0]?.format).toBe('currency');
   });
 
+  // The title column grew a name of its own. A database nobody renamed must still write the file
+  // it always wrote, or every database in the repo would be rewritten by the upgrade alone.
+  it('writes a database nobody renamed byte for byte as it always did', () => {
+    expect(stringifyDatabase(sampleDatabase())).toBe(
+      [
+        'db:',
+        '  properties:',
+        `    - id: ${SELECT}`,
+        '      name: Status',
+        '      type: select',
+        '      options:',
+        `        - id: ${OPTION}`,
+        '          name: Todo',
+        '          color: blue',
+        `    - id: ${TEXT}`,
+        '      name: Notes',
+        '      type: text',
+        '  views:',
+        `    - id: ${VIEW}`,
+        '      name: Table',
+        '      type: table',
+        '      filters:',
+        `        - property: ${SELECT}`,
+        '          op: is',
+        `          value: ${OPTION}`,
+        '      sorts:',
+        `        - property: ${TEXT}`,
+        '          direction: desc',
+        '      hidden:',
+        `        - ${TEXT}`,
+      ].join('\n'),
+    );
+  });
+
+  it('writes the name of a renamed title column, and reads it back', () => {
+    const database = renameTitleColumn(sampleDatabase(), 'Task');
+    const text = stringifyDatabase(database);
+    expect(text.split('\n')[1]).toBe('  titleName: Task');
+    expect(parse(`---\n${text}\n---\n\nbody\n`).frontmatter.db).toEqual(database);
+  });
+
+  it('keeps a sort on the title column, which no property list holds', () => {
+    const database = sampleDatabase();
+    database.views = [{ ...database.views[0]!, sorts: [{ property: TITLE_COLUMN_ID, direction: 'asc' }] }];
+    const parsed = parse(`---\n${stringifyDatabase(database)}\n---\n\nbody\n`);
+    expect(parsed.frontmatter.db?.views[0]?.sorts).toEqual([
+      { property: TITLE_COLUMN_ID, direction: 'asc' },
+    ]);
+  });
+
   it('quotes a name that would otherwise change meaning as YAML', () => {
     const database = sampleDatabase();
     const named: Database = {
@@ -161,6 +214,42 @@ describe('readDatabase repair', () => {
 
   it('reads nothing usable out of a block that is not a mapping', () => {
     expect(readDatabase('nonsense')).toEqual({ value: null, exact: false });
+  });
+
+  it('carries no name for a title column nobody renamed', () => {
+    const read = readDatabase({ properties: [], views: [{ id: VIEW, name: 'Table', type: 'table' }] });
+    expect(read.exact).toBe(true);
+    expect(read.value?.titleName).toBeUndefined();
+  });
+
+  it('reads a title name that only says the default as no name, and asks for the rewrite', () => {
+    const read = readDatabase({
+      titleName: DEFAULT_TITLE_NAME,
+      properties: [],
+      views: [{ id: VIEW, name: 'Table', type: 'table' }],
+    });
+    expect(read.exact).toBe(false);
+    expect(read.value?.titleName).toBeUndefined();
+  });
+
+  it('trims a hand-written title name, and drops one that is not text', () => {
+    const read = (titleName: unknown): ReturnType<typeof readDatabase> =>
+      readDatabase({ titleName, properties: [], views: [{ id: VIEW, name: 'Table', type: 'table' }] });
+    expect(read('  Task  ')).toEqual({
+      value: { properties: [], views: [expect.anything()], titleName: 'Task' },
+      exact: false,
+    });
+    expect(read(7).value?.titleName).toBeUndefined();
+    expect(read(7).exact).toBe(false);
+  });
+
+  it('drops a sort that names neither a property nor the title column', () => {
+    const read = readDatabase({
+      properties: [{ id: TEXT, name: 'Notes', type: 'text' }],
+      views: [{ id: VIEW, name: 'Table', type: 'table', sorts: [{ property: 'nonsense' }] }],
+    });
+    expect(read.exact).toBe(false);
+    expect(read.value?.views[0]?.sorts).toEqual([]);
   });
 });
 

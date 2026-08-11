@@ -12,6 +12,7 @@ import { Plus, Trash } from '../ui/Icon';
 import { Menu } from '../ui/Menu';
 import { Cell } from './Cell';
 import { PropertyHead } from './PropertyHead';
+import { TitleHead } from './TitleHead';
 
 interface TableViewProps {
   database: Database;
@@ -53,7 +54,12 @@ export function TableView({
         <thead>
           <tr>
             <th scope="col">
-              <span className="db-table__head">Name</span>
+              <TitleHead
+                database={database}
+                view={view}
+                pageId={pageId}
+                onDatabaseChange={onDatabaseChange}
+              />
             </th>
             {visible.map((property) => (
               <th key={property.id} scope="col" data-property={property.id}>

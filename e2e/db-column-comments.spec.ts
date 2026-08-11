@@ -115,8 +115,8 @@ test.describe('comments on a database column', () => {
     await commentOnColumn(page, 'Status', 'Should this be a select?');
 
     const menu = await columnMenu(page, 'Status');
-    await menu.getByLabel('Property name').fill('State');
-    await menu.getByLabel('Property name').press('Enter');
+    await menu.getByLabel('Column name').fill('State');
+    await menu.getByLabel('Column name').press('Enter');
     await expect(grid(page).getByRole('button', { name: /^State/ })).toBeVisible();
 
     await expect(badge(page, 'State')).toHaveAttribute('aria-label', 'Comments on State, 1 open');

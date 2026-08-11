@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createEvent, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
+  TITLE_COLUMN_ID,
   databaseRev,
   newOptionId,
   newPropertyId,
@@ -156,7 +157,7 @@ describe('the grid', () => {
     const table = await screen.findByTestId('db-table');
     const heads = within(table).getAllByRole('columnheader');
     expect(heads.map((head) => head.textContent)).toEqual([
-      'Name',
+      'NameTitle',
       'StatusSelect',
       'NotesText',
       'ScoreNumber',
@@ -355,7 +356,7 @@ describe('the schema', () => {
     await screen.findByTestId('db-table');
 
     await user.click(screen.getByRole('button', { name: /^Notes/ }));
-    const name = await screen.findByLabelText('Property name');
+    const name = await screen.findByLabelText('Column name');
     await user.clear(name);
     await user.type(name, 'Detail');
     await user.tab();
@@ -411,6 +412,79 @@ describe('the schema', () => {
       const saved = lastCall('PUT', '/database') as { database: Database } | null;
       expect(saved?.database.views[0]?.hidden).toEqual([NOTES]);
     });
+  });
+});
+
+describe('the title column', () => {
+  it('renames it from its header menu', async () => {
+    const user = userEvent.setup();
+    mount();
+    await screen.findByTestId('db-table');
+
+    await user.click(screen.getByRole('button', { name: /^Name/ }));
+    const name = await screen.findByLabelText('Column name');
+    await user.clear(name);
+    await user.type(name, 'Task');
+    await user.tab();
+
+    await waitFor(() => {
+      const saved = lastCall('PUT', '/database') as { database: Database } | null;
+      expect(saved?.database.titleName).toBe('Task');
+      expect(saved?.database.properties).toHaveLength(3);
+    });
+  });
+
+  it('draws the name it was given, and opens the menu under it', async () => {
+    const user = userEvent.setup();
+    mount({ db: { ...database(), titleName: 'Task' } });
+    await screen.findByTestId('db-table');
+
+    await user.click(screen.getByRole('button', { name: /^Task/ }));
+    expect(await screen.findByRole('menu', { name: 'Task column' })).toBeTruthy();
+  });
+
+  it('sorts the rows by their title', async () => {
+    const user = userEvent.setup();
+    mount();
+    await screen.findByTestId('db-table');
+
+    await user.click(screen.getByRole('button', { name: /^Name/ }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Sort descending' }));
+
+    await waitFor(() => {
+      const saved = lastCall('PUT', '/database') as { database: Database } | null;
+      expect(saved?.database.views[0]?.sorts).toEqual([
+        { property: TITLE_COLUMN_ID, direction: 'desc' },
+      ]);
+    });
+  });
+
+  it('puts the rows in the order a sort on it asks for', async () => {
+    const sorted: Database = {
+      ...database(),
+      views: [
+        { ...database().views[0]!, sorts: [{ property: TITLE_COLUMN_ID, direction: 'desc' }] },
+      ],
+    };
+    mount({ db: sorted });
+
+    await screen.findByTestId('db-table');
+    await waitFor(() => expect(rowTitles()).toEqual(['Write it', 'Ship it']));
+  });
+
+  // The title is what every row answers to, so it takes no type and cannot leave the grid.
+  it('offers no type, no hiding and no deleting', async () => {
+    const user = userEvent.setup();
+    mount();
+    await screen.findByTestId('db-table');
+
+    await user.click(screen.getByRole('button', { name: /^Name/ }));
+    const menu = await screen.findByRole('menu', { name: 'Name column' });
+
+    expect(within(menu).queryByLabelText('Property type')).toBeNull();
+    expect(within(menu).queryByRole('menuitem', { name: /Hide in this view/ })).toBeNull();
+    expect(within(menu).queryByRole('menuitem', { name: /Delete property/ })).toBeNull();
+    expect(within(menu).getByRole('menuitem', { name: 'Sort ascending' })).toBeTruthy();
   });
 });
 

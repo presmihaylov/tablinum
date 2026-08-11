@@ -50,8 +50,8 @@ type Db = Database.Database;
 /** Filename of the account database. It lives beside the search index, never in the repo. */
 export const ACCOUNTS_DB_FILENAME = 'accounts.db';
 
-/** Bumped when the schema below changes in a way an existing file cannot satisfy. */
-const SCHEMA_VERSION = 7;
+/** Stamped on the file so a future destructive migration knows what it is looking at. */
+const SCHEMA_VERSION = 8;
 
 /** How long a signed-in browser stays signed in. */
 export const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -504,11 +504,11 @@ export class AccountStore {
     return this.#db;
   }
 
+  // Every statement below is idempotent, so this runs on every boot. It used to return early
+  // when the stamped version matched, which silently skipped a new column whenever somebody
+  // added one without bumping the constant. That shipped once already: `webhook_url` never
+  // reached an existing file, and every agent read failed with "no such column".
   #migrate(db: Db): void {
-    const found = db.pragma('user_version', { simple: true });
-    const version = typeof found === 'number' ? found : 0;
-    if (version === SCHEMA_VERSION) return;
-
     db.exec(`
       CREATE TABLE IF NOT EXISTS users (
         id            TEXT PRIMARY KEY,

@@ -14,9 +14,9 @@ REST API, the MCP server (stdio or remote), or the files themselves.
 | --- | --- | --- |
 | Typecheck | `pnpm -r typecheck` | PASS — 8 projects, strict + `noUncheckedIndexedAccess`, 0 errors |
 | Build | `pnpm -r build` | PASS — 8 dist outputs, Vite bundle 1,284 kB (410 kB gzip) |
-| Test | `pnpm -r test` | PASS — **2374 tests**, 0 failures |
+| Test | `pnpm -r test` | PASS — **2378 tests**, 0 failures |
 
-Per-package tests: shared 341, core 266, accounts 107, git-sync 97, search 59, mcp 143, server 384,
+Per-package tests: shared 341, core 266, accounts 111, git-sync 97, search 59, mcp 143, server 384,
 web 977. The end-to-end suite (`pnpm e2e`) is 156 Playwright tests, all passing.
 
 `packages/git-sync` cleans a temp repo at the end of every case and occasionally loses a race with
@@ -211,6 +211,14 @@ GET  /tree          200  with the login cookie
 `packages/accounts` is a second SQLite database, `accounts.db`, beside `search.db` and one level
 above the content root. It holds people, password hashes, session tokens, invites and avatar
 bytes. **None of it is in the git repo**, so a push never carries a password or a picture.
+
+`AccountStore.#migrate()` runs on every boot. Every statement in it is idempotent:
+`CREATE TABLE IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`, and `addColumn()`, which checks
+`table_info` first. **A new column needs an `addColumn()` call, not just a line in the
+`CREATE TABLE` block**, because an existing file never re-runs that block. `user_version` is only
+a stamp for a future destructive migration; it no longer gates anything. It used to, and a column
+added without a version bump then reached fresh installs only. `packages/accounts/test/migrate.test.ts`
+holds the line: it ages a real file and checks the column comes back.
 
 - **Passwords** are scrypt with a per-password salt, stored as `scrypt$N$r$p$salt$hash`. The
   minimum length is 10 characters. Comparison is constant time.

@@ -424,8 +424,9 @@ export interface CommentThread {
   id: string;             // "ct_" + ULID
   pageId: PageId;
   anchor: CommentAnchor | null;   // both null = a comment about the whole page
-  column: string | null;  // "pr_" + ULID: the database column the thread is about. Never set
-                          // together with `anchor`. An id, so a renamed column keeps its thread.
+  column: string | null;  // "pr_" + ULID, or "title": the database column the thread is about.
+                          // Never set together with `anchor`. An id, so a renamed column keeps
+                          // its thread.
   resolved: boolean;
   resolvedBy: string | null; resolvedAt: string | null;
   created: string; updated: string;   // ISO
@@ -648,7 +649,7 @@ GET    /api/v1/pages/:id/backlinks             -> { backlinks: Backlink[] }
 GET    /api/v1/pages/:id/history               ?limit= -> { revisions: Revision[] }
 GET    /api/v1/pages/:id/revisions/:sha        -> { markdown, frontmatter: Frontmatter }
 
-GET    /api/v1/pages/:id/comments              ?resolved=true|false&column=<PropertyId>
+GET    /api/v1/pages/:id/comments              ?resolved=true|false&column=<ColumnId>
                                                -> { threads: CommentThread[] }
                                                (no query = every thread, oldest first; column
                                                 narrows to one database column)

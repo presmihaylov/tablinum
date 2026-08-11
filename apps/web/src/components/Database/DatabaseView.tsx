@@ -3,6 +3,7 @@ import {
   DEFAULT_BOARD_NAME,
   DEFAULT_VIEW_NAME,
   OPS_FOR_TYPE,
+  TITLE_COLUMN_ID,
   applyView,
   boardProperty,
   databaseRev,
@@ -11,6 +12,8 @@ import {
   newViewId,
   optionByName,
   opTakesNoValue,
+  titleColumnName,
+  withView,
   type Database,
   type DbFilter,
   type DbProperty,
@@ -119,10 +122,7 @@ export function DatabaseView({ page }: DatabaseViewProps) {
   };
 
   const patchView = (patch: Partial<DbView>): void => {
-    save({
-      ...database,
-      views: database.views.map((entry) => (entry.id === view.id ? { ...entry, ...patch } : entry)),
-    });
+    save(withView(database, view.id, patch));
   };
 
   const addProperty = (): void => {
@@ -728,6 +728,8 @@ function SortPanel({ database, view, onChange }: PanelProps) {
               })
             }
           >
+            {/* The title is a column a view can sort by, so the panel offers it like any other. */}
+            <option value={TITLE_COLUMN_ID}>{titleColumnName(database)}</option>
             {database.properties.map((entry) => (
               <option key={entry.id} value={entry.id}>
                 {entry.name}

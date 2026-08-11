@@ -3,7 +3,7 @@ import {
   unresolvedCount,
   type CommentAnchor,
   type CommentThread,
-  type DbProperty,
+  type Database,
   type PageId,
 } from '@tablinum/shared';
 import { useCommentThreads, useDatabase } from '../api/hooks';
@@ -11,7 +11,7 @@ import { useCommentThreads, useDatabase } from '../api/hooks';
 /** What a thread being written is about. Both fields null means the whole page. */
 export interface CommentDraft {
   anchor: CommentAnchor | null;
-  /** The property id of a database column. */
+  /** The id of a database column. */
   column: string | null;
 }
 
@@ -43,8 +43,8 @@ export interface CommentsValue {
    */
   located: ReadonlySet<string> | null;
   reportLocated: (ids: string[]) => void;
-  /** The columns the page's database has now. Null when the page is not a database. */
-  columns: DbProperty[] | null;
+  /** The schema the page's database has now, which names its columns. Null when it is not one. */
+  schema: Database | null;
 }
 
 const IDLE: CommentsValue = {
@@ -63,7 +63,7 @@ const IDLE: CommentsValue = {
   setShowResolved: () => undefined,
   located: null,
   reportLocated: () => undefined,
-  columns: null,
+  schema: null,
 };
 
 const CommentsContext = createContext<CommentsValue>(IDLE);
@@ -88,8 +88,8 @@ export function CommentsProvider({ pageId, children }: { pageId: PageId; childre
   // has no schema to answer with, which is why null here reads as "no columns to name".
   const aboutColumn =
     (draft !== null && draft.column !== null) || threads.some((thread) => thread.column !== null);
-  const schema = useDatabase(aboutColumn ? pageId : undefined);
-  const columns = schema.data?.database.properties ?? null;
+  const schemaQuery = useDatabase(aboutColumn ? pageId : undefined);
+  const schema = schemaQuery.data?.database ?? null;
 
   const focus = useCallback((threadId: string | null) => {
     setActiveId(threadId);
@@ -133,7 +133,7 @@ export function CommentsProvider({ pageId, children }: { pageId: PageId; childre
       setShowResolved,
       located,
       reportLocated,
-      columns,
+      schema,
     }),
     [
       pageId,
@@ -148,7 +148,7 @@ export function CommentsProvider({ pageId, children }: { pageId: PageId; childre
       showResolved,
       located,
       reportLocated,
-      columns,
+      schema,
     ],
   );
 

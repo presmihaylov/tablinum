@@ -167,6 +167,35 @@
   font-size: var(--text-2xs);
 }
 
+/* The header button fills the cell, so the comment badge rides on top of its right edge. */
+.db-table__note {
+  position: absolute;
+  top: 50%;
+  right: var(--space-1);
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  appearance: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--bg-subtle);
+  padding: 0 3px;
+  font: inherit;
+  font-size: var(--text-2xs);
+  line-height: 1.4;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.db-table__note:hover {
+  background: var(--bg-hover);
+}
+
+.db-table__note.is-quiet {
+  color: var(--text-faint);
+}
+
 .db-table__add {
   width: 2.25rem;
   min-width: 2.25rem;

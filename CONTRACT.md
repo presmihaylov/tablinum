@@ -423,7 +423,9 @@ export interface Comment {
 export interface CommentThread {
   id: string;             // "ct_" + ULID
   pageId: PageId;
-  anchor: CommentAnchor | null;   // null = a comment about the whole page
+  anchor: CommentAnchor | null;   // both null = a comment about the whole page
+  column: string | null;  // "pr_" + ULID: the database column the thread is about. Never set
+                          // together with `anchor`. An id, so a renamed column keeps its thread.
   resolved: boolean;
   resolvedBy: string | null; resolvedAt: string | null;
   created: string; updated: string;   // ISO
@@ -431,7 +433,12 @@ export interface CommentThread {
 }
 ```
 
-Helper in the same file: `unresolvedCount(threads)`, the number the comments button shows.
+Helpers in the same file: `unresolvedCount(threads)`, the number the comments button shows, and
+`threadsForColumn(threads, columnId)`, the threads about one database column in the order given.
+
+A thread is about one thing: a run of text, a database column, or the whole page. The server
+refuses a `column` the page's database does not have, and drops a column's threads when the
+column is deleted.
 
 `packages/shared/src/editing.ts` — how an agent addresses the text of a page:
 
@@ -462,6 +469,12 @@ ProseMirror decoration, which is never serialized. A quote the page no longer ho
 thread ORPHANED: it stays readable in the panel with its quote shown, and loses its highlight.
 Nothing is guessed and no fuzzy match is tried, so a comment can never point at a sentence it was
 not written about.
+
+A COLUMN THREAD IS NOT PAGE CONTENT EITHER. It holds the property id, so the schema in the page
+file carries no thread and a rename of the column changes nothing. A column deleted through the
+API takes its threads with it, because an id nobody can see names nothing a reader could
+recognise. A property deleted by hand in the file never reaches the API, so the browser draws
+such a thread as a column that is gone, the way an orphaned quote is drawn.
 
 ## REST API
 
@@ -635,10 +648,15 @@ GET    /api/v1/pages/:id/backlinks             -> { backlinks: Backlink[] }
 GET    /api/v1/pages/:id/history               ?limit= -> { revisions: Revision[] }
 GET    /api/v1/pages/:id/revisions/:sha        -> { markdown, frontmatter: Frontmatter }
 
-GET    /api/v1/pages/:id/comments              ?resolved=true|false -> { threads: CommentThread[] }
-                                               (no query = every thread, oldest first)
-POST   /api/v1/pages/:id/comments              body { body, anchor? } -> 201 { thread: CommentThread }
-                                               (no anchor = a comment about the whole page)
+GET    /api/v1/pages/:id/comments              ?resolved=true|false&column=<PropertyId>
+                                               -> { threads: CommentThread[] }
+                                               (no query = every thread, oldest first; column
+                                                narrows to one database column)
+POST   /api/v1/pages/:id/comments              body { body, anchor?, column? }
+                                               -> 201 { thread: CommentThread }
+                                               (neither = a comment about the whole page; both at
+                                                once, or a column the page's database lacks, is a
+                                                VALIDATION error)
 POST   /api/v1/comment-threads/:id/replies     body { body } -> 201 { thread: CommentThread }
 PATCH  /api/v1/comment-threads/:id             body { resolved } -> { thread: CommentThread }
                                                (anybody in the workspace may resolve or reopen)

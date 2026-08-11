@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { PropertyIdSchema } from './databases.js';
 import { newUlid } from './ids.js';
 import { IsoDateSchema, PageIdSchema } from './schemas.js';
 
@@ -15,6 +16,9 @@ import { IsoDateSchema, PageIdSchema } from './schemas.js';
  * The failure mode is deliberate. When the quote is no longer in the page the thread is marked
  * orphaned and stays readable in the panel with its quote shown; nothing is guessed and no
  * fuzzy match is attempted, so a comment can never point at a sentence it was not written about.
+ *
+ * A thread can also be about a column of a database instead of about a run of text. It holds the
+ * property id, not the column name, so renaming the column keeps the conversation.
  */
 
 /** Prefix of a comment thread id, in the style of the page and user ids. */
@@ -76,6 +80,11 @@ export const CommentThreadSchema = z.object({
   pageId: PageIdSchema,
   /** Null for a thread about the whole page rather than about one selection. */
   anchor: CommentAnchorSchema.nullable(),
+  /**
+   * The property id of the database column this thread is about, or null. An id rather than a
+   * name, so a renamed column keeps its thread. Never set together with `anchor`.
+   */
+  column: PropertyIdSchema.nullable(),
   resolved: z.boolean(),
   resolvedBy: z.string().nullable(),
   resolvedAt: IsoDateSchema.nullable(),
@@ -91,11 +100,19 @@ export const CommentThreadSchema = z.object({
 
 export const CommentBodySchema = z.string().trim().min(1).max(MAX_COMMENT_LENGTH);
 
-export const CreateThreadBodySchema = z.object({
-  body: CommentBodySchema,
-  /** Omit it for a comment about the whole page. */
-  anchor: CommentAnchorSchema.optional(),
-});
+export const CreateThreadBodySchema = z
+  .object({
+    body: CommentBodySchema,
+    /** Omit both for a comment about the whole page. */
+    anchor: CommentAnchorSchema.optional(),
+    /** The database column the thread is about. */
+    column: PropertyIdSchema.optional(),
+  })
+  // A thread is about one thing. Both at once has no place to be drawn and no meaning.
+  .refine(
+    (value) => value.anchor === undefined || value.column === undefined,
+    'A thread is about a selection or about a column, not both',
+  );
 
 export const ReplyBodySchema = z.object({ body: CommentBodySchema });
 
@@ -106,6 +123,8 @@ export const ResolveThreadBodySchema = z.object({ resolved: z.boolean() });
 export const CommentsQuerySchema = z.object({
   /** Leave it out for every thread. `true` or `false` narrows to one side. */
   resolved: z.enum(['true', 'false']).optional(),
+  /** Narrow to the threads about one database column. */
+  column: PropertyIdSchema.optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -142,4 +161,31 @@ export const newCommentId = (now?: number): string => COMMENT_ID_PREFIX + newUli
 /** How many threads still want an answer. The number the UI puts on the comments button. */
 export function unresolvedCount(threads: readonly CommentThread[]): number {
   return threads.filter((thread) => !thread.resolved).length;
+}
+
+/** The one thing a thread is about. `page` is the case where neither of the two fields is set. */
+export type ThreadTarget =
+  | { kind: 'quote'; anchor: CommentAnchor }
+  | { kind: 'column'; column: string }
+  | { kind: 'page' };
+
+/**
+ * What a thread or a draft is about, read once. The wire carries two nullable fields that are
+ * never both set, so every reader would otherwise re-derive the three cases by hand.
+ */
+export function threadTarget(thread: {
+  anchor: CommentAnchor | null;
+  column: string | null;
+}): ThreadTarget {
+  if (thread.column !== null) return { kind: 'column', column: thread.column };
+  if (thread.anchor !== null) return { kind: 'quote', anchor: thread.anchor };
+  return { kind: 'page' };
+}
+
+/** The threads about one database column, oldest first, in the order they were given. */
+export function threadsForColumn(
+  threads: readonly CommentThread[],
+  columnId: string,
+): CommentThread[] {
+  return threads.filter((thread) => thread.column === columnId);
 }

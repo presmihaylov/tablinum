@@ -146,6 +146,12 @@ export function useDocStream({ editor, room, frame, page, onTitle }: StreamOptio
       baseRef.current = init.baseline.markdown;
       onTitleRef.current(init.baseline.title);
 
+      // The text on screen already is the baseline, so this tab has nothing the room has not
+      // seen and there is nothing to fold in. Going on would compare the same document against
+      // itself through two different frames, and a difference that is only a matter of spelling
+      // still reaches the merge, which is free to put the text back in another order.
+      if (!replaced) return false;
+
       // Fold this tab's work back in. Only the tab that writes the file does it, or every
       // tab applies the same merge and they all fight to save it.
       if (!room.isWriter) return replaced;

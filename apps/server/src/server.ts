@@ -210,6 +210,10 @@ class CoreGitAdapter implements GitEngine {
     this.core.scheduleCommit(message);
   }
 
+  flushCommit(): Promise<string | null> {
+    return this.core.flushPendingCommit();
+  }
+
   history(relFile: string, limit: number): Promise<Revision[]> {
     return this.core.history(relFile, limit);
   }

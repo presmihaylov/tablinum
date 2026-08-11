@@ -5,8 +5,12 @@ import { WikilinkMenu } from '../ui/WikilinkMenu';
 import { createSuggestionRenderer } from '../ui/suggestionRenderer';
 
 export interface WikilinkItem {
+  /** The page id. Two sources feed the menus, and only the id survives a rename. */
+  id: string;
   path: string;
   title: string;
+  /** The emoji of the page, or a `:shortcode:` for a custom one. Absent when it has none. */
+  icon?: string;
 }
 
 export interface WikilinkSuggestionOptions {

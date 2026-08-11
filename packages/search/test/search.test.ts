@@ -135,6 +135,95 @@ describe('SearchIndex', () => {
   });
 
   // -------------------------------------------------------------------------
+  // column filter
+  // -------------------------------------------------------------------------
+
+  describe('fields', () => {
+    const NAME_ONLY = ['title', 'path'] as const;
+
+    beforeEach(() => {
+      index.upsert(
+        page({
+          id: 'pg_runbook',
+          path: 'eng/deploy-runbook',
+          title: 'Deploy runbook',
+          markdown: 'We roll out with zebracoffee tooling. Rollback is documented elsewhere.',
+        }),
+      );
+      index.upsert(
+        page({ id: 'pg_rollback', path: 'eng/rollback', title: 'Rollback', markdown: 'Undo it.' }),
+      );
+    });
+
+    // The reported bug: "zebracoffee" names no page, and full text answered with one anyway.
+    it('drops a page that only mentions the word in its body', async () => {
+      expect((await index.search('zebracoffee')).map((hit) => hit.title)).toEqual([
+        'Deploy runbook',
+      ]);
+      expect(await index.search('zebracoffee', { fields: NAME_ONLY })).toEqual([]);
+    });
+
+    it('still answers on a prefix of the title', async () => {
+      const hits = await index.search('depl', { fields: NAME_ONLY });
+      expect(hits.map((hit) => hit.title)).toEqual(['Deploy runbook']);
+    });
+
+    it('still answers on every word of a multi-word name', async () => {
+      const hits = await index.search('deploy run', { fields: NAME_ONLY });
+      expect(hits.map((hit) => hit.title)).toEqual(['Deploy runbook']);
+    });
+
+    it('still answers on a word of the path', async () => {
+      const hits = await index.search('eng', { fields: NAME_ONLY });
+      expect(hits.map((hit) => hit.title).sort()).toEqual(['Deploy runbook', 'Rollback']);
+    });
+
+    it('drops the path when the title alone is asked for', async () => {
+      expect(await index.search('eng', { fields: ['title'] })).toEqual([]);
+      expect((await index.search('rollback', { fields: ['title'] })).map((hit) => hit.title)).toEqual(
+        ['Rollback'],
+      );
+    });
+
+    it('names every column, which is the same as naming none', async () => {
+      const every = await index.search('zebracoffee', { fields: ['title', 'body', 'path'] });
+      expect(every.map((hit) => hit.title)).toEqual(['Deploy runbook']);
+    });
+
+    it('does not throw on hostile input inside a column filter', async () => {
+      for (const query of ['*', '"', 'NEAR(', 'a" OR "b', '{body}:x']) {
+        await expect(index.search(query, { fields: NAME_ONLY })).resolves.toBeInstanceOf(Array);
+      }
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // icons
+  // -------------------------------------------------------------------------
+
+  it('returns the icon of a page, and omits the field when it has none', async () => {
+    index.upsert(page({ id: 'pg_a', path: 'eng/alpha', title: 'Alpha', icon: '🐙' }));
+    index.upsert(page({ id: 'pg_b', path: 'eng/beta', title: 'Beta' }));
+
+    const alpha = await index.search('alpha');
+    expect(alpha[0]?.icon).toBe('🐙');
+
+    const beta = await index.search('beta');
+    expect(beta[0]).not.toHaveProperty('icon');
+  });
+
+  it('follows the icon when a page is re-indexed', async () => {
+    const first = page({ id: 'pg_a', path: 'eng/alpha', title: 'Alpha', icon: '🐙' });
+    index.upsert(first);
+    index.upsert({ ...first, icon: ':party:' });
+
+    expect((await index.search('alpha'))[0]?.icon).toBe(':party:');
+
+    index.upsert({ ...first, icon: undefined });
+    expect((await index.search('alpha'))[0]).not.toHaveProperty('icon');
+  });
+
+  // -------------------------------------------------------------------------
   // ranking
   // -------------------------------------------------------------------------
 

@@ -10,6 +10,12 @@
 /** One phrase: an ordered run of terms that must appear together. */
 export type Phrase = readonly string[];
 
+/** A column of the index a match may be restricted to. */
+export type SearchField = 'title' | 'body' | 'path';
+
+/** Every column, in the declared order of pages_fts. */
+export const SEARCH_FIELDS: readonly SearchField[] = ['title', 'body', 'path'];
+
 const TOKEN_RE = /[\p{L}\p{N}_]+/gu;
 const MAX_QUERY_LENGTH = 512;
 const MAX_TOKENS = 24;
@@ -50,10 +56,27 @@ export function parseQuery(raw: string): Phrase[] {
 }
 
 /**
+ * `{title path}`, the FTS5 column filter. Null when the filter would name every
+ * column, because that restricts nothing and only lengthens the expression.
+ */
+function columnFilter(fields: readonly SearchField[] | undefined): string | null {
+  if (fields === undefined) return null;
+  const wanted = SEARCH_FIELDS.filter((field) => fields.includes(field));
+  if (wanted.length === 0 || wanted.length === SEARCH_FIELDS.length) return null;
+  return `{${wanted.join(' ')}}`;
+}
+
+/**
  * Render phrases as an FTS5 MATCH expression. Phrases are ANDed together.
  * With `prefixLast`, the final phrase matches on a prefix so "depl" finds "deploy".
+ * With `fields`, every phrase must hit inside those columns, so a word that reads
+ * only in the body of a page no longer answers.
  */
-export function toMatchExpression(phrases: readonly Phrase[], prefixLast: boolean): string {
+export function toMatchExpression(
+  phrases: readonly Phrase[],
+  prefixLast: boolean,
+  fields?: readonly SearchField[],
+): string {
   const parts: string[] = [];
   for (let index = 0; index < phrases.length; index += 1) {
     const terms = phrases[index];
@@ -62,15 +85,24 @@ export function toMatchExpression(phrases: readonly Phrase[], prefixLast: boolea
     const isLast = index === phrases.length - 1;
     parts.push(prefixLast && isLast ? `${quoted}*` : quoted);
   }
-  return parts.join(' ');
+  if (parts.length === 0) return '';
+
+  // The colon binds to the one phrase or group that follows it, so the parentheses
+  // are what carry the filter across every phrase of a multi-word query.
+  const scope = columnFilter(fields);
+  if (scope === null) return parts.join(' ');
+  return `${scope} : (${parts.join(' ')})`;
 }
 
 /** Build both attempts for a raw query: the exact one first, the prefix one as a fallback. */
-export function buildMatchExpressions(raw: string): string[] {
+export function buildMatchExpressions(
+  raw: string,
+  fields?: readonly SearchField[],
+): string[] {
   const phrases = parseQuery(raw);
   if (phrases.length === 0) return [];
-  const exact = toMatchExpression(phrases, false);
-  const prefix = toMatchExpression(phrases, true);
+  const exact = toMatchExpression(phrases, false, fields);
+  const prefix = toMatchExpression(phrases, true, fields);
   if (exact.length === 0) return [];
   if (prefix === exact) return [exact];
   return [exact, prefix];

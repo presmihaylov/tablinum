@@ -1,0 +1,113 @@
+/* ------------------------------------------------------------------ */
+/* emoji popover                                                       */
+/* ------------------------------------------------------------------ */
+
+.gd-editor-emoji {
+  position: fixed;
+  z-index: 60;
+  width: 16.5rem;
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-lg);
+}
+
+.gd-editor-emoji__head {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.gd-editor-emoji__search {
+  flex: 1;
+  min-width: 0;
+  height: 1.75rem;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  outline: none;
+}
+
+.gd-editor-emoji__search:focus {
+  border-color: var(--border-focus);
+}
+
+.gd-editor-emoji__grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 2px;
+  max-height: 12rem;
+  overflow-y: auto;
+}
+
+.gd-editor-emoji__item {
+  height: 1.9rem;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  font-size: var(--text-md);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.gd-editor-emoji__item:hover {
+  background: var(--bg-hover);
+}
+
+.gd-editor-emoji__empty {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.gd-editor-emoji__section {
+  margin: var(--space-2) 0 var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.gd-editor-emoji__section:first-of-type {
+  margin-top: 0;
+}
+
+.gd-editor-emoji__remove {
+  flex: none;
+  height: 1.75rem;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.gd-editor-emoji__remove:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+/* The page icon is picked once and looked at often, so its grid gets more room. */
+.gd-editor-emoji--wide {
+  width: 21.5rem;
+}
+
+.gd-editor-emoji--wide .gd-editor-emoji__grid {
+  grid-template-columns: repeat(10, 1fr);
+  max-height: 16rem;
+}
+
+.gd-editor-emoji--wide .gd-editor-emoji__item {
+  height: 2.2rem;
+  font-size: var(--text-lg);
+}

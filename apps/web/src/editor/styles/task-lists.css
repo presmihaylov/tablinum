@@ -1,0 +1,44 @@
+/* ------------------------------------------------------------------ */
+/* task lists                                                          */
+/* ------------------------------------------------------------------ */
+
+/* Scoped to the surface so it outranks the marker rules above, which are also scoped. */
+.gd-editor-surface .gd-editor-tasks {
+  list-style-type: none;
+  padding-left: var(--space-1);
+}
+
+.gd-editor-task {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+/*
+ * One computed line box tall. The label's own line box used to be taller than the line beside
+ * it, which stretched every row and made a run of items read as separate paragraphs. `1lh`
+ * reads the inherited line-height, so the box cannot drift off the text line if it changes.
+ * An item that opens with a heading is the one case it misses: `1lh` measures the label's own
+ * font, not the heading's, so the box sits high. It always did, and it is rare.
+ */
+.gd-editor-task > label {
+  flex: none;
+  display: flex;
+  align-items: center;
+  height: 1lh;
+  user-select: none;
+}
+
+.gd-editor-task > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.gd-editor-task input[type='checkbox'] {
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.gd-editor-task[data-checked='true'] > div {
+  color: var(--text-muted);
+}

@@ -20,6 +20,9 @@ export const RUN_DIR = join(tmpdir(), `tablinum-e2e-${PORT}`);
 export const CONTENT_DIR = join(RUN_DIR, 'content');
 export const STORAGE_STATE = join(RUN_DIR, 'admin-state.json');
 
+/** The welcome page as the fresh server wrote it, saved by the setup project for reset(). */
+export const WELCOME_STATE = join(RUN_DIR, 'welcome.json');
+
 // The report and the traces are the one thing a run leaves behind for a human, so they go in
 // the checkout under the usual playwright names, where CI can upload them. Both are gitignored.
 export const RESULTS_DIR = join(REPO_ROOT, 'test-results');

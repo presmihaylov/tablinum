@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { expect, type APIRequestContext, type APIResponse } from '@playwright/test';
 import { CONTENT_DIR, DEFAULT_PAGE_PATH, DEFAULT_SPACE_SLUG } from '../env';
 import { ContentRepo } from './content';
+import { pristineWelcome } from './welcome';
 import type {
   AuthState,
   CreatePageInput,
@@ -17,30 +18,6 @@ import type {
 } from './types';
 
 const PREFIX = '/api/v1';
-
-/**
- * The page a fresh server writes, restored by reset(). Copied byte for byte from
- * `WELCOME_TITLE` and `WELCOME_MARKDOWN` in packages/core/src/store.ts rather than imported:
- * the suite is a black-box client of the running server and depends on no workspace package,
- * so `npx tsc --noEmit -p e2e/tsconfig.json` needs nothing built first.
- */
-const WELCOME_TITLE = 'Welcome';
-const WELCOME_MARKDOWN = `# Welcome to tablinum
-
-This page lives at \`docs/index.md\` in your content repository. Every page here is a markdown
-file with YAML frontmatter, and every edit is a commit.
-
-## Write
-
-- Type \`/\` on an empty line to insert a block.
-- Drag a page in the sidebar to move it or to change its order.
-- Link to another page with \`[[docs/welcome]]\`.
-
-## Automate
-
-The same content is available over the REST API under \`/api/v1\` and over MCP. Edits made in the
-editor, through the API, or straight in the git repository all land in the same history.
-`;
 
 /** A slug nothing else in the run can collide with, so specs never share a space. */
 export function uniqueSlug(prefix: string): string {
@@ -62,6 +39,13 @@ function byDepth(a: string, b: string): number {
 
 /** What the content directory holds once reset() is done, page files and space files only. */
 const FRESH_FILES = [`${DEFAULT_SPACE_SLUG}/_space.yml`, `${DEFAULT_SPACE_SLUG}/index.md`];
+
+/**
+ * Keeps the default space first for the home route, which redirects to the first page of the
+ * first space. Spaces sort by `order` and only then by name, and a space a spec makes carries
+ * no order, so a leaked one named before "Docs" would otherwise win that redirect.
+ */
+const DEFAULT_SPACE_ORDER = 0;
 
 /**
  * Long enough for a directory removal to show up, short enough that a real leak is reported
@@ -102,6 +86,16 @@ export class ApiClient {
   }): Promise<Space> {
     const data = { name: input.slug, ...input };
     const body = await unwrap<{ space: Space }>(await this.request.post(`${PREFIX}/spaces`, { data }));
+    return body.space;
+  }
+
+  async updateSpace(
+    slug: string,
+    patch: { name?: string; icon?: string | null; order?: number | null },
+  ): Promise<Space> {
+    const body = await unwrap<{ space: Space }>(
+      await this.request.patch(`${PREFIX}/spaces/${slug}`, { data: patch }),
+    );
     return body.space;
   }
 
@@ -222,15 +216,21 @@ export class ApiClient {
     if (extra.length > 0) await this.commit('e2e: reset the content tree');
 
     // A spec may have removed the space the server started with; put it back with its home page.
-    if (!spaces.some((space) => space.slug === DEFAULT_SPACE_SLUG)) {
-      await this.createSpace({ slug: DEFAULT_SPACE_SLUG, name: 'Docs' });
+    const docs = spaces.find((space) => space.slug === DEFAULT_SPACE_SLUG);
+    if (docs === undefined) {
+      await this.createSpace({ slug: DEFAULT_SPACE_SLUG, name: 'Docs', order: DEFAULT_SPACE_ORDER });
       homeId = (await this.getPage(DEFAULT_PAGE_PATH))?.id;
+    }
+    // Only when it is not pinned yet: the server writes the space with no order, so this costs
+    // one request on the first reset of a run and none after it.
+    if (docs !== undefined && docs.order !== DEFAULT_SPACE_ORDER) {
+      await this.updateSpace(DEFAULT_SPACE_SLUG, { order: DEFAULT_SPACE_ORDER });
     }
 
     // Unconditional. An untouched page costs nothing on disk: serializePreserving hands back
     // the original bytes and the store skips a write whose bytes already match, so this cannot
     // dirty the git tree.
-    const restore = { title: WELCOME_TITLE, markdown: WELCOME_MARKDOWN };
+    const restore = await pristineWelcome();
     if (homeId === undefined) await this.createPage({ path: DEFAULT_PAGE_PATH, ...restore });
     if (homeId !== undefined) await this.updatePage(homeId, restore);
 

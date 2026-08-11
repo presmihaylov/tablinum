@@ -60,8 +60,12 @@ export function PageRoute({ panels, onClosePanels }: PageRouteProps) {
   return (
     // Keyed on the page: a thread in focus, a draft and a panel state all belong to one page.
     <CommentsProvider key={page.id} pageId={page.id}>
-      <div className="app-content">
-        <div className={`page-shell${page.database ? ' page-shell--database' : ''}`}>
+      {/* Marked: these two are blank room around the document, so a drag there picks blocks. */}
+      <div className="app-content" data-band-canvas>
+        <div
+          className={`page-shell${page.database ? ' page-shell--database' : ''}`}
+          data-band-canvas
+        >
           <PageEditor
             page={page}
             saveState={doc.saveState}

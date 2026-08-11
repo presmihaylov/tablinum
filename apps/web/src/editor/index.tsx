@@ -627,7 +627,12 @@ export function PageEditor({
         )}
       </header>
 
-      <div className="editor__canvas" ref={canvasRef} onClickCapture={followLink(navigate)}>
+      <div
+        className="editor__canvas"
+        data-band-canvas
+        ref={canvasRef}
+        onClickCapture={followLink(navigate)}
+      >
         {editor ? (
           <BlockHandles
             editor={editor}

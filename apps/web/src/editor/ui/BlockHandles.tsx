@@ -3,7 +3,7 @@ import type { DragEvent as ReactDragEvent, RefObject } from 'react';
 import type { Editor } from '@tiptap/core';
 import { TextSelection, type Selection } from '@tiptap/pm/state';
 import { anchorIdAt } from '../blockLinks';
-import { BlockSelection } from '../extensions/blockSelection';
+import { aroundDocument, BlockSelection } from '../extensions/blockSelection';
 import { nodeSelectionAt, startNodeDrag, startSelectionDrag } from './nodeDrag';
 
 interface HandleTarget {
@@ -39,7 +39,9 @@ export function BlockHandles({ editor, canvas, onComment, onCopyLink }: BlockHan
       if (open) return;
       if (!box) return;
       const root = editor.view.dom;
-      if (!nearDocument(root, event)) {
+      // The same answer the rubber band gives: the handles stand wherever a band may start,
+      // so a reader never drags a run of blocks in a place that shows no grip.
+      if (!aroundDocument(event.target)) {
         setTarget(null);
         return;
       }
@@ -225,21 +227,6 @@ export function BlockHandles({ editor, canvas, onComment, onCopyLink }: BlockHan
 /** True when a block selection is up and `pos` names one of the blocks in it. */
 function holdsTarget(selection: Selection, pos: number): boolean {
   return selection instanceof BlockSelection && pos >= selection.from && pos < selection.to;
-}
-
-/** The gutter the handles stand in, to the left of the editable box. */
-const GUTTER = 72;
-/** How far past the other three edges the pointer may go and still hold the handles. */
-const EDGE = 24;
-
-function nearDocument(root: HTMLElement, event: MouseEvent): boolean {
-  const rect = root.getBoundingClientRect();
-  return (
-    event.clientX >= rect.left - GUTTER &&
-    event.clientX <= rect.right + EDGE &&
-    event.clientY >= rect.top - EDGE &&
-    event.clientY <= rect.bottom + EDGE
-  );
 }
 
 /** The top-level block that holds `y`, or the next one down when `y` is in a gap. */

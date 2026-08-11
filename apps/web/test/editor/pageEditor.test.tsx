@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
+import { EditorView } from '@tiptap/pm/view';
 import { starterDatabase, type Page } from '@tablinum/shared';
 import { PageEditor } from '../../src/editor';
 import { fakeId, node, page, space } from '../fixtures';
@@ -61,6 +62,19 @@ async function mount(initial: Page, routes: Routes = {}): Promise<Mounted> {
   await waitFor(() => expect(setPage).not.toBeNull());
   const apply = setPage as unknown as (next: Page) => void;
   return { spies, setPage: (next) => act(() => apply(next)) };
+}
+
+/** The editor inside the marked shell the route wraps it in, the one the title header is in. */
+async function mountInShell(initial: Page): Promise<void> {
+  server = installFetch({ 'GET /api/v1/tree': { spaces: [] } });
+  const spies: Spies = { onChange: vi.fn(), onTitleChange: vi.fn(), onIconChange: vi.fn() };
+  let setPage: ((next: Page) => void) | null = null;
+  renderApp(
+    <div className="page-shell" data-band-canvas>
+      <Host initial={initial} spies={spies} onReady={(setter) => (setPage = setter)} />
+    </div>,
+  );
+  await waitFor(() => expect(setPage).not.toBeNull());
 }
 
 function body(): HTMLElement {
@@ -363,6 +377,25 @@ describe('PageEditor', () => {
     fireEvent.mouseMove(document.body, { clientX: 5000, clientY: 5000 });
 
     await waitFor(() => expect(document.querySelector('.gd-editor-handles')).toBeNull());
+  });
+
+  it('leaves the title alone when a press lands in the blank room beside it', async () => {
+    await mountInShell(page({ title: 'Deploy', markdown: 'One line.\n' }));
+    await waitFor(() => expect(body().textContent).toContain('One line.'));
+    const field = screen.getByLabelText('Page title');
+    act(() => field.focus());
+
+    // jsdom lays nothing out, so the position lookup finds nothing and the press would hold
+    // no block at all. The browser always hands it one, which is the case worth pinning.
+    vi.spyOn(EditorView.prototype, 'posAtCoords').mockReturnValue({ pos: 1, inside: -1 });
+
+    // `.page-shell` is marked blank room and wraps the title header, so the strip either
+    // side of the title is a band press. It used to pull the caret into the first block.
+    const shell = document.querySelector('.page-shell');
+    if (!(shell instanceof HTMLElement)) throw new Error('the page has no shell');
+    fireEvent.mouseDown(shell, { clientX: 10, clientY: 10 });
+
+    expect(document.activeElement).toBe(field);
   });
 
   it('offers the slash prompt on an empty page', async () => {

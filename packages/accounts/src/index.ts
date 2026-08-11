@@ -15,6 +15,7 @@ export type {
   CreateWorkspaceInput,
   CustomEmojiActor,
   CustomEmojiImage,
+  HandleChange,
   IssuedAgent,
   IssuedInvite,
   IssuedSession,

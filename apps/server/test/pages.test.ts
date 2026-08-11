@@ -122,6 +122,23 @@ describe('page lifecycle', () => {
     expect(page.icon).toBeUndefined();
     expect(page.order).toBeUndefined();
   });
+
+  it('lists pages by path, so a parent always precedes its children', async () => {
+    await seed(harness);
+    await createPage({ path: 'eng/deploy/steps', title: 'Steps' });
+
+    const list = await harness.app.inject({
+      method: 'GET',
+      url: '/api/v1/pages',
+      headers: headers(),
+    });
+    expect(bodyOf(list, PageListResponseSchema).pages.map((summary) => summary.path)).toEqual([
+      'eng',
+      'eng/deploy',
+      'eng/deploy/steps',
+      'eng/oncall',
+    ]);
+  });
 });
 
 describe('creating into a space that does not exist yet', () => {
@@ -266,6 +283,97 @@ describe('moving pages', () => {
     });
     expect(response.statusCode).toBe(409);
     expect(bodyOf(response, ErrorBodySchema).error.code).toBe('CONFLICT');
+  });
+
+  it('refuses to move a space home page with CONFLICT', async () => {
+    await seed(harness);
+    const home = bodyOf(
+      await harness.app.inject({
+        method: 'GET',
+        url: '/api/v1/pages?path=eng',
+        headers: headers(),
+      }),
+      PageResponseSchema,
+    ).page;
+
+    const response = await harness.app.inject({
+      method: 'PATCH',
+      url: `/api/v1/pages/${home.id}`,
+      headers: headers(),
+      payload: { path: 'eng/moved' },
+    });
+    expect(response.statusCode).toBe(409);
+    expect(bodyOf(response, ErrorBodySchema).error.code).toBe('CONFLICT');
+  });
+
+  it('rejects a move onto its own descendant with CONFLICT', async () => {
+    await seed(harness);
+    const parent = bodyOf(
+      await createPage({ path: 'eng/platform', title: 'Platform' }),
+      PageResponseSchema,
+    ).page;
+    await createPage({ path: 'eng/platform/scaling', title: 'Scaling' });
+
+    const response = await harness.app.inject({
+      method: 'PATCH',
+      url: `/api/v1/pages/${parent.id}`,
+      headers: headers(),
+      payload: { path: 'eng/platform/scaling/inner' },
+    });
+    expect(response.statusCode).toBe(409);
+    expect(bodyOf(response, ErrorBodySchema).error.code).toBe('CONFLICT');
+  });
+
+  it('names a missing space and its missing parents into existence on a move', async () => {
+    await seed(harness);
+    const page = bodyOf(
+      await createPage({ path: 'eng/legacy', title: 'Legacy' }),
+      PageResponseSchema,
+    ).page;
+
+    const moved = await harness.app.inject({
+      method: 'PATCH',
+      url: `/api/v1/pages/${page.id}`,
+      headers: headers(),
+      payload: { path: 'ghost/deep/legacy' },
+    });
+    expect(moved.statusCode).toBe(200);
+    expect(bodyOf(moved, PageResponseSchema).page.path).toBe('ghost/deep/legacy');
+
+    expect(existsSync(join(harness.contentDir, 'ghost/_space.yml'))).toBe(true);
+    expect(existsSync(join(harness.contentDir, 'ghost/index.md'))).toBe(true);
+    expect(existsSync(join(harness.contentDir, 'ghost/deep/index.md'))).toBe(true);
+
+    const spaces = await harness.app.inject({
+      method: 'GET',
+      url: '/api/v1/spaces',
+      headers: headers(),
+    });
+    // No owner, so the invented space is public. See the note in the PR that added this test.
+    expect(bodyOf(spaces, SpacesResponseSchema).spaces).toContainEqual({
+      slug: 'ghost',
+      name: 'Ghost',
+    });
+  });
+});
+
+describe('a patch that changes nothing', () => {
+  it('leaves updated alone', async () => {
+    await seed(harness);
+    const before = bodyOf(
+      await createPage({ path: 'eng/steady', title: 'Steady', markdown: 'No change here.' }),
+      PageResponseSchema,
+    ).page;
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    const again = await harness.app.inject({
+      method: 'PATCH',
+      url: `/api/v1/pages/${before.id}`,
+      headers: headers(),
+      payload: { title: 'Steady', markdown: 'No change here.' },
+    });
+    expect(again.statusCode).toBe(200);
+    expect(bodyOf(again, PageResponseSchema).page.updated).toBe(before.updated);
   });
 });
 

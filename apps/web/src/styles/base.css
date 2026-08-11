@@ -57,7 +57,10 @@ textarea {
   color: inherit;
 }
 
+/* No normalize sheet here, so the UA chrome comes off the button once, not in every stylesheet. */
 button {
+  border: 0;
+  background: none;
   cursor: pointer;
 }
 

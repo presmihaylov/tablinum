@@ -5,7 +5,7 @@ import { EditorContent, useEditor } from '@tiptap/react';
 import type { Editor } from '@tiptap/core';
 import type { Transaction } from '@tiptap/pm/state';
 import { buildExtensions } from '../../src/editor/extensions';
-import type { DiagramRequest, MentionItem, WikilinkItem } from '../../src/editor/extensions';
+import type { DiagramRequest, MentionCandidate, WikilinkItem } from '../../src/editor/extensions';
 import { ThemeProvider } from '../../src/lib/theme';
 import { BlockHandles } from '../../src/editor/ui/BlockHandles';
 import { MarkMenu } from '../../src/editor/ui/MarkMenu';
@@ -29,7 +29,7 @@ export interface MountOptions {
   /** Markdown, exactly as the real editor receives it. */
   content?: string;
   searchPages?: (query: string) => Promise<WikilinkItem[]>;
-  searchPeople?: (query: string) => Promise<MentionItem[]>;
+  searchPeople?: (query: string) => Promise<MentionCandidate[]>;
   onPickImage?: () => void;
   onPickEmoji?: () => void;
   onPickVideo?: () => void;

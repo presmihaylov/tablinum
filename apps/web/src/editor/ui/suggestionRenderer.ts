@@ -18,7 +18,7 @@ export type SuggestionMenuProps<I> = {
   command: (item: I) => void;
 };
 
-export type SuggestionMenu<I> = ForwardRefExoticComponent<
+export type SuggestionMenuComponent<I> = ForwardRefExoticComponent<
   PropsWithoutRef<SuggestionMenuProps<I>> & RefAttributes<SuggestionMenuHandle>
 >;
 
@@ -31,7 +31,7 @@ const ESTIMATED_HEIGHT = 300;
  * single fixed box, and one less dependency is one less thing to theme.
  */
 export function createSuggestionRenderer<I>(
-  Menu: SuggestionMenu<I>,
+  Menu: SuggestionMenuComponent<I>,
 ): NonNullable<SuggestionOptions<I, I>['render']> {
   return () => {
     let renderer: ReactRenderer<SuggestionMenuHandle, SuggestionMenuProps<I>> | null = null;

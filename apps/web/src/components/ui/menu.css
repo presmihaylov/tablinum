@@ -1,0 +1,98 @@
+/*
+ * The floating list a caret opens: the slash menu, the emoji list, the wikilink and page
+ * pickers, and the mention menu in a page or a comment. The box has no size of its own, so
+ * every caller says how wide and how tall it wants the list to be.
+ */
+
+.menu {
+  overflow-y: auto;
+  padding: var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-lg);
+}
+
+/* A list the caret opens beside the writing, so it is sized to read, not to fit a field. */
+.menu--caret {
+  width: 17.5rem;
+  max-height: 19rem;
+}
+
+.menu--empty {
+  padding: var(--space-3);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.menu--emoji {
+  width: 13rem;
+  max-height: 15rem;
+}
+
+.menu__emoji {
+  flex: none;
+  width: 1.5rem;
+  font-size: var(--text-lg);
+  line-height: 1;
+  text-align: center;
+}
+
+.menu__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-2);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--text);
+  font-family: var(--font-sans);
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu__item.is-active {
+  background: var(--bg-hover);
+}
+
+.menu__glyph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 2.25rem;
+  height: 1.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.03em;
+}
+
+.menu__face {
+  flex: none;
+}
+
+.menu__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.menu__title {
+  color: var(--text-strong);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+}
+
+.menu__hint {
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

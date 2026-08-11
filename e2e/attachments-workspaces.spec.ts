@@ -48,6 +48,9 @@ async function homeTitleOf(api: ApiClient): Promise<string> {
   return first.title;
 }
 
+/** Workspaces this file made, for the afterEach below. */
+const scratchWorkspaces: string[] = [];
+
 async function createWorkspace(page: BrowserPage, name: string): Promise<WorkspaceRow> {
   await page.getByRole('button', { name: 'Workspace', exact: true }).click();
   await page.getByRole('menuitem', { name: 'New workspace' }).click();
@@ -58,7 +61,9 @@ async function createWorkspace(page: BrowserPage, name: string): Promise<Workspa
 
   // The switcher names the workspace this tab is in, so it is the sign the move happened.
   await expect(page.getByRole('button', { name: 'Workspace', exact: true })).toContainText(name);
-  return workspaceRow(page, name);
+  const row = await workspaceRow(page, name);
+  scratchWorkspaces.push(row.id);
+  return row;
 }
 
 async function switchWorkspace(page: BrowserPage, name: string): Promise<void> {
@@ -83,25 +88,14 @@ function repoOf(workspace: WorkspaceRow): ContentRepo {
 }
 
 test.describe('attachments and workspaces', () => {
-  /** Spaces this test made. Removing them keeps the tree the next spec sees unchanged. */
-  let scratchSpaces: string[] = [];
-
-  test.beforeEach(() => {
-    scratchSpaces = [];
-  });
-
-  // Deleting the pages through the API keeps the index in step; the watcher is not involved.
-  test.afterEach(async ({ api, content }) => {
-    for (const slug of scratchSpaces) {
-      const home = await api.getPage(slug);
-      if (home !== null) await api.deletePage(home.id, { recursive: true });
-      await content.remove(slug);
-    }
+  // A second workspace is a repository of its own, with its own search.db and its own wal, so
+  // it sits outside the content tree the cleanContent fixture owns.
+  test.afterEach(async ({ request }) => {
+    for (const id of scratchWorkspaces.splice(0)) await request.delete(`/api/v1/workspaces/${id}`);
   });
 
   test('an image uploaded in the editor renders in the page', async ({ page, api }) => {
     const space = await api.createUniqueSpace('assets');
-    scratchSpaces.push(space.slug);
     const target = await api.createPage({ path: `${space.slug}/gallery`, title: 'Gallery' });
     const filename = `${uniqueSlug('shot')}.png`;
 
@@ -126,7 +120,6 @@ test.describe('attachments and workspaces', () => {
     content,
   }) => {
     const space = await api.createUniqueSpace('assets');
-    scratchSpaces.push(space.slug);
     const target = await api.createPage({ path: `${space.slug}/notes`, title: 'Notes' });
     const filename = `${uniqueSlug('diagram')}.png`;
 

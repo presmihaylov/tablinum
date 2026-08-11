@@ -48,6 +48,14 @@ function rollBack(dbPath: string, table: string, column: string, version: number
   db.close();
 }
 
+/** The same, for a whole table an older build never had. */
+function dropTable(dbPath: string, table: string, version: number): void {
+  const db = new Database(dbPath);
+  db.exec(`DROP TABLE IF EXISTS ${table}`);
+  db.pragma(`user_version = ${version}`);
+  db.close();
+}
+
 /** A database this build made, closed and ready to be aged. */
 function seeded(): { dbPath: string; dir: string; workspaceId: string } {
   const dir = scratch();
@@ -106,6 +114,38 @@ describe('AccountStore migration', () => {
 
     expect(columnsOf(dbPath, 'agents')).toEqual(wanted);
     expect(() => store.createAgent({ name: 'Doc Bot', workspaceId })).not.toThrow();
+  });
+
+  it('adds handle_changed to a file written before the handle could be changed', () => {
+    const { dbPath } = seeded();
+    const wanted = columnsOf(dbPath, 'users');
+    rollBack(dbPath, 'users', 'handle_changed', 8);
+
+    const store = opened(dbPath);
+
+    expect(columnsOf(dbPath, 'users')).toEqual(wanted);
+    const ada = store.createUser({
+      email: 'ada@example.com',
+      name: 'Ada Lovelace',
+      password: 'a long enough passphrase',
+    });
+    expect(store.handleChangeableAt(ada.id)).toBeNull();
+    expect(store.changeHandle(ada.id, 'ada.king').account.handle).toBe('ada.king');
+  });
+
+  it('gives an older file the reservations table, so an old handle stays taken', () => {
+    const { dbPath } = seeded();
+    dropTable(dbPath, 'handle_reservations', 8);
+
+    const store = opened(dbPath);
+    const ada = store.createUser({
+      email: 'ada@example.com',
+      name: 'Ada Lovelace',
+      password: 'a long enough passphrase',
+    });
+    store.changeHandle(ada.id, 'ada.king');
+
+    expect(store.getUserByHandle('ada.lovelace')?.id).toBe(ada.id);
   });
 
   it('leaves an already current file alone', () => {

@@ -51,6 +51,8 @@ export interface Account {
   id: string;
   email: string;
   name: string;
+  /** What other people write to mention them. It can be changed. */
+  handle: string;
   role: string;
 }
 

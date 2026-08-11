@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  HANDLE_CHANGE_COOLDOWN_MS,
   HandleSchema,
   MAX_HANDLE_LENGTH,
   findMentions,
   isHandle,
+  normalizeHandle,
+  renameMentions,
   toHandle,
   uniqueHandle,
 } from '../src/mentions.js';
@@ -110,5 +113,94 @@ describe('findMentions', () => {
 
   it('finds nothing in an empty body', () => {
     expect(findMentions('')).toEqual([]);
+  });
+});
+
+describe('renameMentions', () => {
+  it('rewrites every mention of the old handle', () => {
+    expect(renameMentions('@ada wrote this, ask @ada', 'ada', 'ada.king')).toBe(
+      '@ada.king wrote this, ask @ada.king',
+    );
+  });
+
+  it('rewrites a mention the writer typed in a different case', () => {
+    expect(renameMentions('hello @Ada', 'ada', 'ada.king')).toBe('hello @ada.king');
+  });
+
+  it('leaves a longer handle alone, because it is somebody else', () => {
+    expect(renameMentions('@ada.lovelace.2 is here', 'ada.lovelace', 'ada.king')).toBe(
+      '@ada.lovelace.2 is here',
+    );
+  });
+
+  it('leaves an email address alone', () => {
+    expect(renameMentions('write to ada@example.com', 'example', 'other')).toBe(
+      'write to ada@example.com',
+    );
+  });
+
+  it('leaves inline code alone', () => {
+    expect(renameMentions('run `curl @ada` then ping @ada', 'ada', 'ada.king')).toBe(
+      'run `curl @ada` then ping @ada.king',
+    );
+  });
+
+  it('leaves a fenced block alone', () => {
+    const markdown = ['before @ada', '```sh', 'ping @ada', '```', 'after @ada'].join('\n');
+    expect(renameMentions(markdown, 'ada', 'ada.king')).toBe(
+      ['before @ada.king', '```sh', 'ping @ada', '```', 'after @ada.king'].join('\n'),
+    );
+  });
+
+  it('rewrites a mention inside brackets and emphasis', () => {
+    expect(renameMentions('(@ada) *@ada*', 'ada', 'ada.king')).toBe('(@ada.king) *@ada.king*');
+  });
+
+  it('changes nothing when the handle is not there', () => {
+    expect(renameMentions('nobody is named here', 'ada', 'ada.king')).toBe('nobody is named here');
+  });
+
+  it('changes nothing when the two handles are the same', () => {
+    expect(renameMentions('@ada', 'ada', 'ada')).toBe('@ada');
+  });
+
+  it('rewrites exactly what findMentions reports', () => {
+    const markdown = ['@ada and `@ada`', '```', '@ada', '```', 'plus @ada.2'].join('\n');
+    expect(findMentions(renameMentions(markdown, 'ada', 'ada.king'))).toEqual(['ada.king', 'ada.2']);
+  });
+
+  it('closes a fence only on the same marker, exactly as findMentions does', () => {
+    const markdown = ['~~~', '```', '@ada', '```', '~~~', '@ada'].join('\n');
+    expect(renameMentions(markdown, 'ada', 'ada.king')).toBe(
+      ['~~~', '```', '@ada', '```', '~~~', '@ada.king'].join('\n'),
+    );
+  });
+
+  it('rewrites a mention that follows inline code with nothing between them', () => {
+    // findMentions() reads this one, because stripCode() leaves whitespace where the code was.
+    expect(findMentions('run `curl`@ada now')).toEqual(['ada']);
+    expect(renameMentions('run `curl`@ada now', 'ada', 'ada.king')).toBe('run `curl`@ada.king now');
+  });
+
+  it('rewrites every mention on a line that also holds code', () => {
+    expect(renameMentions('@ada `@ada` @ada `x` @ada', 'ada', 'ada.king')).toBe(
+      '@ada.king `@ada` @ada.king `x` @ada.king',
+    );
+  });
+});
+
+describe('normalizeHandle', () => {
+  it('drops the @, the space and the case', () => {
+    expect(normalizeHandle('  @Ada.Lovelace ')).toBe('ada.lovelace');
+  });
+
+  it('spells a handle the way HandleSchema does', () => {
+    expect(normalizeHandle(' @ADA ')).toBe(HandleSchema.parse(' @ADA '));
+  });
+});
+
+describe('HANDLE_CHANGE_COOLDOWN_MS', () => {
+  it('is one day', () => {
+    expect(HANDLE_CHANGE_COOLDOWN_MS).toBe(86_400_000);
   });
 });

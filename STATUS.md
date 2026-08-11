@@ -252,9 +252,9 @@ Verified by tests, not by a live browser session:
   last-admin rules.
 - 16 route tests (`apps/server/test/accounts.test.ts`) cover setup, login, register, the three
   credential kinds, admin gating and the avatar endpoints.
-- 23 web tests (`apps/web/test/accounts.test.tsx`) cover the gate in front of the shell, the
-  first-run flow, the sign-in screen, the invite screen, the account menu, the profile dialog and
-  the people dialog.
+- 29 web tests (`apps/web/test/accounts.test.tsx`) cover the gate in front of the shell, the
+  first-run flow, the sign-in screen, the invite screen, the account menu, the profile dialog with
+  its handle field, and the people dialog.
 - 13 CLI tests (`apps/server/test/accounts-cli.test.ts`).
 
 `node apps/server/dist/accounts-cli.js` is the way back in when nobody can sign in: `list`,
@@ -264,13 +264,29 @@ file, while the server keeps running.
 ### Mentions and Slack notifications
 
 `@handle` in the editor names a person, and the markdown keeps exactly that text. Nothing is
-encoded, so a page read in a terminal or on GitHub still shows who was named, and a rename never
-rewrites a page.
+encoded, so a page read in a terminal or on GitHub still shows who was named. The handle is the
+whole reference, so a handle change has to rewrite the pages that carry it.
 
 - **Handles** are created with the account, from the display name: "Ada Lovelace" becomes
   `@ada.lovelace`, and a second one becomes `@ada.lovelace.2`. Accents are stripped, so the handle
-  stays ascii. A handle never changes. `accounts.db` moved to schema version 2, which adds the
-  `handle` and `slack_user_id` columns and gives every existing account a handle on first open.
+  stays ascii. `accounts.db` moved to schema version 2, which adds the `handle` and `slack_user_id`
+  columns and gives every existing account a handle on first open.
+- **A handle can be changed**, by the person who holds it or by an admin, under "Your account".
+  `GET /me/handle` says how many pages and comments carry it today, and the screen repeats that
+  before the change is agreed to. `POST /me/handle` writes the account row, then sweeps every
+  workspace the caller can open and rewrites the pages through the content store, one commit per
+  workspace: `Rename @ada.lovelace to @ada.king in 2 pages`. Comment bodies are rewritten in
+  `accounts.db` in the same call, and a rewritten comment is not marked as edited.
+- **An old handle stays reserved** for the person who gave it up, in `handle_reservations`. Nobody
+  else can claim it, and a stale copy of a page still resolves to them, so a Slack message still
+  lands. Taking an old handle back frees its reservation. Uniqueness is server-wide and shared with
+  the agents, so an agent handle refuses a rename too. Agent handles themselves are unchanged: an
+  agent still keeps the handle it was made with.
+- **One change a day.** `HANDLE_CHANGE_COOLDOWN_MS` is 24 hours, held in `users.handle_changed` and
+  enforced in the store, so the admin route cannot be used to get around it. A rename sweeps the
+  repository, so an unbounded one is a way to churn it.
+- **Schema version 9** adds `users.handle_changed` and the `handle_reservations` table. The column
+  needs its `addColumn()` call, because an existing file never re-runs the `CREATE TABLE` block.
 - **The `@` menu** filters the roster in the browser, because the roster is small and already
   cached. It never asks the server.
 - **The markdown rule** matches only at the start of a word, so `mail@example.com` stays an
@@ -287,12 +303,25 @@ rewrites a page.
 
 Verified by tests, not by a live Slack workspace:
 
-- 20 shared tests cover the handle rules, the derivation and the code-aware scan.
-- 10 accounts tests cover handle creation, collisions, the version 1 migration and the Slack id.
-- 12 server tests (`apps/server/test/mentions.test.ts`) cover the three `/me/slack` routes and
+- 31 shared tests (`packages/shared/test/mentions.test.ts`) cover the handle rules, the derivation,
+  the code-aware scan and the rewrite, which skips a fenced block and inline code and leaves
+  `@ada.lovelace.2` alone.
+- 23 accounts tests (`packages/accounts/test/handles.test.ts`) cover handle creation, collisions,
+  the version 1 migration, the Slack id and the change: the reservation, a refusal from a person,
+  an agent or a reservation, a take-back, and the cooldown at one day less one millisecond.
+- 4 accounts tests (`packages/accounts/test/comments.test.ts`) cover the comment rewrite across
+  workspaces, and 6 migrate tests age a real file, including one for `handle_changed` and one for
+  the reservations table.
+- 16 server tests (`apps/server/test/mentions.test.ts`) cover the three `/me/slack` routes and
   delivery, with a stub transport: new page, only-the-new-handles on a patch, self-mention, code,
   unknown handle, and a Slack that throws.
-- 13 web tests (`apps/web/test/editor/mention.test.tsx`) plus 16 round-trip corpus entries.
+- 16 server tests (`apps/server/test/handles.test.ts`) cover the preview, the page and comment
+  rewrite in one commit, the old handle still resolving to a Slack message, both 409s, the admin
+  route, and the member who may not rename somebody else.
+- 13 web tests (`apps/web/test/editor/mention.test.tsx`) plus 16 round-trip corpus entries, and 5
+  web tests (`apps/web/test/accounts.test.tsx`) for the handle field, its warning and its refusal.
+- `e2e/handle.spec.ts` mentions a person on a page and in a comment, renames them in the browser,
+  and checks the page, the chip and the reserved old handle.
 
 ### Custom emoji
 

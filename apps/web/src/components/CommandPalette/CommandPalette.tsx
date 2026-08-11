@@ -28,6 +28,7 @@ import {
   Trash,
   UserIcon,
 } from '../ui/Icon';
+import { PageIcon } from '../ui/PageIcon';
 import './palette.css';
 
 interface CommandPaletteProps {
@@ -288,7 +289,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
       label: hit.title,
       hint: hit.snippet.replace(/\s+/g, ' ').slice(0, 90),
       group: 'Pages',
-      icon: <DocIcon size={13} />,
+      icon: <PageIcon icon={hit.icon} />,
       run: () => navigate(pageHref(hit.path)),
     }));
 

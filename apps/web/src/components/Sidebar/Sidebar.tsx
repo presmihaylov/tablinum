@@ -5,8 +5,8 @@ import { pageHref } from '../../lib/href';
 import { ancestorPaths, findNode } from '../../lib/tree';
 import { usePersistedState } from '../../lib/storage';
 import { useContent } from '../../lib/content';
-import { EmojiGlyph } from '../ui/EmojiGlyph';
-import { DocIcon, PanelLeft, Search, Star } from '../ui/Icon';
+import { PageIcon } from '../ui/PageIcon';
+import { PanelLeft, Search, Star } from '../ui/Icon';
 import { AccountMenu } from '../Account/AccountMenu';
 import { GitStatusPill } from './GitStatusPill';
 import { PageTree } from './PageTree';
@@ -208,7 +208,7 @@ function PageRow({ node, currentPath, onOpen, children }: PageRowProps) {
         onClick={() => onOpen(node.path)}
       >
         <span className="sidebar__row-icon">
-          {node.icon ? <EmojiGlyph value={node.icon} /> : <DocIcon size={13} />}
+          <PageIcon icon={node.icon} />
         </span>
         <span className="sidebar__row-title">{node.title}</span>
       </button>

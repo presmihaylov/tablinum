@@ -199,9 +199,31 @@ export class WorkspaceRegistry {
     return this.open(record);
   }
 
-  /** Every workspace that is open right now, the default one first. */
+  /** Every workspace that is open right now, the default one first. Nothing is opened here. */
   async openParts(): Promise<WorkspaceParts[]> {
     return [this.fallback, ...(await Promise.all([...this.#open.values()]))];
+  }
+
+  /**
+   * Every workspace this server has, the default one first, opening whatever is still closed.
+   *
+   * The difference from openParts() above is the whole point of the second name. Opening a
+   * workspace inits its store, its repo and its index and then reindexes every page in it, so
+   * this belongs to a mutation somebody asked for and never to a read. A workspace that cannot
+   * be opened is skipped: a server built with a single content directory refuses to open a
+   * second one, and that must not stop the caller.
+   */
+  async everyParts(): Promise<WorkspaceParts[]> {
+    const parts: WorkspaceParts[] = [this.fallback];
+    for (const record of this.deps.accounts.listWorkspaces()) {
+      if (record.id === this.fallback.record.id) continue;
+      const opened = await this.open(record).catch((err: unknown) => {
+        this.log.warn({ workspace: record.slug, err }, 'workspace skipped, it would not open');
+        return null;
+      });
+      if (opened !== null) parts.push(opened);
+    }
+    return parts;
   }
 
   /** Forget a workspace after it is deleted, so its files can be removed. */

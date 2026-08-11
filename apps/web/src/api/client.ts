@@ -34,7 +34,10 @@ import type {
   GitResolveBody,
   GitResolveResponse,
   GitStatusResponse,
+  HandleChangeResponse,
+  HandlePreviewResponse,
   HealthResponse,
+  ChangeHandleBody,
   ChangePasswordBody,
   CreateAgentBody,
   CreateInviteBody,
@@ -270,6 +273,12 @@ export const api = {
   changePassword: (body: ChangePasswordBody): Promise<OkResponse> =>
     request('/me/password', { method: 'POST', body, ignoreUnauthorized: true }),
 
+  handlePreview: (signal?: AbortSignal): Promise<HandlePreviewResponse> =>
+    request('/me/handle', { signal }),
+
+  changeHandle: (body: ChangeHandleBody): Promise<HandleChangeResponse> =>
+    request('/me/handle', { method: 'POST', body }),
+
   uploadAvatar: (file: File): Promise<AvatarResponse> => {
     const form = new FormData();
     form.append('file', file, file.name);
@@ -371,7 +380,12 @@ export const api = {
 
   search: (query: SearchQuery, signal?: AbortSignal): Promise<SearchResponse> =>
     request('/search', {
-      query: { q: query.q, space: query.space, limit: query.limit },
+      query: {
+        q: query.q,
+        space: query.space,
+        limit: query.limit,
+        fields: query.fields?.join(','),
+      },
       signal,
     }),
 

@@ -4,9 +4,9 @@ import type { PagePath, TreeNode } from '@tablinum/shared';
 import { sortNodes } from '../../lib/tree';
 import type { DropPosition } from '../../lib/treeMove';
 import { useContent } from '../../lib/content';
-import { EmojiGlyph } from '../ui/EmojiGlyph';
+import { PageIcon } from '../ui/PageIcon';
 import { ContextMenu, type MenuItem } from '../ui/Overlay';
-import { ChevronRight, Copy, DocIcon, Dots, Link, MoveTo, Pencil, Plus, Star, Trash } from '../ui/Icon';
+import { ChevronRight, Copy, Dots, Link, MoveTo, Pencil, Plus, Star, Trash } from '../ui/Icon';
 import { useTreeDrag, type DropState } from './TreeDrag';
 
 const DRAG_MIME = 'application/x-tablinum-page';
@@ -226,7 +226,7 @@ function TreeItem(props: TreeItemProps) {
         </button>
 
         <span className="tree-row__icon">
-          {node.icon ? <EmojiGlyph value={node.icon} /> : <DocIcon size={13} />}
+          <PageIcon icon={node.icon} />
         </span>
         <span className="tree-row__title">{node.title}</span>
 

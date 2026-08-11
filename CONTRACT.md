@@ -71,9 +71,9 @@ here may be committed or pushed to a remote.
 ```
 <parent of content dir>/
   search.db        # FTS5 index of the default workspace. Derived: delete it and it rebuilds.
-  accounts.db      # people, handles, password hashes, sessions, invites, avatar bytes,
-                   # custom emoji bytes, Slack member ids, workspaces and their members,
-                   # comment threads. NOT derived.
+  accounts.db      # people, handles and the handles they gave up, password hashes, sessions,
+                   # invites, avatar bytes, custom emoji bytes, Slack member ids, workspaces and
+                   # their members, comment threads. NOT derived.
   workspaces/
     handbook/          # a second workspace: a git repo with the same layout as content/
     handbook.search.db # its FTS5 index, a sibling of the directory so the export never holds it
@@ -146,9 +146,15 @@ props:                   # optional, Record<string, string|number|boolean|string
 
 Body below is plain CommonMark + GFM (tables, task lists, strikethrough, autolinks).
 Wikilinks `[[page-path]]` and `[[page-path|alias]]` are supported and resolved by core.
-Mentions are plain `@handle` text: nothing is encoded, so a page stays readable outside tablinum
-and a rename never rewrites a page. A mention must start a word, so `mail@example.com` is an
-address. A mention inside code names nobody.
+Mentions are plain `@handle` text: nothing is encoded, so a page stays readable outside tablinum.
+A mention must start a word, so `mail@example.com` is an address. A mention inside code names
+nobody. Because the handle is the whole reference, a handle change rewrites every page and every
+comment that carries it, in one commit, and the old handle stays reserved for that person.
+The server resolves a mention through the reservations, so `@old.handle` still notifies them. The
+browser does not: it marks a mention as yours only when it equals your current handle, because the
+`Account` payload carries no reserved handles. A mention the sweep skipped therefore still reaches
+you, and still reads as somebody else's on the screen. Give `Account` its reserved handles to close
+this.
 Custom emoji are plain `:shortcode:` text for the same reason. The image is resolved when the
 page is drawn, and only a shortcode somebody has uploaded is treated as one, so `10:30:45` stays a
 time. No `<img>` is ever written into a page.
@@ -245,7 +251,8 @@ export interface Account {
   id: string;             // "us_" + ULID
   email: string;
   name: string;
-  handle: string;         // the `@handle` used to mention this person. Set once, NEVER changes.
+  handle: string;         // the `@handle` used to mention this person. Derived at sign-up, and
+                          // changeable once a day. Every old handle stays reserved for them.
   role: AccountRole;
   color: string;          // derived from the id, so presence matches in every browser
   avatarRev: string | null;  // changes on every upload; null means "draw the initials"
@@ -509,6 +516,21 @@ GET    /api/v1/me                              -> { user: Account | null }   (nu
 PATCH  /api/v1/me                              body { name?, color? } -> { user: Account }
 POST   /api/v1/me/password                     body { current, next } -> { ok: true }
                                                (signs every other session out, keeps this one)
+GET    /api/v1/me/handle                       -> { handle, pages, comments, changeableAt }
+                                               (what a change would rewrite; changeableAt is an ISO
+                                                stamp while the cooldown runs, else null)
+                                               (counted through the caller's own eyes, so a page in
+                                                somebody else's private space is never counted)
+POST   /api/v1/me/handle                       body { handle } -> { user, previous, rewritten }
+                                               rewritten { pages, comments, skipped }
+                                               (skipped counts pages the sweep could not write,
+                                                almost always because somebody was editing one.
+                                                They keep the old handle, which stays reserved, so
+                                                they still name the same person)
+                                               (the sweep reaches every workspace and every private
+                                                space, because a handle names one person everywhere)
+                                               (409 when the handle is taken by a person, an agent
+                                                or a reservation, and 409 again inside 24 hours)
 POST   /api/v1/me/avatar                       multipart field `file` -> { url, rev }
 DELETE /api/v1/me/avatar                       -> { ok: true }
 GET    /api/v1/me/slack                        -> { configured, connected, slackUserId: string | null }
@@ -523,6 +545,8 @@ GET    /api/v1/users                           an account or an agent -> { users
                                                 the people in this workspace)
 GET    /api/v1/users/:id/avatar                ?v=<rev> -> the image bytes, immutable cache, 404 when none
 PATCH  /api/v1/users/:id                       admin, body { name?, role?, disabled? } -> { user: Account }
+POST   /api/v1/users/:id/handle                admin, body { handle } -> as POST /me/handle
+                                               (the same cooldown, so neither route can churn)
 DELETE /api/v1/users/:id                       admin -> { ok: true }   (409 on yourself)
 
 GET    /api/v1/invites                         admin -> { invites: Invite[] }

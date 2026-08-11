@@ -389,6 +389,24 @@ export function renameCommentMentions(db: Db, from: string, to: string): number 
   return write();
 }
 
+/**
+ * Every comment body on this install that carries `needle`, whatever workspace it is in.
+ *
+ * Deliberately not narrowed to one workspace. The caller uses this to decide whether a file on
+ * disk may be deleted, and a body in the next workspace that names that file is still a reason
+ * to keep it. Reading a few extra rows costs nothing; missing one costs the file.
+ *
+ * LIKE narrows the scan to the few rows that could carry the needle; `_` and `%` in it are LIKE
+ * wildcards, which only ever hand back extra rows, and includes() is what decides.
+ */
+export function commentBodiesContaining(db: Db, needle: string): string[] {
+  if (needle.length === 0) return [];
+  const rows = db
+    .prepare("SELECT body FROM comments WHERE body LIKE '%' || ? || '%'")
+    .all(needle) as { body: string }[];
+  return rows.map((row) => row.body).filter((body) => body.includes(needle));
+}
+
 /** A thread names its workspace, so a missing one must read as a 404 and not a foreign key error. */
 function requireWorkspace(db: Db, workspaceId: string): void {
   const row = db.prepare('SELECT 1 FROM workspaces WHERE id = ?').get(workspaceId);

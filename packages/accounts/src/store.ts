@@ -1579,6 +1579,11 @@ export class AccountStore {
     return comments.deleteThreadsForColumns(this.#handle, workspaceId, pageId, columnIds);
   }
 
+  /** Every comment body that carries `needle`, in any workspace. See comments.ts for why. */
+  commentBodiesContaining(needle: string): string[] {
+    return comments.commentBodiesContaining(this.#handle, needle);
+  }
+
   countCommentMentions(handle: string): number {
     return comments.countCommentMentions(this.#handle, handle);
   }

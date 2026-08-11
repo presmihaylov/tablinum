@@ -130,6 +130,16 @@ function assetDir(pageId: string): string {
   return join(harness.contentDir, assetDirRelPath(pageId));
 }
 
+/** Open a comment thread on a page, straight into the account database the routes write to. */
+function comment(pageId: string, body: string): void {
+  const author = harness.accounts.createUser({
+    email: `${pageId}@example.com`,
+    name: 'Ines Roy',
+    password: PASSWORD,
+  });
+  harness.accounts.createThread(defaultWorkspace().id, { pageId, author: author.id, body });
+}
+
 describe('POST /rescan', () => {
   it('lets an admin of the workspace rescan, and nobody else', async () => {
     await seed(harness);
@@ -213,6 +223,62 @@ describe('POST /rescan', () => {
     await seed(harness);
     const page = await createPage('eng/plan', 'Plan', 'Nothing yet.');
     await upload(page.id, 'plan.png');
+
+    const body = bodyOf(await rescan(), RescanResponseSchema);
+
+    expect(body.removedAssets).toEqual([]);
+    expect(existsSync(assetDir(page.id))).toBe(true);
+  });
+});
+
+/**
+ * A comment renders markdown, so a comment body is a reference like any other. Bodies live in
+ * the account database rather than in the content tree, so the store cannot see them and the
+ * sweep has to be handed them.
+ */
+describe('the sweep and comment bodies', () => {
+  it('keeps an attachment only a comment points at', async () => {
+    await seed(harness);
+    const page = await createPage('eng/plan', 'Plan', 'Nothing yet.');
+    const url = await upload(page.id, 'plan.png');
+    const other = await createPage('eng/notes', 'Notes', 'Nothing yet.');
+    comment(other.id, `Still true? ![plan](${url})`);
+
+    await rm(join(harness.contentDir, 'eng/plan.md'));
+
+    const body = bodyOf(await rescan(), RescanResponseSchema);
+
+    expect(body.removedAssets).toEqual([]);
+    expect(existsSync(assetDir(page.id))).toBe(true);
+  });
+
+  it('still collects one no page and no comment points at', async () => {
+    await seed(harness);
+    const page = await createPage('eng/plan', 'Plan', 'Nothing yet.');
+    await upload(page.id, 'plan.png');
+    // A comment that names somebody else's attachment must not save this one.
+    const other = await createPage('eng/notes', 'Notes', 'Nothing yet.');
+    comment(other.id, `Look: ![x](/${assetDirRelPath(newPageId())}/x.png)`);
+
+    await rm(join(harness.contentDir, 'eng/plan.md'));
+
+    const body = bodyOf(await rescan(), RescanResponseSchema);
+
+    expect(body.removedAssets).toEqual([`${assetDirRelPath(page.id)}/plan.png`]);
+    expect(existsSync(assetDir(page.id))).toBe(false);
+  });
+
+  it('keeps everything when the comment source cannot be read', async () => {
+    await seed(harness);
+    const page = await createPage('eng/plan', 'Plan', 'Nothing yet.');
+    await upload(page.id, 'plan.png');
+    await rm(join(harness.contentDir, 'eng/plan.md'));
+
+    // A database that will not answer says nothing about references, and "nothing" must never
+    // be read as "none": deleting an attachment out of a private space is unrecoverable.
+    harness.accounts.commentBodiesContaining = (): string[] => {
+      throw new Error('the account database is locked');
+    };
 
     const body = bodyOf(await rescan(), RescanResponseSchema);
 

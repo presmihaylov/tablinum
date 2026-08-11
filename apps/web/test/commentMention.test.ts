@@ -5,10 +5,10 @@ import {
   matchPeople,
   mentionSpot,
   peopleToMention,
-  type MentionPerson,
 } from '../src/components/Comments/mention';
+import type { MentionCandidate } from '../src/components/ui/PersonRow';
 
-const PEOPLE: MentionPerson[] = [
+const PEOPLE: MentionCandidate[] = [
   { id: 'us_1', name: 'Ada Lovelace', handle: 'ada.lovelace', color: '#3b82f6', avatarRev: null },
   { id: 'us_2', name: 'Sam Rivers', handle: 'sam.rivers', color: '#22c55e', avatarRev: null },
   { id: 'us_3', name: 'Grace Adams', handle: 'grace.adams', color: '#f97316', avatarRev: null },

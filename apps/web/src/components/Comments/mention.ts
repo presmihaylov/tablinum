@@ -1,18 +1,14 @@
 import type { Account } from '@tablinum/shared';
-import type { AvatarPerson } from '../Account/Avatar';
+import type { MentionCandidate } from '../ui/PersonRow';
 
 /**
  * Naming somebody in a comment.
  *
  * A comment carries the same plain `@handle` text a page does, so one body reads the same
  * everywhere and the server finds the mentions with the rule it already has. This file only
- * works out what is being typed and what to put in its place; the menu itself is the composer.
+ * works out what is being typed and what to put in its place. The rows are PersonRow, the
+ * ones the page draws.
  */
-
-/** A person the menu can offer. */
-export interface MentionPerson extends AvatarPerson {
-  handle: string;
-}
 
 /** Where the fragment being typed starts, and what has been typed of it so far. */
 export interface MentionSpot {
@@ -50,15 +46,15 @@ export function applyMention(
 
 /** The people the fragment could mean, best first. Everybody, in name order, for an empty one. */
 export function matchPeople(
-  people: readonly MentionPerson[],
+  people: readonly MentionCandidate[],
   query: string,
   limit = 6,
-): MentionPerson[] {
+): MentionCandidate[] {
   const sorted = [...people].sort((a, b) => a.name.localeCompare(b.name));
   const wanted = query.trim().toLowerCase();
   if (wanted.length === 0) return sorted.slice(0, limit);
 
-  const scored: { person: MentionPerson; rank: number }[] = [];
+  const scored: { person: MentionCandidate; rank: number }[] = [];
   for (const person of sorted) {
     const rank = rankOf(person, wanted);
     if (rank !== null) scored.push({ person, rank });
@@ -68,7 +64,7 @@ export function matchPeople(
 }
 
 /** Lower is better. Null when the person does not match at all. */
-function rankOf(person: MentionPerson, wanted: string): number | null {
+function rankOf(person: MentionCandidate, wanted: string): number | null {
   const handle = person.handle.toLowerCase();
   const name = person.name.toLowerCase();
   if (handle.startsWith(wanted)) return 0;
@@ -78,7 +74,7 @@ function rankOf(person: MentionPerson, wanted: string): number | null {
 }
 
 /** The roster of the workspace, as the menu wants it. Somebody disabled is left out. */
-export function peopleToMention(users: readonly Account[]): MentionPerson[] {
+export function peopleToMention(users: readonly Account[]): MentionCandidate[] {
   return users
     .filter((user) => !user.disabled)
     .map((user) => ({

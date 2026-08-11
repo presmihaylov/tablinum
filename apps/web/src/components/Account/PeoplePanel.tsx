@@ -7,7 +7,7 @@ import {
   useRevokeInvite,
   useUpdateUser,
   useUsers,
-} from '../../api/hooks';
+} from '../../api/accounts';
 import { absoluteTime } from '../../lib/format';
 import { describeError, useToast } from '../../lib/toast';
 import { ConfirmDialog, type ConfirmRequest } from '../ui/ConfirmDialog';

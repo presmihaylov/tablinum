@@ -26,15 +26,15 @@ import {
   type SelectOption,
   type ViewType,
 } from '@tablinum/shared';
+import { useUsers } from '../../api/accounts';
 import {
   useCreateRow,
   useDatabase,
   useDeleteRow,
   useSetDatabase,
   useUpdateRow,
-  useUsers,
   type SetDatabaseVars,
-} from '../../api/hooks';
+} from '../../api/content';
 import { useToast } from '../../lib/toast';
 import { Plus } from '../ui/Icon';
 import { Menu } from '../ui/Menu';

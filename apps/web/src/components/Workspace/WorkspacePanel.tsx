@@ -9,7 +9,7 @@ import {
   useUpdateWorkspace,
   useUsers,
   useWorkspaceMembers,
-} from '../../api/hooks';
+} from '../../api/accounts';
 import { describeError, useToast } from '../../lib/toast';
 import { useWorkspace } from '../../lib/workspaces';
 import { Avatar } from '../Account/Avatar';

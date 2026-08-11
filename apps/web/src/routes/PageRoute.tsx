@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { usePage } from '../api/hooks';
+import { usePage } from '../api/content';
 import { PageEditor } from '../editor';
 import { pathFromSplat } from '../lib/href';
 import { usePageDoc } from '../lib/usePageDoc';

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ConflictFile, GitResolveBody } from '@tablinum/shared';
 import { ApiError, api } from '../../api/client';
-import { invalidateContent } from '../../api/hooks';
+import { invalidateContent } from '../../api/content';
 import { useToast } from '../../lib/toast';
 import { Modal } from '../ui/Overlay';
 import { DiffView } from './DiffView';

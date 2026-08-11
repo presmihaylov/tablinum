@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { useLocation } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import type { LivePresence, PageChangedMessage, PageId, PagePath, ServerMessage } from '@tablinum/shared';
-import { invalidateContent } from '../api/hooks';
+import { invalidateContent } from '../api/content';
 import { qk } from '../api/keys';
 import { DocRoom, type DocRoomHandlers } from './docRoom';
 import { myClientId } from './identity';

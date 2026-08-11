@@ -15,7 +15,7 @@ import {
   useUpdateAgent,
   useUploadAgentAvatar,
   useWebhookSigning,
-} from '../../api/hooks';
+} from '../../api/accounts';
 import { relativeTime } from '../../lib/format';
 import { describeError, useToast } from '../../lib/toast';
 import { ConfirmDialog, type ConfirmRequest } from '../ui/ConfirmDialog';

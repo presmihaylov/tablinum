@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Route, Routes } from 'react-router-dom';
-import { useCustomEmoji } from './api/hooks';
+import { useCustomEmoji } from './api/accounts';
 import { CommandPalette } from './components/CommandPalette/CommandPalette';
 import { Sidebar } from './components/Sidebar/Sidebar';
 import { TopBar } from './components/TopBar/TopBar';

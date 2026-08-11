@@ -14,8 +14,9 @@ import {
   type SearchField,
   type SearchQuery,
 } from '@tablinum/shared';
+import { useUsers } from '../api/accounts';
 import { api } from '../api/client';
-import { useCreatePage, useSetDatabase, useTree, useUploadAsset, useUsers } from '../api/hooks';
+import { useCreatePage, useSetDatabase, useTree, useUploadAsset } from '../api/content';
 import { qk } from '../api/keys';
 import { useComments } from '../lib/comments';
 import { absolutePageUrl, pageHref } from '../lib/href';

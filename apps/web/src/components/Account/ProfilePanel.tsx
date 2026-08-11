@@ -17,7 +17,7 @@ import {
   useSlackState,
   useUpdateMe,
   useUploadAvatar,
-} from '../../api/hooks';
+} from '../../api/accounts';
 import { describeError, useToast } from '../../lib/toast';
 import { ConfirmDialog, type ConfirmRequest } from '../ui/ConfirmDialog';
 import { Avatar } from './Avatar';

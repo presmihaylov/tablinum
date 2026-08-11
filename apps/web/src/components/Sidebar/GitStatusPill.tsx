@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useGitStatus, useGitSync } from '../../api/hooks';
+import { useGitStatus, useGitSync } from '../../api/git';
 import { useToast } from '../../lib/toast';
 import { GitConflictDialog } from '../Conflict/GitConflictDialog';
 import { Branch, Sync } from '../ui/Icon';

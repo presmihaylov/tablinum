@@ -11,14 +11,14 @@ import type {
   HandlePreviewResponse,
 } from '@tablinum/shared';
 import { ApiError, api } from './client';
-import { invalidateContent } from './hooks';
+import { invalidateContent } from './content';
 import { qk } from './keys';
 
 /**
  * Changing your handle.
  *
- * These sit apart from hooks.ts because a handle change is the one mutation that rewrites other
- * people's pages, so its cache work is unlike anything else in there and reads better whole.
+ * These sit apart from accounts.ts because a handle change is the one mutation that rewrites
+ * other people's pages, so its cache work is unlike anything else there and reads better whole.
  */
 
 /** How much text carries your handle today, so the panel can say what a change would rewrite. */

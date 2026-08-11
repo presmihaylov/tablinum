@@ -175,9 +175,9 @@ the click at once. `src/editor/ui/PageTitle.tsx` does both.
 | need | use this |
 | --- | --- |
 | Save status | `SaveState` from `src/lib/autosave.ts`, `SaveIndicator` from `src/components/ui/SaveIndicator.tsx` |
-| Image and file upload | `useUploadAsset()` from `src/api/hooks.ts`; it returns `{ url, path }`. Insert the returned `url`. |
-| Full-text search (for link pickers) | `useSearch({ q, limit })` from `src/api/hooks.ts` |
-| The roster (for the `@` menu) | `useUsers()` from `src/api/hooks.ts`; each `Account` carries a `handle` |
+| Image and file upload | `useUploadAsset()` from `src/api/content.ts`; it returns `{ url, path }`. Insert the returned `url`. |
+| Full-text search (for link pickers) | `useSearch({ q, limit })` from `src/api/content.ts` |
+| The roster (for the `@` menu) | `useUsers()` from `src/api/accounts.ts`; each `Account` carries a `handle` |
 | The page tree (for a link picker) | `useWorkspace().spaces` from `src/lib/workspace.tsx` |
 | Link to another page | `pageHref(path)` from `src/lib/href.ts` |
 | Toasts | `useToast()` from `src/lib/toast.tsx` |

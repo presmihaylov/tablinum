@@ -6,7 +6,7 @@ import {
   type Database,
   type PageId,
 } from '@tablinum/shared';
-import { useCommentThreads, useDatabase } from '../api/hooks';
+import { useCommentThreads, useDatabase } from '../api/content';
 
 /** What a thread being written is about. Both fields null means the whole page. */
 export interface CommentDraft {

@@ -162,6 +162,10 @@ export class TestGitEngine implements GitEngine {
     return this.commit(pending);
   }
 
+  flushCommit(): Promise<string | null> {
+    return this.flush();
+  }
+
   async history(relFile: string, limit: number): Promise<Revision[]> {
     const raw = await this.#tryGit([
       'log',

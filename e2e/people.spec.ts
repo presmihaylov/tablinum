@@ -51,7 +51,6 @@ function uniqueEmail(prefix: string): string {
 
 const people: Account[] = [];
 const invites: string[] = [];
-const pages: string[] = [];
 const contexts: BrowserContext[] = [];
 
 /**
@@ -117,8 +116,9 @@ async function withSoleAdmin(
 }
 
 test.describe('people, invites and roles', () => {
-  test.afterEach(async ({ api, request }) => {
-    for (const id of pages.splice(0)) await api.deletePage(id, { recursive: true });
+  // Accounts, invites and browser contexts only. They live in accounts.db, which the
+  // cleanContent fixture does not own; the pages this spec seeds are already its business.
+  test.afterEach(async ({ request }) => {
     for (const context of contexts.splice(0)) await context.close();
     // A promoted account is demoted first, or the delete would refuse to drop the last admin.
     for (const person of people.splice(0)) {
@@ -217,7 +217,6 @@ test.describe('people, invites and roles', () => {
       title: 'Team notes',
       markdown: 'The team notes live here.\n',
     });
-    pages.push(seeded.id);
 
     const invited = await createInvite(request, { email: uniqueEmail('reader'), role: 'member' });
     invites.push(invited.id);

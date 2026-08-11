@@ -7,8 +7,8 @@ import type { WikilinkItem } from '../src/editor/extensions';
 import { renderApp } from './render';
 
 const PAGES: WikilinkItem[] = [
-  { path: 'eng/deploy', title: 'Deploy' },
-  { path: 'eng/rollout', title: 'Rollout' },
+  { id: 'pg_deploy', path: 'eng/deploy', title: 'Deploy' },
+  { id: 'pg_rollout', path: 'eng/rollout', title: 'Rollout' },
 ];
 
 function search(query: string): Promise<WikilinkItem[]> {
@@ -44,7 +44,7 @@ function Harness({ onPick = vi.fn(), onCreate = vi.fn() }: HarnessProps) {
 function optionLabels(): string[] {
   return screen
     .queryAllByRole('option')
-    .map((row) => row.querySelector('.gd-editor-menu__title')?.textContent ?? '');
+    .map((row) => row.querySelector('.menu__title')?.textContent ?? '');
 }
 
 function field(): HTMLElement {

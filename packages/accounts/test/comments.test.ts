@@ -265,3 +265,95 @@ describe('cascade', () => {
     expect(accounts.getThread(main.id, thread.id)).toBeNull();
   });
 });
+
+describe('mentions in comments', () => {
+  it('counts the comments that name a handle, across every workspace', () => {
+    const accounts = store();
+    const main = workspace(accounts);
+    const other = workspace(accounts, 'Handbook', '/content/handbook');
+
+    accounts.createThread(main.id, { pageId: PAGE, author: ADA, body: 'ask @ada.lovelace' });
+    accounts.createThread(other.id, { pageId: PAGE, author: GRACE, body: 'and @ada.lovelace too' });
+    accounts.createThread(main.id, { pageId: PAGE, author: ADA, body: 'nobody here' });
+
+    expect(accounts.countCommentMentions('ada.lovelace')).toBe(2);
+    expect(accounts.countCommentMentions('@Ada.Lovelace')).toBe(2);
+    expect(accounts.countCommentMentions('nobody')).toBe(0);
+  });
+
+  it('rewrites the handle in every comment that carries it', () => {
+    const accounts = store();
+    const main = workspace(accounts);
+    const thread = accounts.createThread(main.id, {
+      pageId: PAGE,
+      author: ADA,
+      body: 'ask @ada.lovelace',
+    });
+    accounts.addReply(main.id, thread.id, GRACE, 'yes, @ada.lovelace knows');
+
+    expect(accounts.renameCommentMentions('ada.lovelace', 'ada.king')).toBe(2);
+
+    const after = accounts.getThread(main.id, thread.id);
+    expect(after?.comments[0]?.body).toBe('ask @ada.king');
+    expect(after?.comments[1]?.body).toBe('yes, @ada.king knows');
+  });
+
+  it('does not mark a rewritten comment as edited', () => {
+    const accounts = store();
+    const main = workspace(accounts);
+    const thread = accounts.createThread(main.id, {
+      pageId: PAGE,
+      author: ADA,
+      body: 'ask @ada.lovelace',
+    });
+
+    accounts.renameCommentMentions('ada.lovelace', 'ada.king');
+
+    const comment = accounts.getThread(main.id, thread.id)?.comments[0];
+    expect(comment?.updated).toBe(comment?.created);
+  });
+
+  it('leaves a comment that names somebody else alone', () => {
+    const accounts = store();
+    const main = workspace(accounts);
+    const thread = accounts.createThread(main.id, {
+      pageId: PAGE,
+      author: ADA,
+      body: 'ask @ada.lovelace.2 and `@ada.lovelace`',
+    });
+
+    expect(accounts.renameCommentMentions('ada.lovelace', 'ada.king')).toBe(0);
+    expect(accounts.getThread(main.id, thread.id)?.comments[0]?.body).toBe(
+      'ask @ada.lovelace.2 and `@ada.lovelace`',
+    );
+  });
+
+  it('counts exactly what it rewrites, so the preview cannot promise the wrong number', () => {
+    const accounts = store();
+    const main = workspace(accounts);
+    const bodies = [
+      'ask @ada.lovelace',
+      'and @Ada.Lovelace in another case',
+      'not @ada.lovelace.2, somebody else',
+      '`@ada.lovelace` is code',
+      'ada.lovelace without the @',
+      'nobody here',
+    ];
+    for (const body of bodies) {
+      accounts.createThread(main.id, { pageId: PAGE, author: ADA, body });
+    }
+
+    const counted = accounts.countCommentMentions('ada.lovelace');
+    expect(counted).toBe(2);
+    expect(accounts.renameCommentMentions('ada.lovelace', 'ada.king')).toBe(counted);
+  });
+
+  it('finds a handle with an underscore, which LIKE would otherwise read as a wildcard', () => {
+    const accounts = store();
+    const main = workspace(accounts);
+    accounts.createThread(main.id, { pageId: PAGE, author: ADA, body: 'ask @ada_lovelace' });
+
+    expect(accounts.countCommentMentions('ada_lovelace')).toBe(1);
+    expect(accounts.renameCommentMentions('ada_lovelace', 'ada.king')).toBe(1);
+  });
+});

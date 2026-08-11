@@ -181,6 +181,7 @@ export async function buildApp(deps: ServerDeps): Promise<FastifyInstance> {
       log: app.log,
       publicUrl: deps.config.publicUrl,
     }),
+    log: app.log,
     version: deps.version ?? VERSION,
   };
   rememberContext(app, ctx);

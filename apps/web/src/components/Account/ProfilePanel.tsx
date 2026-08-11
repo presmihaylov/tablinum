@@ -1,5 +1,14 @@
 import { useRef, useState, type ChangeEvent } from 'react';
-import { AVATAR_MIME_TYPES, MIN_PASSWORD_LENGTH, type Account } from '@tablinum/shared';
+import {
+  AVATAR_MIME_TYPES,
+  HANDLE_HINT,
+  MIN_PASSWORD_LENGTH,
+  isHandle,
+  normalizeHandle,
+  type Account,
+  type HandlePreviewResponse,
+} from '@tablinum/shared';
+import { useChangeHandle, useHandlePreview } from '../../api/handles';
 import {
   useChangePassword,
   useConnectSlack,
@@ -10,6 +19,7 @@ import {
   useUploadAvatar,
 } from '../../api/hooks';
 import { describeError, useToast } from '../../lib/toast';
+import { ConfirmDialog, type ConfirmRequest } from '../ui/ConfirmDialog';
 import { Avatar } from './Avatar';
 import './account.css';
 
@@ -29,12 +39,58 @@ export function ProfilePanel({ user }: ProfilePanelProps) {
   const connectSlack = useConnectSlack();
   const disconnectSlack = useDisconnectSlack();
 
+  const handlePreview = useHandlePreview();
+  const changeHandle = useChangeHandle();
+
   const [name, setName] = useState(user.name);
+  const [handle, setHandle] = useState(user.handle);
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [slackId, setSlackId] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
+
+  const wantedHandle = normalizeHandle(handle);
+  const changeableAt = handlePreview.data?.changeableAt ?? null;
+  // The mutation answered with the new handle; the `user` prop is refetched and can still hold
+  // the old one for a moment, which would leave the button live and offer the change again.
+  const currentHandle = changeHandle.data?.user.handle ?? user.handle;
+
+  const submitHandle = (wanted: string): void => {
+    changeHandle.mutate(
+      { handle: wanted },
+      {
+        onSuccess: (data) => {
+          setHandle(data.user.handle);
+          const left = data.rewritten.skipped;
+          // A page somebody was editing keeps the old handle. Saying so is the point of counting
+          // them: the old handle is reserved, so the page still names the right person meanwhile.
+          const note =
+            left === 0 ? '' : `. ${left} ${left === 1 ? 'page' : 'pages'} kept the old one`;
+          toast.push(`You are now @${data.user.handle}${note}`, 'success');
+        },
+        onError: (cause) => setError(describeError(cause, 'Could not change that handle.')),
+      },
+    );
+  };
+
+  /** Say what the rewrite will do before it happens, because it edits other people's pages. */
+  const askHandle = (): void => {
+    if (wantedHandle === currentHandle) return;
+    if (!isHandle(wantedHandle)) {
+      setError(HANDLE_HINT);
+      return;
+    }
+
+    setError(null);
+    setConfirm({
+      title: `Change your handle to @${wantedHandle}?`,
+      message: `${describeRewrite(handlePreview.data)} @${currentHandle} stays reserved for you, so nobody else can take it and an old copy of a page still points at you.`,
+      confirmLabel: 'Rewrite the mentions',
+      onConfirm: () => submitHandle(wantedHandle),
+    });
+  };
 
   const saveName = (): void => {
     const trimmed = name.trim();
@@ -142,11 +198,39 @@ export function ProfilePanel({ user }: ProfilePanelProps) {
         <input className="input" value={user.email} readOnly disabled />
       </label>
 
-      <label className="field">
-        <span className="field__label">Handle</span>
-        <input className="input" value={`@${user.handle}`} readOnly disabled />
-        <p className="account-form__note">Other people write this to mention you on a page.</p>
-      </label>
+      <div className="account-form">
+        <label className="field">
+          <span className="field__label">Handle</span>
+          <input
+            className="input"
+            value={handle}
+            spellCheck={false}
+            autoCapitalize="none"
+            onChange={(event) => setHandle(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== 'Enter') return;
+              event.preventDefault();
+              askHandle();
+            }}
+          />
+        </label>
+        <p className="account-form__note">
+          Other people write this to mention you on a page. {describeRewrite(handlePreview.data)}
+          {changeableAt === null
+            ? ''
+            : ` You changed it recently, so the next change is possible after ${readableTime(changeableAt)}.`}
+        </p>
+        <button
+          type="button"
+          className="btn btn--primary"
+          onClick={askHandle}
+          disabled={
+            changeHandle.isPending || changeableAt !== null || wantedHandle === currentHandle
+          }
+        >
+          Change handle
+        </button>
+      </div>
 
       <div className="account-section">
         <div className="account-section__title">Slack notifications</div>
@@ -207,8 +291,28 @@ export function ProfilePanel({ user }: ProfilePanelProps) {
       </div>
 
       {error === null ? null : <p className="account-form__error">{error}</p>}
+      <ConfirmDialog request={confirm} onClose={() => setConfirm(null)} />
     </div>
   );
+}
+
+function counted(n: number, noun: string): string {
+  return `${n} ${noun}${n === 1 ? '' : 's'}`;
+}
+
+/** What a change would do to the text that already names this person. */
+function describeRewrite(preview: HandlePreviewResponse | undefined): string {
+  if (preview === undefined) return 'A change rewrites every mention of your old handle.';
+  if (preview.pages === 0 && preview.comments === 0) {
+    return 'Nothing mentions you yet, so a change rewrites nothing.';
+  }
+  const parts = counted(preview.pages, 'page');
+  const rest = counted(preview.comments, 'comment');
+  return `A change rewrites ${parts} and ${rest} in one commit.`;
+}
+
+function readableTime(iso: string): string {
+  return new Date(iso).toLocaleString();
 }
 
 interface SlackSectionProps {

@@ -114,6 +114,136 @@ describe('handles', () => {
   });
 });
 
+describe('changeHandle', () => {
+  const DAY = 24 * 60 * 60 * 1000;
+
+  function ada(accounts: AccountStore): string {
+    return accounts.createUser({
+      email: 'ada@example.com',
+      name: 'Ada Lovelace',
+      password: PASSWORD,
+    }).id;
+  }
+
+  it('gives the person the new handle', () => {
+    const accounts = store();
+    const id = ada(accounts);
+    const change = accounts.changeHandle(id, 'ada.king');
+    expect(change.previous).toBe('ada.lovelace');
+    expect(change.account.handle).toBe('ada.king');
+    expect(accounts.getUserByHandle('ada.king')?.id).toBe(id);
+  });
+
+  it('normalizes what the caller typed', () => {
+    const accounts = store();
+    const id = ada(accounts);
+    expect(accounts.changeHandle(id, ' @Ada.King ').account.handle).toBe('ada.king');
+  });
+
+  it('keeps the old handle theirs, so a stale page still finds them', () => {
+    const accounts = store();
+    const id = ada(accounts);
+    accounts.changeHandle(id, 'ada.king');
+    expect(accounts.getUserByHandle('ada.lovelace')?.id).toBe(id);
+    expect(accounts.reservedHandles(id)).toEqual(['ada.lovelace']);
+  });
+
+  it('refuses out loud when the old handle cannot be reserved', () => {
+    // Reserving the old handle is the whole reason a stale page still names the right person.
+    // A reservation that is silently dropped would leave that handle claimable by anybody, so
+    // the write has to fail as a refusal the caller sees rather than pass and say nothing.
+    const dbPath = tempDb();
+    const accounts = store(dbPath);
+    const id = ada(accounts);
+
+    const db = new Database(dbPath);
+    db.prepare('INSERT INTO handle_reservations (handle, user_id, created) VALUES (?, ?, 0)').run(
+      'ada.lovelace',
+      id,
+    );
+    db.close();
+
+    expect(codeOf(() => accounts.changeHandle(id, 'ada.king'))).toBe('CONFLICT');
+    expect(accounts.getUser(id)?.handle).toBe('ada.lovelace');
+  });
+
+  it('refuses a handle another person holds', () => {
+    const accounts = store();
+    const id = ada(accounts);
+    accounts.createUser({ email: 'sam@example.com', name: 'Sam Rivers', password: PASSWORD });
+    expect(codeOf(() => accounts.changeHandle(id, 'sam.rivers'))).toBe('CONFLICT');
+  });
+
+  it('refuses a handle another person reserved', () => {
+    const accounts = store();
+    const id = ada(accounts);
+    accounts.changeHandle(id, 'ada.king');
+
+    const sam = accounts.createUser({ email: 's@example.com', name: 'Sam', password: PASSWORD });
+    expect(codeOf(() => accounts.changeHandle(sam.id, 'ada.lovelace'))).toBe('CONFLICT');
+  });
+
+  it('refuses a handle an agent holds, because the two share one namespace', () => {
+    const accounts = store();
+    const id = ada(accounts);
+    const main = accounts.createWorkspace({ name: 'Main', dir: '/content/main' });
+    accounts.createAgent({ name: 'Buildbot', workspaceId: main.id });
+    expect(codeOf(() => accounts.changeHandle(id, 'buildbot'))).toBe('CONFLICT');
+  });
+
+  it('refuses a handle that breaks the rules', () => {
+    const accounts = store();
+    expect(codeOf(() => accounts.changeHandle(ada(accounts), 'ada lovelace'))).toBe('VALIDATION');
+  });
+
+  it('does nothing when the wanted handle is already theirs', () => {
+    const accounts = store();
+    const id = ada(accounts);
+    const change = accounts.changeHandle(id, 'ada.lovelace');
+    expect(change.previous).toBeNull();
+    expect(accounts.reservedHandles(id)).toEqual([]);
+  });
+
+  it('lets a person take back a handle they gave up, and frees the reservation', () => {
+    const accounts = store();
+    const id = ada(accounts);
+    accounts.changeHandle(id, 'ada.king', 0);
+    accounts.changeHandle(id, 'ada.lovelace', DAY);
+    expect(accounts.getUser(id)?.handle).toBe('ada.lovelace');
+    expect(accounts.reservedHandles(id)).toEqual(['ada.king']);
+  });
+
+  it('refuses a second change inside a day and allows one after it', () => {
+    const accounts = store();
+    const id = ada(accounts);
+    accounts.changeHandle(id, 'ada.king', 0);
+
+    expect(codeOf(() => accounts.changeHandle(id, 'ada.byron', DAY - 1))).toBe('CONFLICT');
+    expect(accounts.changeHandle(id, 'ada.byron', DAY).account.handle).toBe('ada.byron');
+  });
+
+  it('reports when the next change is possible', () => {
+    const accounts = store();
+    const id = ada(accounts);
+    expect(accounts.handleChangeableAt(id, 0)).toBeNull();
+
+    accounts.changeHandle(id, 'ada.king', 0);
+    expect(accounts.handleChangeableAt(id, 1)).toBe(DAY);
+    expect(accounts.handleChangeableAt(id, DAY)).toBeNull();
+  });
+
+  it('reports an unknown account', () => {
+    const accounts = store();
+    expect(codeOf(() => accounts.changeHandle('us_missing', 'ada'))).toBe('NOT_FOUND');
+    expect(codeOf(() => accounts.handleChangeableAt('us_missing'))).toBe('NOT_FOUND');
+  });
+
+  it('leaves a new account with no cooldown, so the derived handle behaves as before', () => {
+    const accounts = store();
+    expect(accounts.handleChangeableAt(ada(accounts))).toBeNull();
+  });
+});
+
 describe('migration from version 1', () => {
   it('gives every old account a handle, without a collision', () => {
     const dbPath = tempDb();

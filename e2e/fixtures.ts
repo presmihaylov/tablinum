@@ -17,6 +17,21 @@ export interface TablinumFixtures {
   signedOutRequest: APIRequestContext;
   /** REST client on the operator token, for calls made outside any browser session. */
   operatorApi: ApiClient;
+  /**
+   * Automatic. One server and one content directory back the whole run, so a space or a page
+   * a test leaves behind is still there for the next one, and the sidebar and the home route
+   * both read the whole tree. This puts the content tree of the default workspace back to the
+   * state a fresh server starts in, before every test.
+   *
+   * That tree is all it owns: one space, `docs`, holding one page, the welcome page. Extra
+   * workspaces, favorites, accounts and agents live outside it, and a spec that makes one
+   * still removes it itself.
+   *
+   * Before the test and not after, so that a test body which runs out its own timeout cannot
+   * take the next test down with it: the reset gets the fresh budget of the test that needs
+   * the clean tree, and a reset that fails fails on that test.
+   */
+  cleanContent: void;
 }
 
 export const test = base.extend<TablinumFixtures>({
@@ -53,6 +68,14 @@ export const test = base.extend<TablinumFixtures>({
     await use(new ApiClient(context));
     await context.dispose();
   },
+
+  cleanContent: [
+    async ({ api }, use) => {
+      await api.reset();
+      await use();
+    },
+    { auto: true },
+  ],
 });
 
 export { expect, ADMIN, BASE_URL, CONTENT_DIR };

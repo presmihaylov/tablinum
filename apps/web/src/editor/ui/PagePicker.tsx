@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { Plus } from '../../components/ui/Icon';
 import { Modal } from '../../components/ui/Overlay';
+import { PageIcon } from '../../components/ui/PageIcon';
 import { useDebouncedValue } from '../../lib/useDebouncedValue';
 import type { WikilinkItem } from '../extensions';
 
@@ -112,19 +114,22 @@ export function PagePicker({ open, search, onClose, onPick, onCreate }: PagePick
         ) : null}
         {options.map((option, index) => (
           <button
-            key={option.kind === 'create' ? 'create' : `page:${option.item.path}`}
+            key={option.kind === 'create' ? 'create' : `page:${option.item.id}`}
             type="button"
             role="option"
             aria-selected={index === active}
-            className={`gd-editor-menu__item${index === active ? ' is-active' : ''}`}
+            className={`menu__item${index === active ? ' is-active' : ''}`}
             onMouseEnter={() => setActive(index)}
             onClick={() => choose(option)}
           >
-            <span className="gd-editor-menu__text">
-              <span className="gd-editor-menu__title">
+            <span className="menu__page-icon">
+              {option.kind === 'create' ? <Plus size={13} /> : <PageIcon icon={option.item.icon} />}
+            </span>
+            <span className="menu__text">
+              <span className="menu__title">
                 {option.kind === 'create' ? `New page: ${option.title}` : option.item.title}
               </span>
-              <span className="gd-editor-menu__hint">
+              <span className="menu__hint">
                 {option.kind === 'create' ? 'Create it here and embed it' : option.item.path}
               </span>
             </span>

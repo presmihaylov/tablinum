@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { FastifyBaseLogger, FastifyInstance, FastifyRequest } from 'fastify';
 import type { CursorDesk } from './cursors.js';
 import type { ServerDeps } from './deps.js';
 import type { LiveHub } from './live.js';
@@ -23,6 +23,8 @@ export interface RouteContext {
   mentions: MentionNotifier;
   /** Null when no Slack bot token is configured. */
   slack: SlackApi | null;
+  /** The server log, for work that spans several requests and cannot use `request.log`. */
+  log: FastifyBaseLogger;
   version: string;
 }
 

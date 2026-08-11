@@ -75,6 +75,8 @@ export interface SearchHit {
   title: string;
   snippet: string;
   score: number;
+  /** The emoji of the page, or a `:shortcode:` for a custom one. Absent when it has none. */
+  icon?: string;
 }
 
 /** One git commit that touched a page. */

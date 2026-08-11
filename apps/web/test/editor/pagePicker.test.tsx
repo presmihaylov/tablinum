@@ -7,8 +7,8 @@ import { renderApp } from '../render';
 afterEach(cleanup);
 
 const PAGES: WikilinkItem[] = [
-  { path: 'eng/deploy', title: 'Deploy' },
-  { path: 'eng/rollback', title: 'Rollback' },
+  { id: 'pg_deploy', path: 'eng/deploy', title: 'Deploy' },
+  { id: 'pg_rollback', path: 'eng/rollback', title: 'Rollback' },
 ];
 
 function search(query: string): Promise<WikilinkItem[]> {
@@ -25,6 +25,14 @@ function mount(onPick = vi.fn(), onClose = vi.fn(), onCreate = vi.fn()) {
 
 function field(): HTMLElement {
   return screen.getByPlaceholderText('Search pages…');
+}
+
+/** The titles of the page rows, without the offer to create one. */
+function pageTitles(): string[] {
+  return screen
+    .queryAllByRole('option')
+    .map((row) => row.querySelector('.menu__title')?.textContent ?? '')
+    .filter((title) => !title.startsWith('New page: '));
 }
 
 describe('PagePicker', () => {
@@ -107,5 +115,44 @@ describe('PagePicker', () => {
     fireEvent.keyDown(field(), { key: 'Enter' });
 
     expect(onCreate).toHaveBeenCalledWith('o');
+  });
+});
+
+const ICONED: WikilinkItem[] = [
+  { id: 'pg_deploy', path: 'eng/deploy', title: 'Deploy', icon: '🚀' },
+  { id: 'pg_rollback', path: 'eng/rollback', title: 'Rollback', icon: ':party:' },
+  { id: 'pg_notes', path: 'eng/notes', title: 'Notes' },
+];
+
+function mountIconed() {
+  renderApp(
+    <PagePicker
+      open
+      search={() => Promise.resolve(ICONED)}
+      onClose={vi.fn()}
+      onPick={vi.fn()}
+      onCreate={vi.fn()}
+    />,
+  );
+}
+
+function rowFor(title: string): HTMLElement {
+  const row = screen
+    .getAllByRole('option')
+    .find((option) => option.querySelector('.menu__title')?.textContent === title);
+  if (!row) throw new Error(`No row for ${title}`);
+  return row;
+}
+
+describe('PagePicker icons', () => {
+  it('draws the emoji of a page, a custom one as a picture, and a blank page for neither', async () => {
+    mountIconed();
+
+    fireEvent.change(field(), { target: { value: 'eng' } });
+    await waitFor(() => expect(pageTitles().length).toBe(3));
+
+    expect(rowFor('Deploy').querySelector('.menu__page-icon')?.textContent).toBe('🚀');
+    expect(rowFor('Rollback').querySelector('img')?.getAttribute('alt')).toBe(':party:');
+    expect(rowFor('Notes').querySelector('.menu__page-icon svg')).toBeTruthy();
   });
 });

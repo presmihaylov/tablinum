@@ -66,8 +66,10 @@ test.describe('page slash command', () => {
     await createFromPicker(page, 'Rollout');
 
     const child = `${path}/rollout`;
-    await expect(embed(page)).toHaveAttribute('title', child);
+    // The title comes first. While the embed is still loading it names the path in both places,
+    // so the attribute alone passes before the page behind the embed has been read at all.
     await expect(embed(page)).toContainText('Rollout');
+    await expect(embed(page)).toHaveAttribute('title', child);
 
     // The embed must survive the save, else a refresh loses it.
     await expect.poll(async () => (await content.pageFileText(path)) ?? '').toContain(`![[${child}]]`);
@@ -123,7 +125,10 @@ test.describe('page slash command', () => {
     await expect(found).toBeVisible();
     await expect(found.locator('.menu__page-icon')).toHaveText('🐙');
 
-    // One typo in the name still finds the page.
+    // One typo in the name still finds the page. The list is emptied first, because the search
+    // is debounced and an assertion straight after the fill reads the answers for `Runb`.
+    await field.fill('zebracoffee');
+    await expect(found).toHaveCount(0);
     await field.fill('Runbok');
     await expect(found).toBeVisible();
 
@@ -151,6 +156,9 @@ test.describe('page slash command', () => {
     // The second page needs a slug of its own, and the second title must not be wiped by the
     // dialog as it opens. Both embeds prove it.
     await expect(embed(page)).toHaveCount(2);
+    // A loading embed already names its path, so the titles below settle before they are read.
+    await expect(embed(page).first()).toContainText('Rollout');
+    await expect(embed(page).last()).toContainText('Rollout');
     // The second run inserts under the first paragraph, so the newer embed is drawn above the
     // older one. Only the pair of targets matters here.
     const titles = await embed(page).evaluateAll((nodes) => nodes.map((node) => node.getAttribute('title')));

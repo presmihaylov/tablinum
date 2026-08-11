@@ -89,9 +89,12 @@ test.describe('an agent editing a page', () => {
 
       await callTool(asAgent, 'tablinum_type', { path, text: 'from the release branch' });
 
-      // The reader sees the new words without reloading anything.
+      // The reader sees the new words without reloading anything. The agent's caret stands where
+      // it stopped typing, which is between the last word and the full stop, and the name on it
+      // counts as text on the page. So the words are matched up to that point, and the full stop
+      // is left to the assertion on the file below, which no caret can reach.
       await expect(page.locator('.gd-editor-surface')).toContainText(
-        'Run the pipeline from the release branch.',
+        'Run the pipeline from the release branch',
       );
 
       // And the file really says so.
@@ -99,15 +102,21 @@ test.describe('an agent editing a page', () => {
       expect(after?.markdown).toContain('Run the pipeline from the release branch.');
       expect(after?.markdown).not.toContain('from main');
 
-      // The caret came back with the text, just after what was typed.
-      const held = await asAgent.get(`/api/v1/pages/${created.id}/cursor`);
-      expect(held.ok(), await held.text()).toBeTruthy();
+      // The caret came back with the text, just after what was typed. Read on a poll: the type
+      // call answers when the write is done, and the caret is recorded on its own path, so a
+      // single read here is a point measurement of state that is still on its way.
       type Caret = { block: number; offset: number };
-      const { cursor } = (await held.json()) as { cursor: { anchor: Caret; head: Caret } | null };
-      expect(cursor).not.toBeNull();
-      expect(cursor?.head.block).toBe(1);
-      // Just after the words it typed, which is where a person's caret ends up.
-      expect(cursor?.head.offset).toBe('Run the pipeline from the release branch'.length);
+      await expect
+        .poll(async () => {
+          const held = await asAgent.get(`/api/v1/pages/${created.id}/cursor`);
+          if (!held.ok()) return null;
+          const { cursor } = (await held.json()) as {
+            cursor: { anchor: Caret; head: Caret } | null;
+          };
+          return cursor?.head ?? null;
+        })
+        // Just after the words it typed, which is where a person's caret ends up.
+        .toEqual({ block: 1, offset: 'Run the pipeline from the release branch'.length });
     } finally {
       await asAgent.dispose();
       // The agent outlives the content tree, so it is not the cleanContent fixture's to take.

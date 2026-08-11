@@ -1,11 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import type { WebSocket } from '@fastify/websocket';
 import type { FastifyBaseLogger } from 'fastify';
-import { MAX_ROOM_STEPS, type DocBaseline, type LiveUser, type Page, type ServerMessage } from '@tablinum/shared';
+import {
+  MAX_ROOM_STEPS,
+  colorForId,
+  type DocBaseline,
+  type LiveAgent,
+  type LiveUser,
+  type Page,
+  type ServerMessage,
+} from '@tablinum/shared';
 import { DocRooms, versionOf, writerOf } from '../src/docroom.js';
 import { LiveHub } from '../src/live.js';
 
 const PATH = 'eng/deploy';
+const AGENT: LiveAgent = { id: 'ag_01ADA', name: 'Ada', handle: 'ada', avatarRev: null };
 
 function baseline(markdown: string, rev = 'rev-1'): DocBaseline {
   return { markdown, title: 'Deploy runbook', rev };
@@ -238,6 +247,39 @@ describe('LiveHub documents', () => {
       steps: [],
       writer: 'tab-a',
     });
+  });
+
+  it('shows a tab the caret an agent put down before that tab arrived', async () => {
+    const { hub, join, send } = hubWithDocs();
+    // An agent opens a page and puts its caret down. Nobody is reading it yet, so there is no
+    // room to broadcast into, and the caret used to be dropped on the floor for good.
+    hub.noteAgent(AGENT, PATH, false, Date.now());
+    hub.agentCaret(AGENT, PATH, { block: 0, offset: 2 }, { block: 0, offset: 5 });
+
+    const a = join('tab-a');
+    send('tab-a', { type: 'doc-open', path: PATH });
+    await settle();
+
+    expect(a.last('doc-agent-caret')).toEqual({
+      type: 'doc-agent-caret',
+      path: PATH,
+      client: AGENT.id,
+      user: { id: AGENT.id, name: 'Ada', color: colorForId(AGENT.id) },
+      agent: AGENT,
+      anchor: { block: 0, offset: 2 },
+      head: { block: 0, offset: 5 },
+    });
+  });
+
+  it('does not replay the caret of an agent that has gone quiet', async () => {
+    const { hub, join, send } = hubWithDocs();
+    hub.noteAgent(AGENT, PATH, false, 0);
+    hub.agentCaret(AGENT, PATH, { block: 0, offset: 2 }, { block: 0, offset: 2 });
+
+    const a = join('tab-a');
+    send('tab-a', { type: 'doc-open', path: PATH });
+    await settle();
+    expect(a.last('doc-agent-caret')).toBeUndefined();
   });
 
   it('tells a page that is not there to give up', async () => {

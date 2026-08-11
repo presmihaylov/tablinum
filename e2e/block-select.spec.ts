@@ -152,6 +152,26 @@ async function dragMargin(
 }
 
 /**
+ * The grip, once it really stands beside `target`. There is one grip for the whole document
+ * and a move to another block only rewrites its `top`, so it is visible the whole time and
+ * `toBeVisible` says nothing about which block it names. Its position is written from a
+ * `mousemove` listener through React state, so the box is the previous block's until that lands.
+ */
+async function gripBeside(page: Page, target: Locator): Promise<Locator> {
+  const grip = page.getByRole('button', { name: 'Block actions' });
+  await expect
+    .poll(async () => {
+      const found = await grip.boundingBox();
+      const onto = await target.boundingBox();
+      if (found === null || onto === null) return false;
+      const middle = found.y + found.height / 2;
+      return middle >= onto.y && middle <= onto.y + onto.height;
+    }, { message: 'the grip never moved beside the line' })
+    .toBe(true);
+  return grip;
+}
+
+/**
  * Drag the grip beside one line and drop it on another. Chromium needs several moves before
  * it raises a native drag at all, so one `dragTo` is not enough.
  */
@@ -251,8 +271,7 @@ test.describe('selecting whole blocks', () => {
     await expect(litBlocks(page)).toHaveCount(2);
 
     await line(page, 'Beta line.').hover();
-    const grip = page.getByRole('button', { name: 'Block actions' });
-    await expect(grip).toBeVisible();
+    const grip = await gripBeside(page, line(page, 'Beta line.'));
     await dragGrip(page, grip, line(page, 'Delta line.'));
 
     // Moved, not copied: the two lines stand once, and they stand after Delta.
@@ -320,7 +339,13 @@ test.describe('selecting whole blocks', () => {
 
     // The band and the handles answer one question, so a reader never picks a run of blocks
     // in a place that shows no grip. Both margins are far outside the old 72px gutter.
+    // The handles are one element that stays mounted, so the second pass would pass on what
+    // the first left behind. The pointer goes to the rail in between, which takes them away.
+    const rail = await page.locator('.sidebar').boundingBox();
+    if (rail === null) throw new Error('the page has no rail');
     for (const side of ['left', 'right'] as const) {
+      await page.mouse.move(rail.x + rail.width / 2, beta.y + 2);
+      await expect(grip).toHaveCount(0);
       await page.mouse.move(await marginX(page, side), beta.y + 2);
       await expect(grip).toBeVisible();
     }
@@ -413,8 +438,7 @@ test.describe('selecting whole blocks', () => {
     await expect(litBlocks(page)).toHaveCount(2);
 
     await line(page, 'Beta line.').hover();
-    const grip = page.getByRole('button', { name: 'Block actions' });
-    await expect(grip).toBeVisible();
+    const grip = await gripBeside(page, line(page, 'Beta line.'));
     await dragGrip(page, grip, line(page, 'Delta line.'));
 
     await expect
@@ -431,15 +455,12 @@ test.describe('selecting whole blocks', () => {
 
     await page.goto(`/p/${seeded.path}`);
     await expect(line(page, 'Alpha line.')).toBeVisible();
-    const beta = await line(page, 'Beta line.').boundingBox();
-    const delta = await line(page, 'Delta line.').boundingBox();
-    if (beta === null || delta === null) throw new Error('a line has no box');
-
     // The box turns a shift click down, so the release is the only thing that widens it.
-    await page.mouse.click(beta.x + 20, beta.y + beta.height / 2);
-    await page.keyboard.down('Shift');
-    await page.mouse.click(delta.x + 20, delta.y + delta.height / 2);
-    await page.keyboard.up('Shift');
+    // Clicked through the lines themselves rather than through boxes measured up front: a
+    // measurement taken right after the load names where a line used to be, and anything that
+    // redraws the document in between leaves the click in the gap between two blocks.
+    await line(page, 'Beta line.').click({ position: { x: 20, y: 4 } });
+    await line(page, 'Delta line.').click({ modifiers: ['Shift'], position: { x: 20, y: 4 } });
 
     await expect(band(page)).toHaveCount(0);
     await expect(litBlocks(page)).toHaveCount(3);

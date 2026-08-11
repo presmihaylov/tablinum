@@ -256,9 +256,13 @@ test.describe('databases', () => {
     await db(page).getByRole('button', { name: /^Filter/ }).click();
     await page.getByRole('button', { name: 'Add a filter' }).click();
     await page.getByLabel('Filter property').selectOption({ label: 'Notes' });
+    // The panel opens on `Status`, which offers neither `contains` nor a box to type in. Both
+    // arrive with the save, and the box is a textbox where the list it replaces is not.
+    const value = page.getByRole('textbox', { name: 'Filter value' });
+    await expect(value).toBeVisible();
     await page.getByLabel('Filter operator').selectOption({ label: 'contains' });
-    await page.getByLabel('Filter value').fill('urgent');
-    await page.getByLabel('Filter value').press('Enter');
+    await value.fill('urgent');
+    await value.press('Enter');
 
     await expect.poll(async () => titles(page)).toEqual(['Ship it']);
   });

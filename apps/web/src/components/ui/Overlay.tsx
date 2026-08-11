@@ -1,5 +1,7 @@
-import { Fragment, useEffect, useRef, type ReactNode } from 'react';
+import { Fragment, useEffect, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import type { MenuAlign } from '../../lib/menuPlacement';
+import { Menu, type MenuAnchor } from './Menu';
 import { Close } from './Icon';
 import './overlay.css';
 
@@ -59,40 +61,17 @@ export interface MenuItem {
 }
 
 interface ContextMenuProps {
-  x: number;
-  y: number;
+  label: string;
+  anchor: MenuAnchor;
+  align?: MenuAlign;
   items: MenuItem[];
   onClose: () => void;
 }
 
-export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
-  const ref = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    const onDown = (event: MouseEvent): void => {
-      if (ref.current?.contains(event.target as Node)) return;
-      onClose();
-    };
-    const onKey = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') onClose();
-    };
-    window.addEventListener('mousedown', onDown);
-    window.addEventListener('keydown', onKey);
-    window.addEventListener('resize', onClose);
-    return () => {
-      window.removeEventListener('mousedown', onDown);
-      window.removeEventListener('keydown', onKey);
-      window.removeEventListener('resize', onClose);
-    };
-  }, [onClose]);
-
-  // Keep the menu inside the viewport without measuring: clamp against a nominal size.
-  const rules = items.filter((item) => item.divider).length;
-  const left = Math.min(x, window.innerWidth - 208);
-  const top = Math.min(y, window.innerHeight - (items.length * 30 + rules * 9 + 16));
-
-  return createPortal(
-    <div ref={ref} className="context-menu" style={{ left, top }} role="menu">
+/** A list of actions in a menu, for the control or the spot on the page that asked for them. */
+export function ContextMenu({ label, anchor, align, items, onClose }: ContextMenuProps) {
+  return (
+    <Menu label={label} anchor={anchor} align={align} className="context-menu" onClose={onClose}>
       {items.map((item) => (
         <Fragment key={item.id}>
           {item.divider ? <div className="context-menu__rule" /> : null}
@@ -110,7 +89,6 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
           </button>
         </Fragment>
       ))}
-    </div>,
-    document.body,
+    </Menu>
   );
 }

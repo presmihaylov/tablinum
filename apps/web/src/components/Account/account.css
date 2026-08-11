@@ -12,10 +12,6 @@
   user-select: none;
 }
 
-.account-menu {
-  position: relative;
-}
-
 .account-menu__button {
   display: inline-flex;
   align-items: center;
@@ -30,11 +26,8 @@
   background: var(--bg-hover);
 }
 
+/* Menu.tsx draws it in a layer on the body, so only the look belongs here. */
 .account-menu__panel {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  z-index: 40;
   width: 15rem;
   padding: var(--space-2);
   border: 1px solid var(--border);

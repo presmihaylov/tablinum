@@ -9,8 +9,8 @@ import type {
   SelectOption,
 } from '@tablinum/shared';
 import { Plus, Trash } from '../ui/Icon';
+import { Menu } from '../ui/Menu';
 import { Cell } from './Cell';
-import { Pop } from './Pop';
 import { PropertyHead } from './PropertyHead';
 
 interface TableViewProps {
@@ -174,11 +174,11 @@ function TitleCell({ row, onTitleChange, onDelete, onOpen }: TitleCellProps) {
         ⋯
       </button>
       {open ? (
-        <Pop label="Row menu" anchor={trigger} onClose={() => setOpen(false)}>
+        <Menu label="Row menu" anchor={trigger} onClose={() => setOpen(false)}>
           <button
             type="button"
             role="menuitem"
-            className="db-pop__item db-pop__item--danger"
+            className="popmenu__item popmenu__item--danger"
             onClick={() => {
               setOpen(false);
               onDelete();
@@ -187,7 +187,7 @@ function TitleCell({ row, onTitleChange, onDelete, onOpen }: TitleCellProps) {
             <Trash size={12} />
             Delete row
           </button>
-        </Pop>
+        </Menu>
       ) : null}
     </div>
   );

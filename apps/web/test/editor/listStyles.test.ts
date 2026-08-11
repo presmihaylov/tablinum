@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
+import type { Editor } from '@tiptap/core';
+import { mountEditor, settle } from './mount';
 
 /**
  * The global reset strips the marker from every `ul` and `ol`, so a numbered list showed no
@@ -23,5 +25,38 @@ describe('editor list markers', () => {
     expect(editor).toMatch(
       /\.gd-editor-surface \.gd-editor-tasks\s*\{[^}]*list-style-type:\s*none/,
     );
+  });
+});
+
+/**
+ * The hint decoration lands on the list, not on the item, and it draws from the list's left
+ * edge. A bullet and a number hang outside that edge, but a checkbox sits on it, so a hint on
+ * a to-do list ran under the box. The empty text is what stops it being drawn.
+ */
+describe('the hint on an empty list', () => {
+  /**
+   * The hint only shows where the caret is. Position 3 is inside the empty paragraph, three
+   * steps past the list and the item that hold it.
+   */
+  async function openWithCaret(markdown: string): Promise<Editor> {
+    const editor = await mountEditor({ content: markdown });
+    await settle(() => editor.commands.setTextSelection(3));
+    return editor;
+  }
+
+  it('is empty on a to-do list, so nothing is drawn over the checkbox', async () => {
+    await openWithCaret('- [ ]\n');
+
+    const list = document.querySelector('ul.gd-editor-tasks');
+    expect(list?.className).toContain('is-empty');
+    expect(list?.getAttribute('data-placeholder')).toBe('');
+  });
+
+  it('still reads on a bullet list, whose marker hangs clear of it', async () => {
+    await openWithCaret('- \n');
+
+    const list = document.querySelector('ul:not(.gd-editor-tasks)');
+    expect(list?.className).toContain('is-empty');
+    expect(list?.getAttribute('data-placeholder')).toBe('Type / for commands');
   });
 });

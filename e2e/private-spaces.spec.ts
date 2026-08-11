@@ -16,9 +16,6 @@ interface Seeded {
 
 const SECRET = 'The pay review lands on Tuesday.';
 
-/** The space the running test seeded, so the cleanup can take its pages out of the index. */
-let seededSlug: string | null = null;
-
 /** The Private bucket of the sidebar, which holds every space the person owns alone. */
 function privateBucket(page: Page): Locator {
   return page.getByRole('region', { name: 'Private', exact: true });
@@ -34,7 +31,6 @@ async function seedPrivate(api: ApiClient, content: ContentRepo): Promise<Seeded
   const slug = uniqueSlug('vault');
   const space = await api.createSpace({ slug, name: 'Vault', private: true });
   expect(space.owner).toBeTruthy();
-  seededSlug = slug;
 
   const page = await api.createPage({
     path: `${slug}/salary`,
@@ -47,18 +43,6 @@ async function seedPrivate(api: ApiClient, content: ContentRepo): Promise<Seeded
 }
 
 test.describe('private spaces', () => {
-  test.afterEach(async ({ api }) => {
-    const slug = seededSlug;
-    seededSlug = null;
-    // Through the API rather than by removing the directory: the watcher can miss a file that
-    // goes away moments after it arrived, and the page would stay in the index for good.
-    if (slug !== null) {
-      const home = await api.getPage(slug);
-      if (home !== null) await api.deletePage(home.id, { recursive: true });
-    }
-    await api.reset();
-  });
-
   test('keeps every file of the space out of git', async ({ api, content }) => {
     const seeded = await seedPrivate(api, content);
     await api.commit('docs: e2e private space');

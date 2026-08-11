@@ -51,7 +51,6 @@ test.describe('an agent editing a page', () => {
   test('opens a page, selects a phrase, and types over it while a reader watches', async ({
     page,
     api,
-    content,
     request,
     playwright,
   }) => {
@@ -111,12 +110,8 @@ test.describe('an agent editing a page', () => {
       expect(cursor?.head.offset).toBe('Run the pipeline from the release branch'.length);
     } finally {
       await asAgent.dispose();
+      // The agent outlives the content tree, so it is not the cleanContent fixture's to take.
       await request.delete(`/api/v1/agents/${agent.id}`);
-      // The whole space goes: the sign-in landing page is the first page of the first space,
-      // so a scratch space left behind here would send a later spec somewhere else.
-      const home = await api.getPage(space.slug);
-      if (home !== null) await api.deletePage(home.id, { recursive: true });
-      await content.remove(space.slug);
     }
   });
 });

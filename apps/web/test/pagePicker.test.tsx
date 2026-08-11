@@ -44,7 +44,7 @@ function Harness({ onPick = vi.fn(), onCreate = vi.fn() }: HarnessProps) {
 function optionLabels(): string[] {
   return screen
     .queryAllByRole('option')
-    .map((row) => row.querySelector('.gd-editor-menu__title')?.textContent ?? '');
+    .map((row) => row.querySelector('.menu__title')?.textContent ?? '');
 }
 
 function field(): HTMLElement {

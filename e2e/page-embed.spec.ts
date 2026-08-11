@@ -30,7 +30,7 @@ async function runCommand(page: Page, query: string, title: string): Promise<voi
   const exact = new RegExp(`^${title}$`);
   await menu
     .getByRole('option')
-    .filter({ has: page.locator('.gd-editor-menu__title', { hasText: exact }) })
+    .filter({ has: page.locator('.menu__title', { hasText: exact }) })
     .first()
     .click();
 }

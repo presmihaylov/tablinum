@@ -78,6 +78,23 @@ async function caretAfter(page: Page, text: string): Promise<void> {
   await page.keyboard.press('End');
 }
 
+/** The top edge of every matching row, in document order. */
+async function rowTops(page: Page, selector: string): Promise<number[]> {
+  return page
+    .locator(selector)
+    .evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().top));
+}
+
+/** The distance from each row to the next one. */
+function rowGaps(tops: number[]): number[] {
+  const gaps: number[] = [];
+  tops.forEach((top, index) => {
+    const previous = tops[index - 1];
+    if (previous !== undefined) gaps.push(top - previous);
+  });
+  return gaps;
+}
+
 test.describe('the markdown editor', () => {
   test('typing markdown syntax writes that markdown to disk', async ({ page, api, content }) => {
     const { path, file } = await seedPage(api, content, 'typed', '');
@@ -251,5 +268,66 @@ test.describe('the markdown editor', () => {
 
     await expectBody(content, alphaFile, 'Alpha body. One.\n');
     await expectBody(content, betaFile, 'Beta body. Two.\n');
+  });
+
+  test('an empty to-do item shows no hint over its checkbox', async ({ page, api, content }) => {
+    const { path } = await seedPage(api, content, 'todo-empty', '## Tasks\n\n- [ ]\n');
+
+    await page.goto(pageHref(path));
+    const body = editorBody(page);
+    await expect(body.getByRole('heading', { name: 'Tasks' })).toBeVisible();
+    // The hint only shows where the caret is, and it is drawn on the list, not on the item.
+    await body.locator('li.gd-editor-task p').click();
+
+    const list = body.locator('ul.gd-editor-tasks');
+    await expect(list).toHaveClass(/is-empty/);
+    // Empty text, so the box the hint draws holds nothing and the checkbox stands alone.
+    await expect(list).toHaveAttribute('data-placeholder', '');
+  });
+
+  test('an empty paragraph still shows its hint', async ({ page, api, content }) => {
+    const { path } = await seedPage(api, content, 'todo-blank', '');
+
+    await page.goto(pageHref(path));
+    const body = editorBody(page);
+    await body.click();
+
+    const paragraph = body.locator('p.is-empty');
+    await expect(paragraph).toHaveCount(1);
+    await expect(paragraph).toHaveAttribute('data-placeholder', /\S/);
+  });
+
+  test('a run of to-do items keeps the rhythm of a bullet list', async ({ page, api, content }) => {
+    const markdown = [
+      '- [ ] Freeze the branch',
+      '- [ ] Tag the release',
+      '- [x] Announce it',
+      '- [ ] Close the milestone',
+      '',
+      'Then check them off.',
+      '',
+      '- Freeze the branch',
+      '- Tag the release',
+      '- Announce it',
+      '- Close the milestone',
+      '',
+    ].join('\n');
+    const { path } = await seedPage(api, content, 'todo-rhythm', markdown);
+
+    await page.goto(pageHref(path));
+    const body = editorBody(page);
+    await expect(body.locator('li.gd-editor-task')).toHaveCount(4);
+    await expect(body.locator('ul:not(.gd-editor-tasks) > li')).toHaveCount(4);
+
+    const tasks = rowGaps(await rowTops(page, '.gd-editor-surface li.gd-editor-task'));
+    const bullets = rowGaps(await rowTops(page, '.gd-editor-surface ul:not(.gd-editor-tasks) > li'));
+
+    expect(tasks).toHaveLength(3);
+    expect(bullets).toHaveLength(3);
+    // Every row one line apart, and the same line the bullet list under it uses. The checkbox
+    // label used to stand taller than its own line and push each row about five pixels further
+    // down. One pixel of slack keeps sub-pixel rounding out of the result.
+    const pitch = tasks[0] ?? 0;
+    for (const gap of [...tasks, ...bullets]) expect(Math.abs(gap - pitch)).toBeLessThanOrEqual(1);
   });
 });

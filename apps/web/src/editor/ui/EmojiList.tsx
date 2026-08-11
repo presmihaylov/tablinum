@@ -1,4 +1,5 @@
 import { EmojiGlyph } from '../../components/ui/EmojiGlyph';
+import { MenuList } from '../../components/ui/MenuList';
 import type { EmojiEntry } from './emoji';
 
 export interface EmojiListProps {
@@ -13,31 +14,25 @@ export interface EmojiListProps {
 /** The `:query` result list. Both the body menu and the title menu draw it. */
 export function EmojiList({ items, active, onHover, onPick, className }: EmojiListProps) {
   return (
-    <div
-      className={`gd-editor-menu gd-editor-menu--emoji${className ? ` ${className}` : ''}`}
-      role="listbox"
-      aria-label="Insert emoji"
-    >
-      {items.map((entry, index) => (
-        <button
-          key={entry.src ?? entry.char}
-          type="button"
-          role="option"
-          aria-selected={index === active}
-          className={`gd-editor-menu__item${index === active ? ' is-active' : ''}`}
-          onMouseEnter={() => onHover(index)}
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={() => onPick(entry)}
-        >
-          <span className="gd-editor-menu__emoji" aria-hidden="true">
+    <MenuList
+      className={className === undefined ? 'menu--emoji' : `menu--emoji ${className}`}
+      items={items}
+      active={active}
+      label="Insert emoji"
+      keyOf={(entry) => entry.src ?? entry.char}
+      renderRow={(entry) => (
+        <>
+          <span className="menu__emoji" aria-hidden="true">
             <EmojiGlyph value={entry.char} />
           </span>
-          <span className="gd-editor-menu__text">
-            <span className="gd-editor-menu__title">{entry.name}</span>
+          <span className="menu__text">
+            <span className="menu__title">{entry.name}</span>
           </span>
-        </button>
-      ))}
-    </div>
+        </>
+      )}
+      onHover={onHover}
+      onPick={onPick}
+    />
   );
 }
 

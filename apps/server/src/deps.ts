@@ -17,6 +17,7 @@ import type {
   PagePath,
   PageSummary,
   Revision,
+  SearchField,
   SearchHit,
   Space,
   TreeNode,
@@ -55,6 +56,8 @@ export interface FileResolution {
 export interface SearchOptions {
   space?: string;
   limit?: number;
+  /** Columns the match is restricted to. Omitted, every column answers. */
+  fields?: readonly SearchField[];
 }
 
 /**

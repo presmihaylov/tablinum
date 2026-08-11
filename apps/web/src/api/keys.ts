@@ -18,7 +18,10 @@ export const qk = {
   pages: ['pages'] as const,
   page: (id: PageId) => ['page', 'id', id] as const,
   pageByPath: (path: PagePath) => ['page', 'path', path] as const,
-  search: (query: SearchQuery) => ['search', query.q, query.space ?? ''] as const,
+  // The columns belong in the key: a name-only search and a full-text one ask the same
+  // words of the same server and get different answers.
+  search: (query: SearchQuery) =>
+    ['search', query.q, query.space ?? '', (query.fields ?? []).join(',')] as const,
   backlinks: (id: PageId) => ['backlinks', id] as const,
   comments: (id: PageId) => ['comments', id] as const,
   favorites: ['favorites'] as const,

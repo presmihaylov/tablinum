@@ -7,8 +7,8 @@ import type { WikilinkItem } from '../src/editor/extensions';
 import { renderApp } from './render';
 
 const PAGES: WikilinkItem[] = [
-  { path: 'eng/deploy', title: 'Deploy' },
-  { path: 'eng/rollout', title: 'Rollout' },
+  { id: 'pg_deploy', path: 'eng/deploy', title: 'Deploy' },
+  { id: 'pg_rollout', path: 'eng/rollout', title: 'Rollout' },
 ];
 
 function search(query: string): Promise<WikilinkItem[]> {

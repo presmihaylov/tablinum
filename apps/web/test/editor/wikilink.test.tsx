@@ -6,8 +6,8 @@ import { createTestEditor, roundtrip, toMarkdown } from './harness';
 import { mountEditor, settle, typeText } from './mount';
 
 const PAGES: WikilinkItem[] = [
-  { path: 'guides/setup', title: 'Setup guide' },
-  { path: 'guides/deploy', title: 'Deploy guide' },
+  { id: 'pg_setup', path: 'guides/setup', title: 'Setup guide', icon: '🧭' },
+  { id: 'pg_deploy', path: 'guides/deploy', title: 'Deploy guide' },
 ];
 
 let headless: Editor | null = null;
@@ -56,10 +56,17 @@ describe('wikilink picker', () => {
     await openPicker(async () => PAGES, '[[gui');
 
     const options = await screen.findAllByRole('option');
-    expect(options.map((item) => item.textContent)).toEqual([
-      'Setup guideguides/setup',
-      'Deploy guideguides/deploy',
-    ]);
+    expect(options.map((item) => item.querySelector('.gd-editor-menu__title')?.textContent)).toEqual(
+      ['Setup guide', 'Deploy guide'],
+    );
+  });
+
+  it('draws the icon of a page, and the blank page for one without', async () => {
+    await openPicker(async () => PAGES, '[[gui');
+
+    const options = await screen.findAllByRole('option');
+    expect(options[0]?.querySelector('.gd-editor-picker__icon')?.textContent).toBe('🧭');
+    expect(options[1]?.querySelector('.gd-editor-picker__icon svg')).toBeTruthy();
   });
 
   it('picks the highlighted page with the arrow keys and Enter', async () => {

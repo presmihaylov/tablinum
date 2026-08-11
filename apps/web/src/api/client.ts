@@ -371,7 +371,12 @@ export const api = {
 
   search: (query: SearchQuery, signal?: AbortSignal): Promise<SearchResponse> =>
     request('/search', {
-      query: { q: query.q, space: query.space, limit: query.limit },
+      query: {
+        q: query.q,
+        space: query.space,
+        limit: query.limit,
+        fields: query.fields?.join(','),
+      },
       signal,
     }),
 

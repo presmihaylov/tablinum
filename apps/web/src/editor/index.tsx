@@ -5,13 +5,21 @@ import { useQueryClient } from '@tanstack/react-query';
 import { EditorContent, useEditor } from '@tiptap/react';
 import type { Editor } from '@tiptap/core';
 import type { Transaction } from '@tiptap/pm/state';
-import { DIAGRAM_EXT, parseAssetUrl, starterBoard, type Page } from '@tablinum/shared';
+import {
+  DIAGRAM_EXT,
+  parseAssetUrl,
+  starterBoard,
+  type Page,
+  type SearchField,
+  type SearchQuery,
+} from '@tablinum/shared';
 import { api } from '../api/client';
 import { useCreatePage, useSetDatabase, useTree, useUploadAsset, useUsers } from '../api/hooks';
 import { qk } from '../api/keys';
 import { useComments } from '../lib/comments';
 import { absolutePageUrl, pageHref } from '../lib/href';
 import { useToast } from '../lib/toast';
+import { flattenTree } from '../lib/tree';
 import { childPathFor } from '../lib/treeMove';
 import type { SaveState } from '../lib/autosave';
 import type { DocRoom } from '../lib/docRoom';
@@ -32,6 +40,7 @@ import type {
   MentionItem,
   WikilinkItem,
 } from './extensions';
+import { PAGE_MENU_ROWS, pageMenuRows } from './pageSearch';
 import { DEFAULT_FRAME, PARSE_OPTIONS, readMarkdown, writeMarkdown } from './markdown';
 import type { MarkdownFrame } from './markdown';
 import { useDocStream } from './useStream';
@@ -96,7 +105,11 @@ interface Handlers {
   comment: (threadId: string | null) => void;
 }
 
-const SEARCH_LIMIT = 8;
+/** The columns of the search index that hold the name of a page, and not its text. */
+const PAGE_NAME_FIELDS: SearchField[] = ['title', 'path'];
+
+/** Most people the `@` menu offers at once. */
+const MENTION_ROWS = 8;
 
 /** How long the text sits still before every anchor is looked up again. */
 const REANCHOR_MS = 400;
@@ -142,6 +155,20 @@ export function PageEditor({
   const peopleRef = useRef(users.data?.users ?? []);
   peopleRef.current = users.data?.users ?? [];
 
+  // The tree the browser already holds, as page menu rows. Read through a ref so that
+  // `searchPages` keeps one identity: rebuilding it would restart every open menu.
+  const knownRef = useRef<WikilinkItem[]>([]);
+  knownRef.current = useMemo<WikilinkItem[]>(
+    () =>
+      flattenTree(spaces).map((node) => ({
+        id: node.id,
+        path: node.path,
+        title: node.title,
+        icon: node.icon,
+      })),
+    [spaces],
+  );
+
   const uploadRef = useRef(uploadAsset.mutateAsync);
   uploadRef.current = uploadAsset.mutateAsync;
 
@@ -158,20 +185,28 @@ export function PageEditor({
     [page.id, toast],
   );
 
+  // Both page menus ask this: the `/page` picker and the `[[` menu. `fields` narrows the
+  // index to the name of a page, so a word that reads only in a body no longer answers.
   const searchPages = useCallback(
     async (query: string): Promise<WikilinkItem[]> => {
       const text = query.trim();
       if (text.length === 0) return [];
-      const search = { q: text, limit: SEARCH_LIMIT };
+      const search: SearchQuery = { q: text, limit: PAGE_MENU_ROWS, fields: PAGE_NAME_FIELDS };
       try {
         const data = await client.fetchQuery({
           queryKey: qk.search(search),
           queryFn: ({ signal }) => api.search(search, signal),
           staleTime: 5_000,
         });
-        return data.hits.map((hit) => ({ path: hit.path, title: hit.title }));
+        const hits = data.hits.map((hit) => ({
+          id: hit.id,
+          path: hit.path,
+          title: hit.title,
+          icon: hit.icon,
+        }));
+        return pageMenuRows(hits, knownRef.current, text);
       } catch {
-        return [];
+        return pageMenuRows([], knownRef.current, text);
       }
     },
     [client],
@@ -188,7 +223,7 @@ export function PageEditor({
           person.handle.includes(text) ||
           person.name.toLowerCase().includes(text),
       )
-      .slice(0, SEARCH_LIMIT)
+      .slice(0, MENTION_ROWS)
       .map((person) => ({
         id: person.id,
         handle: person.handle,

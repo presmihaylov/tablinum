@@ -3,13 +3,13 @@ import { dirname, resolve } from 'node:path';
 import Database from 'better-sqlite3';
 import { escapeHtml, internal, markdownToPlainText, validation } from '@tablinum/shared';
 import type { Page, PageId, SearchHit } from '@tablinum/shared';
-import { buildMatchExpressions, isFtsQueryError } from './query.js';
+import { buildMatchExpressions, isFtsQueryError, type SearchField } from './query.js';
 
 // The index and its snippets are the oldest readers of this, so it keeps answering here.
 export { escapeHtml, markdownToPlainText } from '@tablinum/shared';
 export type { PlainTextOptions } from '@tablinum/shared';
-export { buildMatchExpressions, parseQuery, toMatchExpression } from './query.js';
-export type { Phrase } from './query.js';
+export { buildMatchExpressions, parseQuery, SEARCH_FIELDS, toMatchExpression } from './query.js';
+export type { Phrase, SearchField } from './query.js';
 
 type Db = Database.Database;
 
@@ -17,7 +17,7 @@ type Db = Database.Database;
 export const SEARCH_DB_FILENAME = 'search.db';
 
 /** The index is a rebuildable cache; bump this to force a rebuild on the next boot. */
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 /** bm25 column weights, in the declared order of pages_fts: title, body, path. */
 const TITLE_WEIGHT = 3;
@@ -42,7 +42,10 @@ const MARK_CLOSE = '\u0002';
  * The index never stores the whole content repo, only what a result row needs.
  * A full `Page` satisfies this, so callers can pass one straight through.
  */
-export type IndexablePage = Pick<Page, 'id' | 'path' | 'space' | 'title' | 'updated' | 'markdown'>;
+export type IndexablePage = Pick<
+  Page,
+  'id' | 'path' | 'space' | 'title' | 'updated' | 'markdown' | 'icon'
+>;
 
 export interface SearchIndexOptions {
   /** Absolute path of the SQLite file, or ":memory:" for a throwaway index. */
@@ -56,12 +59,18 @@ export interface SearchOptions {
   space?: string;
   /** 1..200, default 20. */
   limit?: number;
+  /**
+   * Restrict the match to these columns. Omitted, every column answers, which is
+   * full text. `['title', 'path']` is the name of a page and nothing else.
+   */
+  fields?: readonly SearchField[];
 }
 
 interface PageRow {
   id: string;
   path: string;
   title: string;
+  icon: string;
   rank_score: number;
   snip: string | null;
 }
@@ -146,6 +155,7 @@ export class SearchIndex {
         path    TEXT NOT NULL,
         space   TEXT NOT NULL,
         title   TEXT NOT NULL DEFAULT '',
+        icon    TEXT NOT NULL DEFAULT '',
         updated TEXT NOT NULL DEFAULT ''
       );
       CREATE INDEX IF NOT EXISTS pages_space_idx ON pages(space);
@@ -248,7 +258,7 @@ export class SearchIndex {
    * usable term returns an empty list.
    */
   async search(query: string, opts: SearchOptions = {}): Promise<SearchHit[]> {
-    const expressions = buildMatchExpressions(query);
+    const expressions = buildMatchExpressions(query, opts.fields);
     if (expressions.length === 0) return [];
 
     for (const expression of expressions) {
@@ -292,13 +302,14 @@ export class SearchIndex {
     write: (page: IndexablePage) => void;
     drop: (id: string) => boolean;
   } {
-    const upsertPage = db.prepare<[string, string, string, string, string]>(
-      `INSERT INTO pages (id, path, space, title, updated)
-       VALUES (?, ?, ?, ?, ?)
+    const upsertPage = db.prepare<[string, string, string, string, string, string]>(
+      `INSERT INTO pages (id, path, space, title, icon, updated)
+       VALUES (?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
          path = excluded.path,
          space = excluded.space,
          title = excluded.title,
+         icon = excluded.icon,
          updated = excluded.updated`,
     );
     const selectRowId = db.prepare<[string], RowIdRow>(
@@ -317,6 +328,7 @@ export class SearchIndex {
           page.path,
           page.space,
           page.title ?? '',
+          page.icon ?? '',
           page.updated ?? '',
         );
 
@@ -362,6 +374,7 @@ export class SearchIndex {
       SELECT p.id            AS id,
              p.path          AS path,
              p.title         AS title,
+             p.icon          AS icon,
              bm25(pages_fts, ${TITLE_WEIGHT}, ${BODY_WEIGHT}, ${PATH_WEIGHT}) AS rank_score,
              snippet(pages_fts, ${BODY_COLUMN}, char(1), char(2), '...', ${SNIPPET_TOKENS}) AS snip
       FROM pages_fts
@@ -372,14 +385,19 @@ export class SearchIndex {
 
     try {
       const rows = db.prepare<[Record<string, string | number>], PageRow>(sql).all(params);
-      return rows.map((row) => ({
-        id: row.id,
-        path: row.path,
-        title: row.title,
-        snippet: renderSnippet(row.snip, row.title),
-        // bm25() is negative and better the lower it goes; invert so bigger means better.
-        score: Number.isFinite(row.rank_score) ? -row.rank_score : 0,
-      }));
+      return rows.map((row) => {
+        const hit: SearchHit = {
+          id: row.id,
+          path: row.path,
+          title: row.title,
+          snippet: renderSnippet(row.snip, row.title),
+          // bm25() is negative and better the lower it goes; invert so bigger means better.
+          score: Number.isFinite(row.rank_score) ? -row.rank_score : 0,
+        };
+        // A page with no icon stores the empty string, and the wire shape omits the field.
+        if (row.icon.length > 0) hit.icon = row.icon;
+        return hit;
+      });
     } catch (err) {
       if (isFtsQueryError(err)) return null;
       throw err;

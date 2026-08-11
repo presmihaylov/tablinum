@@ -1,4 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useState } from 'react';
+import { PageIcon } from '../../components/ui/PageIcon';
 import type { WikilinkItem } from '../extensions/wikilinkSuggestion';
 import type { SuggestionMenuHandle, SuggestionMenuProps } from './suggestionRenderer';
 
@@ -40,7 +41,7 @@ export const WikilinkMenu = forwardRef<SuggestionMenuHandle, SuggestionMenuProps
       <div className="gd-editor-menu" role="listbox" aria-label="Link to page">
         {items.map((item, index) => (
           <button
-            key={item.path}
+            key={item.id}
             type="button"
             role="option"
             aria-selected={index === active}
@@ -49,6 +50,9 @@ export const WikilinkMenu = forwardRef<SuggestionMenuHandle, SuggestionMenuProps
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => command(item)}
           >
+            <span className="gd-editor-picker__icon">
+              <PageIcon icon={item.icon} />
+            </span>
             <span className="gd-editor-menu__text">
               <span className="gd-editor-menu__title">{item.title}</span>
               <span className="gd-editor-menu__hint">{item.path}</span>

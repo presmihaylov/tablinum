@@ -987,6 +987,17 @@ button.editor__icon:hover {
   font-size: var(--text-sm);
 }
 
+.gd-editor-picker__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 1.1rem;
+  color: var(--text-faint);
+  font-size: var(--text-sm);
+  line-height: 1;
+}
+
 /* ------------------------------------------------------------------ */
 /* block handles                                                       */
 /* ------------------------------------------------------------------ */

@@ -13,6 +13,7 @@ export function registerSearchRoutes(app: FastifyInstance, ctx: RouteContext): v
     const hits = await search.search(query.q, {
       space: query.space,
       limit: query.limit ?? DEFAULT_SEARCH_LIMIT,
+      fields: query.fields,
     });
     // One index holds every page in the workspace, private ones included, so the hits are
     // filtered here rather than at write time.

@@ -118,6 +118,7 @@ export const SearchHitSchema = z.object({
   title: z.string(),
   snippet: z.string(),
   score: z.number(),
+  icon: IconSchema.optional(),
 });
 
 export const RevisionSchema = z.object({
@@ -294,10 +295,27 @@ export const PagesQuerySchema = z.object({ path: PagePathSchema.optional() });
 
 export const DeletePageQuerySchema = z.object({ recursive: boolParam.optional() });
 
+/** A column of the search index. `body` is the plain text of the page. */
+export const SearchFieldSchema = z.enum(['title', 'body', 'path']);
+
+/**
+ * `fields=title,path` narrows the match to those columns, so a word that reads only
+ * in the body of a page stops answering. Omitted, every column answers.
+ */
+const searchFieldsParam = z
+  .union([z.string(), z.array(SearchFieldSchema)])
+  .transform((value) =>
+    typeof value === 'string'
+      ? value.split(',').map((part) => part.trim()).filter((part) => part.length > 0)
+      : value,
+  )
+  .pipe(z.array(SearchFieldSchema).min(1).max(3));
+
 export const SearchQuerySchema = z.object({
   q: z.string().min(1),
   space: SpaceSlugSchema.optional(),
   limit: intParam(1, 200).optional(),
+  fields: searchFieldsParam.optional(),
 });
 
 export const HistoryQuerySchema = z.object({ limit: intParam(1, 500).optional() });
@@ -409,6 +427,7 @@ export type GitResolveBody = z.infer<typeof GitResolveBodySchema>;
 export type PagesQuery = z.infer<typeof PagesQuerySchema>;
 export type DeletePageQuery = z.infer<typeof DeletePageQuerySchema>;
 export type SearchQuery = z.infer<typeof SearchQuerySchema>;
+export type SearchField = z.infer<typeof SearchFieldSchema>;
 export type HistoryQuery = z.infer<typeof HistoryQuerySchema>;
 
 export type HealthResponse = z.infer<typeof HealthResponseSchema>;

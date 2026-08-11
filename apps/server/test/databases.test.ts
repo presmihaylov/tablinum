@@ -62,12 +62,17 @@ async function makePage(path = 'eng/tasks', title = 'Tasks'): Promise<string> {
   return bodyOf(created, PageResponseSchema).page.id;
 }
 
-async function setDatabase(id: string, database?: Database, baseRev?: string) {
+async function setDatabase(
+  id: string,
+  database?: Database,
+  baseRev?: string,
+  rows?: Record<string, Record<string, unknown>>,
+) {
   return harness.app.inject({
     method: 'PUT',
     url: `/api/v1/pages/${id}/database`,
     headers: headers(),
-    payload: database === undefined ? {} : { database, baseRev },
+    payload: database === undefined ? {} : { database, baseRev, rows },
   });
 }
 
@@ -201,6 +206,173 @@ describe('PUT /pages/:id/database', () => {
 
     const log = await harness.git.history('eng/tasks.md', 10);
     expect(log.some((entry) => entry.message.includes('database'))).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// a schema change and the rows it moves, in one write
+//
+// A board that names the stack holding no option adds an option and carries every card of that
+// stack onto it. The schema and the rows share one frontmatter block, so both go in one request.
+// ---------------------------------------------------------------------------
+
+const BACKLOG = newOptionId();
+
+/** A database with three rows the select column says nothing about, as a fresh board has. */
+async function looseStack(): Promise<{ id: string; rows: string[] }> {
+  await seed(harness);
+  const id = await makePage();
+  await setDatabase(id, sampleDatabase());
+  const rows: string[] = [];
+  for (const title of ['Alpha', 'Bravo', 'Charlie']) {
+    rows.push(bodyOf(await createRow(id, { title }), RowResponseSchema).row.id);
+  }
+  return { id, rows };
+}
+
+/** The same schema with one more option, and the cell patch that moves a stack onto it. */
+function nameTheStack(rows: string[]): {
+  database: Database;
+  patch: Record<string, Record<string, unknown>>;
+} {
+  const database = sampleDatabase();
+  database.properties[0]!.options.push({ id: BACKLOG, name: 'Backlog', color: 'red' });
+  const patch = Object.fromEntries(rows.map((rowId) => [rowId, { [SELECT]: BACKLOG }]));
+  return { database, patch };
+}
+
+describe('PUT /pages/:id/database with rows', () => {
+  it('adds the option and puts every row on it in one request', async () => {
+    const { id, rows } = await looseStack();
+    const { database, patch } = nameTheStack(rows);
+
+    const response = await setDatabase(id, database, undefined, patch);
+    expect(response.statusCode).toBe(200);
+
+    const body = bodyOf(await readDatabase(id), DatabaseResponseSchema);
+    expect(body.database.properties[0]?.options.map((one) => one.name)).toEqual([
+      'Todo',
+      'Backlog',
+    ]);
+    expect(body.rows.map((row) => row.props[SELECT])).toEqual([BACKLOG, BACKLOG, BACKLOG]);
+  });
+
+  /** Commits the page file collected between now and the end of the block. */
+  async function commitsFor(gesture: () => Promise<void>): Promise<number> {
+    await harness.git.flush();
+    const before = (await harness.git.history('eng/tasks.md', 50)).length;
+    await gesture();
+    await harness.git.flush();
+    return (await harness.git.history('eng/tasks.md', 50)).length - before;
+  }
+
+  it('makes exactly one commit for a stack of three cards', async () => {
+    const { id, rows } = await looseStack();
+    const { database, patch } = nameTheStack(rows);
+
+    const made = await commitsFor(async () => {
+      expect((await setDatabase(id, database, undefined, patch)).statusCode).toBe(200);
+    });
+
+    expect(made).toBe(1);
+  });
+
+  it('made one commit per card when the cards moved one request at a time', async () => {
+    const { id, rows } = await looseStack();
+    const { database, patch } = nameTheStack(rows);
+
+    // The shape the board used before: the schema, then a PATCH per card. A commit covers the
+    // burst it can see, so the count depends on where the quiet window falls. Here it falls
+    // between every request, which is what a person on a slow link gets.
+    const made = await commitsFor(async () => {
+      await setDatabase(id, database);
+      await harness.git.flush();
+      for (const rowId of rows) {
+        await harness.app.inject({
+          method: 'PATCH',
+          url: `/api/v1/pages/${id}/database/rows/${rowId}`,
+          headers: headers(),
+          payload: { props: patch[rowId] },
+        });
+        await harness.git.flush();
+      }
+    });
+
+    expect(made).toBe(4);
+  });
+
+  it('leaves no half-done state behind: the one commit holds the option and the cells', async () => {
+    const { id, rows } = await looseStack();
+    await harness.git.flush();
+
+    const { database, patch } = nameTheStack(rows);
+    await setDatabase(id, database, undefined, patch);
+    const sha = await harness.git.flush();
+    expect(sha).not.toBeNull();
+
+    const raw = (await harness.git.readFileAt('eng/tasks.md', sha ?? '')) ?? '';
+    expect(raw).toContain('name: Backlog');
+    expect(raw.split(BACKLOG)).toHaveLength(5); // the option itself, and three cells
+  });
+
+  it('keeps a row the patch says nothing about', async () => {
+    const { id, rows } = await looseStack();
+    const { database } = nameTheStack(rows);
+
+    await setDatabase(id, database, undefined, { [rows[0]!]: { [SELECT]: BACKLOG } });
+
+    const body = bodyOf(await readDatabase(id), DatabaseResponseSchema);
+    expect(body.rows.map((row) => row.props[SELECT] ?? null)).toEqual([BACKLOG, null, null]);
+  });
+
+  it('merges the schema first, so a cell may name an option the same write added', async () => {
+    const { id, rows } = await looseStack();
+    const base = databaseRev(bodyOf(await readDatabase(id), DatabaseResponseSchema).database);
+
+    // Somebody else adds a property from the same base, so this write goes through the merge.
+    const theirs = sampleDatabase();
+    theirs.properties.push({ id: newPropertyId(), name: 'Owner', type: 'text', options: [] });
+    expect((await setDatabase(id, theirs, base)).statusCode).toBe(200);
+
+    const { database, patch } = nameTheStack(rows);
+    expect((await setDatabase(id, database, base, patch)).statusCode).toBe(200);
+
+    const body = bodyOf(await readDatabase(id), DatabaseResponseSchema);
+    expect(body.database.properties.map((one) => one.name)).toEqual(['Status', 'Notes', 'Owner']);
+    expect(body.rows.map((row) => row.props[SELECT])).toEqual([BACKLOG, BACKLOG, BACKLOG]);
+  });
+
+  it('reports a row that is not there', async () => {
+    const { id, rows } = await looseStack();
+    const { database } = nameTheStack(rows);
+
+    const response = await setDatabase(id, database, undefined, {
+      rw_00000000000000000000000000: { [SELECT]: BACKLOG },
+    });
+    expect(response.statusCode).toBe(404);
+    expect(bodyOf(response, ErrorBodySchema).error.code).toBe('NOT_FOUND');
+  });
+
+  it('refuses a property the database does not have', async () => {
+    const { id, rows } = await looseStack();
+    const { database } = nameTheStack(rows);
+
+    const response = await setDatabase(id, database, undefined, {
+      [rows[0]!]: { [newPropertyId()]: BACKLOG },
+    });
+    expect(response.statusCode).toBe(400);
+    expect(bodyOf(response, ErrorBodySchema).error.code).toBe('VALIDATION');
+  });
+
+  it('refuses a row id that is not a row id at all', async () => {
+    const { id, rows } = await looseStack();
+    const { database } = nameTheStack(rows);
+
+    const response = await setDatabase(id, database, undefined, {
+      'not-a-row': { [SELECT]: BACKLOG },
+    });
+    expect(response.statusCode).toBe(400);
+    expect(bodyOf(response, ErrorBodySchema).error.code).toBe('VALIDATION');
   });
 });
 

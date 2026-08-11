@@ -252,6 +252,42 @@ function rowsFor(database: Database, rows: readonly DbRow[] | undefined): DbRow[
   return (rows ?? []).map((row) => ({ ...row, props: coerceProps(database.properties, row.props) }));
 }
 
+/** One row's cells after a patch. An absent property keeps its value; null clears it. */
+function patchProps(
+  database: Database,
+  current: RowProps,
+  patch: Record<string, unknown>,
+): RowProps {
+  const known = new Map(database.properties.map((property) => [property.id, property]));
+  const props: RowProps = { ...current };
+  for (const [key, raw] of Object.entries(patch)) {
+    const property = known.get(key);
+    if (property === undefined) throw validation(`No property ${key} on this database`);
+    const value = coerceValue(property, raw);
+    if (value === null) delete props[key];
+    if (value !== null) props[key] = value;
+  }
+  return props;
+}
+
+/** The same patch over many rows, so one write moves a whole stack of cards. */
+function setCells(
+  database: Database,
+  rows: readonly DbRow[],
+  patch: Record<string, RowProps>,
+  now: string,
+): DbRow[] {
+  const wanted = new Map(Object.entries(patch));
+  for (const rowId of wanted.keys()) {
+    if (!rows.some((row) => row.id === rowId)) throw notFound(`No row ${rowId} on this database`);
+  }
+  return rows.map((row) => {
+    const cells = wanted.get(row.id);
+    if (cells === undefined) return row;
+    return { ...row, props: patchProps(database, row.props, cells), updated: now };
+  });
+}
+
 function toSummary(page: IndexedPage): PageSummary {
   const frontmatter = page.frontmatter;
   const summary: PageSummary = {
@@ -815,9 +851,15 @@ export class ContentStore {
   /**
    * Give the page a `db` block, or replace the one it has. `baseRev` names the revision the
    * edit started from; without it the schema is replaced whole, which is what an agent and a
-   * script want.
+   * script want. `rows` sets cells in the same write, so a board that names an empty stack and
+   * carries its cards onto the new option makes one file write and one commit, not one per card.
    */
-  async setDatabase(id: PageId, database: Database, baseRev?: string): Promise<Page> {
+  async setDatabase(
+    id: PageId,
+    database: Database,
+    baseRev?: string,
+    rows?: Record<string, RowProps>,
+  ): Promise<Page> {
     const wanted = parseOrThrow(DatabaseSchema, database, 'database');
     return this.#writes.runExclusive(() =>
       this.#writeFrontmatter(id, (next) => {
@@ -825,6 +867,8 @@ export class ContentStore {
         // Remembered as written, so the schema the answer carries is a base a later edit can use.
         this.#rememberSchema(id, settled);
         next.db = settled;
+        // After the schema, so a cell may name an option this very write added.
+        if (rows !== undefined) next.rows = setCells(settled, next.rows ?? [], rows, this.#nowIso());
       }),
     );
   }
@@ -912,15 +956,7 @@ export class ContentStore {
         const current = rows.find((row) => row.id === rowId);
         if (current === undefined) throw notFound(`No row ${rowId} on this database`);
 
-        const known = new Map(database.properties.map((property) => [property.id, property]));
-        const props: RowProps = { ...current.props };
-        for (const [key, raw] of Object.entries(patch.props ?? {})) {
-          const property = known.get(key);
-          if (property === undefined) throw validation(`No property ${key} on this database`);
-          const value = coerceValue(property, raw);
-          if (value === null) delete props[key];
-          if (value !== null) props[key] = value;
-        }
+        const props = patchProps(database, current.props, patch.props ?? {});
 
         const title = (patch.title ?? '').trim();
         const row: DbRow = {

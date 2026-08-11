@@ -6,6 +6,9 @@ dist/
 .env.local
 .DS_Store
 .scratch/
+# Each agent worktree is its own git repository. A `git add -A` in the checkout would commit
+# every one of them as a gitlink.
+.claude/worktrees/
 *.tsbuildinfo
 coverage/
 deploy/ssh/

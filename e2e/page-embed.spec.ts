@@ -30,7 +30,7 @@ async function runCommand(page: Page, query: string, title: string): Promise<voi
   const exact = new RegExp(`^${title}$`);
   await menu
     .getByRole('option')
-    .filter({ has: page.locator('.gd-editor-menu__title', { hasText: exact }) })
+    .filter({ has: page.locator('.menu__title', { hasText: exact }) })
     .first()
     .click();
 }
@@ -121,7 +121,7 @@ test.describe('page slash command', () => {
 
     await field.fill('Runb');
     await expect(found).toBeVisible();
-    await expect(found.locator('.gd-editor-picker__icon')).toHaveText('🐙');
+    await expect(found.locator('.menu__page-icon')).toHaveText('🐙');
 
     // One typo in the name still finds the page.
     await field.fill('Runbok');

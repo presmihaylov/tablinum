@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import type { Editor } from '@tiptap/core';
-import type { MentionItem } from '../../src/editor/extensions';
+import type { MentionCandidate } from '../../src/editor/extensions';
 import { createTestEditor, roundtrip, toMarkdown } from './harness';
 import { mountEditor, settle, typeText } from './mount';
 
-const PEOPLE: MentionItem[] = [
+const PEOPLE: MentionCandidate[] = [
   { id: 'us_1', handle: 'ada.lovelace', name: 'Ada Lovelace', color: '#123456', avatarRev: null },
   { id: 'us_2', handle: 'sam.rivers', name: 'Sam Rivers', color: '#654321', avatarRev: null },
 ];
@@ -19,7 +19,7 @@ afterEach(() => {
 });
 
 async function openMenu(
-  search: (query: string) => Promise<MentionItem[]>,
+  search: (query: string) => Promise<MentionCandidate[]>,
   text: string,
 ): Promise<Editor> {
   const editor = await mountEditor({ searchPeople: search });

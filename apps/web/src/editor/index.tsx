@@ -37,7 +37,7 @@ import type {
   DatabaseKind,
   DiagramRequest,
   EmbeddedPage,
-  MentionItem,
+  MentionCandidate,
   WikilinkItem,
 } from './extensions';
 import { PAGE_MENU_ROWS, pageMenuRows } from './pageSearch';
@@ -99,7 +99,7 @@ interface Handlers {
   insertVideo: (url: string) => void;
   upload: (file: File) => Promise<string | null>;
   search: (query: string) => Promise<WikilinkItem[]>;
-  people: (query: string) => Promise<MentionItem[]>;
+  people: (query: string) => Promise<MentionCandidate[]>;
   load: (path: string) => Promise<EmbeddedPage | null>;
   open: (path: string) => void;
   comment: (threadId: string | null) => void;
@@ -213,7 +213,7 @@ export function PageEditor({
   );
 
   // The roster is small and already cached, so the `@` menu filters it in the browser.
-  const searchPeople = useCallback(async (query: string): Promise<MentionItem[]> => {
+  const searchPeople = useCallback(async (query: string): Promise<MentionCandidate[]> => {
     const text = query.trim().toLowerCase();
     return peopleRef.current
       .filter((person) => !person.disabled)

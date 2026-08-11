@@ -151,8 +151,8 @@ describe('PagePicker icons', () => {
     fireEvent.change(field(), { target: { value: 'eng' } });
     await waitFor(() => expect(pageTitles().length).toBe(3));
 
-    expect(rowFor('Deploy').querySelector('.gd-editor-picker__icon')?.textContent).toBe('🚀');
+    expect(rowFor('Deploy').querySelector('.menu__page-icon')?.textContent).toBe('🚀');
     expect(rowFor('Rollback').querySelector('img')?.getAttribute('alt')).toBe(':party:');
-    expect(rowFor('Notes').querySelector('.gd-editor-picker__icon svg')).toBeTruthy();
+    expect(rowFor('Notes').querySelector('.menu__page-icon svg')).toBeTruthy();
   });
 });

@@ -420,9 +420,18 @@ button.editor__icon:hover {
   gap: var(--space-2);
 }
 
+/*
+ * One computed line box tall. The label's own line box used to be taller than the line beside
+ * it, which stretched every row and made a run of items read as separate paragraphs. `1lh`
+ * reads the inherited line-height, so the box cannot drift off the text line if it changes.
+ * An item that opens with a heading is the one case it misses: `1lh` measures the label's own
+ * font, not the heading's, so the box sits high. It always did, and it is rare.
+ */
 .gd-editor-task > label {
   flex: none;
-  margin-top: 0.28em;
+  display: flex;
+  align-items: center;
+  height: 1lh;
   user-select: none;
 }
 
@@ -987,17 +996,6 @@ button.editor__icon:hover {
   font-size: var(--text-sm);
 }
 
-.gd-editor-picker__icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: none;
-  width: 1.1rem;
-  color: var(--text-faint);
-  font-size: var(--text-sm);
-  line-height: 1;
-}
-
 /* ------------------------------------------------------------------ */
 /* block handles                                                       */
 /* ------------------------------------------------------------------ */
@@ -1089,98 +1087,7 @@ button.editor__icon:hover {
   }
 }
 
-/* ------------------------------------------------------------------ */
-/* floating menus                                                      */
-/* ------------------------------------------------------------------ */
-
-.gd-editor-menu {
-  width: 17.5rem;
-  max-height: 19rem;
-  overflow-y: auto;
-  padding: var(--space-1);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--bg-raised);
-  box-shadow: var(--shadow-lg);
-}
-
-.gd-editor-menu--empty {
-  padding: var(--space-3);
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-}
-
-.gd-editor-menu--emoji {
-  width: 13rem;
-  max-height: 15rem;
-}
-
-.gd-editor-menu__emoji {
-  flex: none;
-  width: 1.5rem;
-  font-size: var(--text-lg);
-  line-height: 1;
-  text-align: center;
-}
-
-.gd-editor-menu__item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  width: 100%;
-  padding: var(--space-2);
-  border: 0;
-  border-radius: var(--radius-md);
-  background: none;
-  color: var(--text);
-  font-family: var(--font-sans);
-  text-align: left;
-  cursor: pointer;
-}
-
-.gd-editor-menu__item.is-active {
-  background: var(--bg-hover);
-}
-
-.gd-editor-menu__glyph {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex: none;
-  width: 2.25rem;
-  height: 1.75rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-subtle);
-  color: var(--text-muted);
-  font-size: var(--text-2xs);
-  font-weight: var(--weight-semibold);
-  letter-spacing: 0.03em;
-}
-
-.gd-editor-menu__face {
-  flex: none;
-}
-
-.gd-editor-menu__text {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.gd-editor-menu__title {
-  color: var(--text-strong);
-  font-size: var(--text-sm);
-  font-weight: var(--weight-medium);
-}
-
-.gd-editor-menu__hint {
-  color: var(--text-faint);
-  font-size: var(--text-xs);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+/* The floating menus a caret opens are drawn by src/components/ui/menu.css. */
 
 /* ------------------------------------------------------------------ */
 /* selection and table toolbars                                        */

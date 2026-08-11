@@ -65,8 +65,8 @@ describe('wikilink picker', () => {
     await openPicker(async () => PAGES, '[[gui');
 
     const options = await screen.findAllByRole('option');
-    expect(options[0]?.querySelector('.gd-editor-picker__icon')?.textContent).toBe('🧭');
-    expect(options[1]?.querySelector('.gd-editor-picker__icon svg')).toBeTruthy();
+    expect(options[0]?.querySelector('.menu__page-icon')?.textContent).toBe('🧭');
+    expect(options[1]?.querySelector('.menu__page-icon svg')).toBeTruthy();
   });
 
   it('picks the highlighted page with the arrow keys and Enter', async () => {

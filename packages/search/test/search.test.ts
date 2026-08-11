@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { SearchHitSchema } from '@tablinum/shared';
+import { SearchHitSchema, findMentions } from '@tablinum/shared';
 import { SEARCH_DB_FILENAME, SearchIndex, defaultDbPath } from '../src/index.js';
 import type { IndexablePage } from '../src/index.js';
 import { page, tempDb, type TempDb } from './helpers.js';
@@ -619,6 +619,53 @@ describe('SearchIndex', () => {
     index.upsert(page({ path: 'eng/alpha', markdown: 'marker' }));
     await index.search("'; DELETE FROM pages; --");
     expect(index.count()).toBe(1);
+  });
+
+  // -------------------------------------------------------------------------
+  // handles
+  // -------------------------------------------------------------------------
+
+  // Why a handle rename counts the pages it will rewrite by reading them, and not by asking
+  // this index for a shortlist first. The index answers a handle query, but it answers with
+  // less than the truth, and the count is what a person agrees to before the rewrite.
+
+  it('drops the @ of a handle, so a handle query is no more selective than the bare word', async () => {
+    const mention = page({ path: 'eng/alpha', title: 'Alpha', markdown: 'Ask @ada.lovelace.' });
+    const bare = page({ path: 'eng/beta', title: 'Beta', markdown: 'Ask ada.lovelace.' });
+    index.upsert(mention);
+    index.upsert(bare);
+
+    const withAt = (await index.search('@ada.lovelace')).map((hit) => hit.id).sort();
+    const plain = (await index.search('ada.lovelace')).map((hit) => hit.id).sort();
+    expect(withAt).toEqual([bare.id, mention.id].sort());
+    expect(plain).toEqual(withAt);
+  });
+
+  it('cannot find a handle that the plain-text projection destroys', async () => {
+    const hidden = page({ path: 'eng/alpha', title: 'Alpha', markdown: '[owner](@ada.lovelace)' });
+    index.upsert(hidden);
+
+    expect(findMentions(hidden.markdown)).toContain('ada.lovelace');
+    expect(await index.search('@ada.lovelace')).toEqual([]);
+  });
+
+  it('cannot find a handle on a page it has not indexed yet', async () => {
+    const missing = page({ path: 'eng/alpha', title: 'Alpha', markdown: 'Ask @ada.lovelace.' });
+
+    expect(findMentions(missing.markdown)).toContain('ada.lovelace');
+    expect(index.listIds()).not.toContain(missing.id);
+    expect(await index.search('@ada.lovelace')).toEqual([]);
+  });
+
+  it('still answers with the body it indexed before an edit it missed', async () => {
+    const stale = page({ path: 'eng/alpha', title: 'Alpha', markdown: 'Ask @grace.hopper.' });
+    index.upsert(stale);
+
+    // The store owns the file; this index is a cache the writer may fail to update.
+    const edited = { ...stale, markdown: 'Ask @ada.lovelace.' };
+    expect(findMentions(edited.markdown)).toContain('ada.lovelace');
+    expect(await index.search('@ada.lovelace')).toEqual([]);
+    expect((await index.search('@grace.hopper')).map((hit) => hit.id)).toEqual([stale.id]);
   });
 
   // -------------------------------------------------------------------------

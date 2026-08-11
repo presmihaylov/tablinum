@@ -33,13 +33,14 @@ import { useToast } from '../../lib/toast';
 import { Avatar, type AvatarPerson } from '../Account/Avatar';
 import { Check, Close } from '../ui/Icon';
 import { ConfirmDialog, type ConfirmRequest } from '../ui/ConfirmDialog';
+import { MenuList } from '../ui/MenuList';
+import { PersonRow, type MentionCandidate } from '../ui/PersonRow';
 import { renderCommentBody } from './render';
 import {
   applyMention,
   matchPeople,
   mentionSpot,
   peopleToMention,
-  type MentionPerson,
   type MentionSpot,
 } from './mention';
 import { fieldHeight, groupByAnchor, stackGroups, type CardGroup } from './layout';
@@ -72,7 +73,7 @@ interface ComposerProps {
   autoFocus?: boolean;
   busy: boolean;
   /** Who can be named with an `@`. */
-  people: MentionPerson[];
+  people: MentionCandidate[];
   onSubmit: (body: string) => void;
   onCancel: () => void;
 }
@@ -114,7 +115,7 @@ function Composer({
     setActive(0);
   };
 
-  const pick = (person: MentionPerson): void => {
+  const pick = (person: MentionCandidate): void => {
     if (spot === null) return;
     const next = applyMention(value, spot, person.handle);
     setValue(next.text);
@@ -186,27 +187,16 @@ function Composer({
         />
 
         {menuOpen ? (
-          <div className="comments__mentions" role="listbox" aria-label="Mention somebody">
-            {choices.map((person, index) => (
-              <button
-                key={person.id}
-                type="button"
-                role="option"
-                aria-selected={index === active}
-                className={
-                  index === active ? 'comments__mention-row is-active' : 'comments__mention-row'
-                }
-                onMouseEnter={() => setActive(index)}
-                // The field must keep the focus, or the menu closes before the click lands.
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => pick(person)}
-              >
-                <Avatar person={person} size={20} />
-                <span className="comments__mention-name">{person.name}</span>
-                <span className="comments__mention-handle">@{person.handle}</span>
-              </button>
-            ))}
-          </div>
+          <MenuList
+            className="comments__mentions"
+            items={choices}
+            active={active}
+            label="Mention somebody"
+            keyOf={(person) => person.id}
+            renderRow={(person) => <PersonRow person={person} />}
+            onHover={setActive}
+            onPick={pick}
+          />
         ) : null}
       </div>
 
@@ -233,7 +223,7 @@ interface CommentRowProps {
   canEdit: boolean;
   canDelete: boolean;
   busy: boolean;
-  people: MentionPerson[];
+  people: MentionCandidate[];
   /** The reader's handle, so a mention of them stands out. */
   me: string | null;
   /** A closed card shows the remark cut short and offers nothing to do with it. */
@@ -365,7 +355,7 @@ interface ThreadCardProps {
   active: boolean;
   orphaned: boolean;
   busy: boolean;
-  people: MentionPerson[];
+  people: MentionCandidate[];
   me: string | null;
   personFor: (userId: string) => AvatarPerson;
   canEdit: (comment: Comment) => boolean;
@@ -485,7 +475,7 @@ interface DraftCardProps {
   draft: CommentDraft;
   columnName: string | null;
   busy: boolean;
-  people: MentionPerson[];
+  people: MentionCandidate[];
   onCancel: () => void;
   onSubmit: (body: string) => void;
 }

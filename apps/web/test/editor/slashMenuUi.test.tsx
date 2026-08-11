@@ -19,7 +19,7 @@ async function openMenu(text: string): Promise<Editor> {
 function titles(): string[] {
   return screen
     .queryAllByRole('option')
-    .map((item) => item.querySelector('.gd-editor-menu__title')?.textContent ?? '');
+    .map((item) => item.querySelector('.menu__title')?.textContent ?? '');
 }
 
 describe('slash menu', () => {

@@ -283,6 +283,7 @@
   position: relative;
 }
 
+/* The panel is narrow, so the menu spans the field and stays shorter than the one a page opens. */
 .comments__mentions {
   position: absolute;
   z-index: 30;
@@ -290,42 +291,6 @@
   left: 0;
   right: 0;
   max-height: 13rem;
-  overflow-y: auto;
-  padding: var(--space-1);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--bg-raised);
-  box-shadow: var(--shadow-lg);
-}
-
-.comments__mention-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  width: 100%;
-  padding: var(--space-1) var(--space-2);
-  border-radius: var(--radius-sm);
-  text-align: left;
-  cursor: pointer;
-}
-
-.comments__mention-row.is-active {
-  background: var(--bg-hover);
-}
-
-.comments__mention-name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text-strong);
-}
-
-.comments__mention-handle {
-  flex: none;
-  font-size: var(--text-xs);
-  color: var(--text-faint);
 }
 
 /* The same chip the page carries, so one name looks the same wherever it is written. */

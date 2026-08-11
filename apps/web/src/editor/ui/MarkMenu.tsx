@@ -66,6 +66,8 @@ export function MarkMenu({ editor, onComment }: MarkMenuProps) {
             value={href}
             placeholder="Paste a link, or a page path"
             aria-label="Link address"
+            // An address, so `->` has to stay exactly as it was typed.
+            data-no-arrow
             onChange={(event) => setHref(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === 'Enter') {

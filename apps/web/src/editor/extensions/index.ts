@@ -13,6 +13,7 @@ import Underline from '@tiptap/extension-underline';
 import { Markdown } from 'tiptap-markdown';
 
 import { ArrowRule } from './arrow';
+import { InputRuleUndo } from './inputRuleUndo';
 import { BlockLink } from './blockLink';
 import { BlockSelect } from './blockSelection';
 import { Callout } from './callout';
@@ -116,6 +117,7 @@ export function buildExtensions(overrides: Partial<EditorExtensionOptions> = {})
     ListShortcuts,
     OrderedListParen,
     ArrowRule,
+    InputRuleUndo,
     createCodeBlock(options.interactive),
     Underline,
     Link.configure({

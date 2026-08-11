@@ -39,12 +39,14 @@ function press(instance: Editor, key: string, mod = false): boolean {
 }
 
 /**
- * Redo. A browser reports the shifted letter and the code of the unshifted key, and
- * prosemirror-keymap needs both to find a `Mod-Shift-z` binding, so both are given here.
+ * Redo. Which letter a browser reports for this press is not settled: Chromium sends the
+ * shifted `Z` on some platforms and the plain `z` on others. Both spellings are tested, because
+ * only the plain one reaches the `Mod-z` binding through prosemirror-keymap's stripped-shift
+ * lookup, and that is the press that used to undo the whole typed run.
  */
-function pressRedo(instance: Editor): boolean {
+function pressRedo(instance: Editor, key: 'z' | 'Z'): boolean {
   const event = new KeyboardEvent('keydown', {
-    key: 'Z',
+    key,
     ctrlKey: true,
     shiftKey: true,
     keyCode: 90,
@@ -194,15 +196,30 @@ describe('the arrow input rule', () => {
     expect(toMarkdown(instance)).toBe('\n');
   });
 
-  it('leaves redo with nothing to give back, because the undo was no history step', () => {
-    const instance = open();
-    type(instance, 'Ship it ->');
-    press(instance, 'z', true);
-    expect(toMarkdown(instance)).toBe('Ship it ->\n');
+  // Taking a rule back is an ordinary edit, and an ordinary edit closes the redo branch. The
+  // press must not be read as a plain undo either: `z` used to reach the `Mod-z` binding through
+  // the stripped-shift lookup, find no rule pending, carry on to history and wipe the whole run.
+  for (const key of ['z', 'Z'] as const) {
+    it(`leaves redo with nothing to give back, on a "${key}" press`, () => {
+      const instance = open();
+      type(instance, 'Ship it ->');
+      press(instance, 'z', true);
+      expect(toMarkdown(instance)).toBe('Ship it ->\n');
 
-    // Taking a rule back is an ordinary edit, and an ordinary edit closes the redo branch.
-    expect(pressRedo(instance)).toBe(false);
-    expect(toMarkdown(instance)).toBe('Ship it ->\n');
+      expect(pressRedo(instance, key)).toBe(true);
+      expect(toMarkdown(instance)).toBe('Ship it ->\n');
+    });
+  }
+
+  it('still redoes what there is to redo', () => {
+    const instance = open();
+    type(instance, 'Ship it');
+    press(instance, 'z', true);
+    press(instance, 'z', true);
+    expect(toMarkdown(instance)).toBe('\n');
+
+    expect(pressRedo(instance, 'z')).toBe(true);
+    expect(toMarkdown(instance)).toBe('Ship it\n');
   });
 
   it('takes back a block rule the same way, once typing has moved on', () => {

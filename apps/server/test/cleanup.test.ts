@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
-import { mkdtemp, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ContentStore as CoreContentStore, silentLogger } from '@tablinum/core';
 import {
@@ -13,7 +13,7 @@ import {
   loadConfig,
 } from '@tablinum/shared';
 import type { ServerDeps } from '../src/deps.js';
-import { buildRealDeps } from '../src/server.js';
+import { buildRealDeps, type RealDeps } from '../src/server.js';
 import { Wiring, startContentWatcher, type ContentWatcher } from '../src/wiring.js';
 import {
   bodyOf,
@@ -290,6 +290,48 @@ describe('what goes away on disk', () => {
  */
 describe('the real content store behind the server', () => {
   const MISSING = 'pg_01J0000000000000000000000Z';
+  const OTHER = 'pg_01J0000000000000000000000Y';
+
+  /** The whole real stack over a throwaway directory, closed again whatever the body did. */
+  async function withRealDeps(
+    body: (real: RealDeps, contentDir: string) => Promise<void>,
+  ): Promise<void> {
+    const root = await mkdtemp(join(tmpdir(), 'tablinum-adapter-'));
+    const config = loadConfig({
+      TABLINUM_CONTENT_DIR: join(root, 'content'),
+      TABLINUM_SESSION_SECRET: TEST_SESSION_SECRET,
+      TABLINUM_AUTOPULL_MS: '0',
+    });
+    const real = buildRealDeps(config);
+    try {
+      await real.deps.store.init();
+      real.accounts.init();
+      await body(real, config.contentDir);
+    } finally {
+      real.search.close();
+      real.accounts.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  }
+
+  /** A workspace and somebody to write a comment, which is all a thread needs. */
+  function seedAccounts(real: RealDeps, contentDir: string): { workspace: string; author: string } {
+    const workspace = real.accounts.createWorkspace({ name: 'Docs', dir: contentDir });
+    const author = real.accounts.createUser({
+      email: 'ines@example.com',
+      name: 'Ines Roy',
+      password: ADMIN.password,
+    });
+    return { workspace: workspace.id, author: author.id };
+  }
+
+  /** An attachment on disk, written the way an upload leaves it. */
+  async function writeAsset(contentDir: string, pageId: string): Promise<string> {
+    const file = join(contentDir, assetDirRelPath(pageId), 'plan.png');
+    await mkdir(dirname(file), { recursive: true });
+    await writeFile(file, PNG);
+    return file;
+  }
 
   it('answers null for a page that is gone, where the core store throws', async () => {
     const root = await mkdtemp(join(tmpdir(), 'tablinum-adapter-'));
@@ -312,5 +354,63 @@ describe('the real content store behind the server', () => {
       real.accounts.close();
       await rm(root, { recursive: true, force: true });
     }
+  });
+
+  /**
+   * The store collects attachments inside deletePage(), before any of the clean-up above runs,
+   * so the comment source has to reach the store itself. Only the real stack proves that: the
+   * double the rest of the suite drives has a delete path of its own.
+   */
+  it('lets a comment keep an attachment a page delete would take', async () => {
+    await withRealDeps(async (real, contentDir) => {
+      const { workspace, author } = seedAccounts(real, contentDir);
+      const plan = await real.deps.store.createPage({ path: 'docs/plan', title: 'Plan' });
+      const notes = await real.deps.store.createPage({ path: 'docs/notes', title: 'Notes' });
+      const asset = await writeAsset(contentDir, plan.id);
+      real.accounts.createThread(workspace, {
+        pageId: notes.id,
+        author,
+        body: `Still true? ![plan](/${assetDirRelPath(plan.id)}/plan.png)`,
+      });
+
+      await real.deps.store.deletePage(plan.id, false);
+
+      expect(existsSync(asset)).toBe(true);
+    });
+  });
+
+  it('still takes one no page and no comment points at', async () => {
+    await withRealDeps(async (real, contentDir) => {
+      const { workspace, author } = seedAccounts(real, contentDir);
+      const plan = await real.deps.store.createPage({ path: 'docs/plan', title: 'Plan' });
+      const notes = await real.deps.store.createPage({ path: 'docs/notes', title: 'Notes' });
+      const asset = await writeAsset(contentDir, plan.id);
+      // A comment that names somebody else's attachment must not save this one.
+      real.accounts.createThread(workspace, {
+        pageId: notes.id,
+        author,
+        body: `Look: ![x](/${assetDirRelPath(OTHER)}/x.png)`,
+      });
+
+      await real.deps.store.deletePage(plan.id, false);
+
+      expect(existsSync(asset)).toBe(false);
+    });
+  });
+
+  it('keeps everything a space delete would take when the account database will not answer', async () => {
+    await withRealDeps(async (real, contentDir) => {
+      await real.deps.store.createSpace({ slug: 'eng', name: 'Engineering' });
+      const plan = await real.deps.store.createPage({ path: 'eng/plan', title: 'Plan' });
+      const asset = await writeAsset(contentDir, plan.id);
+      real.accounts.commentBodiesContaining = (): string[] => {
+        throw new Error('the account database is locked');
+      };
+
+      await real.deps.store.deleteSpace('eng', true);
+
+      expect(existsSync(join(contentDir, 'eng/_space.yml'))).toBe(false);
+      expect(existsSync(asset)).toBe(true);
+    });
   });
 });

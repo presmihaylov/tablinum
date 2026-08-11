@@ -2,7 +2,12 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { FastifyBaseLogger } from 'fastify';
 import { AccountStore, defaultAccountsDbPath, type WorkspaceRecord } from '@tablinum/accounts';
-import { ContentStore as CoreContentStore, parse, type CreateSpaceOptions } from '@tablinum/core';
+import {
+  ContentStore as CoreContentStore,
+  parse,
+  type AssetRefSource,
+  type CreateSpaceOptions,
+} from '@tablinum/core';
 import { GitEngine as CoreGitEngine } from '@tablinum/git-sync';
 import { SearchIndex as CoreSearchIndex, defaultDbPath } from '@tablinum/search';
 import {
@@ -31,6 +36,7 @@ import {
   type UpdateSpaceBody,
 } from '@tablinum/shared';
 import { buildApp } from './app.js';
+import { commentAssetRefs } from './cleanup.js';
 import { contextOf } from './context.js';
 import type {
   ContentStore,
@@ -288,10 +294,13 @@ export interface RunningServer {
  * own index file. The configured git remote belongs to the default workspace alone, so an
  * extra workspace is local until somebody gives it a remote by hand.
  */
-function openRealWorkspace(config: Config): (record: WorkspaceRecord) => Promise<WorkspaceInstance> {
+function openRealWorkspace(
+  config: Config,
+  assetRefs: AssetRefSource,
+): (record: WorkspaceRecord) => Promise<WorkspaceInstance> {
   return async (record) => {
     // The create route writes the starter space, so the store must not add a second one.
-    const core = new CoreContentStore({ contentDir: record.dir, starter: false });
+    const core = new CoreContentStore({ contentDir: record.dir, starter: false, assetRefs });
     const git = new CoreGitEngine({
       contentDir: record.dir,
       branch: config.gitBranch,
@@ -348,12 +357,16 @@ export interface RealDeps {
  * the same stack a deployment runs rather than the doubles the unit suite injects.
  */
 export function buildRealDeps(config: Config): RealDeps {
-  const coreStore = new CoreContentStore({ contentDir: config.contentDir });
-  const coreGit = CoreGitEngine.fromConfig(config);
-  const coreSearch = new CoreSearchIndex({ dbPath: defaultDbPath(config.contentDir) });
   // Beside the search index, one level above the content root: passwords and avatars must
   // never land inside the git repo.
   const accounts = new AccountStore({ dbPath: defaultAccountsDbPath(config.contentDir) });
+  // deletePage() and deleteSpace() collect attachments inside the store, so the store needs the
+  // same view of comment bodies the operator sweep has. Injected, because content must not
+  // learn about the account database.
+  const assetRefs = commentAssetRefs(accounts);
+  const coreStore = new CoreContentStore({ contentDir: config.contentDir, assetRefs });
+  const coreGit = CoreGitEngine.fromConfig(config);
+  const coreSearch = new CoreSearchIndex({ dbPath: defaultDbPath(config.contentDir) });
 
   const deps: ServerDeps = {
     config,
@@ -361,7 +374,7 @@ export function buildRealDeps(config: Config): RealDeps {
     git: new CoreGitAdapter(coreGit),
     search: new CoreSearchAdapter(coreSearch),
     accounts,
-    openWorkspace: openRealWorkspace(config),
+    openWorkspace: openRealWorkspace(config, assetRefs),
     workspacesDir: resolve(config.contentDir, '..', 'workspaces'),
     version: VERSION,
     trustProxy: config.trustProxy,

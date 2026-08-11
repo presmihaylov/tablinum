@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { readDirNames } from '@tablinum/core';
+import { readDirNames, type AssetRefSource } from '@tablinum/core';
 import { ASSETS_DIR, assetDirRelPath, isPageId, type PageId } from '@tablinum/shared';
 import type { ContentStore, GitEngine } from './deps.js';
 
@@ -20,6 +20,10 @@ import type { ContentStore, GitEngine } from './deps.js';
  * A source that cannot answer keeps every candidate. A private space is excluded from git and
  * is never committed, so an attachment deleted there is gone for good, while one kept by
  * mistake only costs disk. A failed lookup must never read as "nothing points at this".
+ *
+ * deletePage() and deleteSpace() collect attachments inside the store, before anything here
+ * runs, so the store is handed the same source at boot. Both layers therefore ask one function
+ * and get one answer; asking twice costs a query and never a file.
  */
 
 /** Subjects a delete may have removed. Each one is checked before anything is deleted. */
@@ -28,15 +32,42 @@ export interface DeletedSubjects {
   spaceSlugs?: Iterable<string>;
 }
 
+/** One contract for "what else points at this", shared with the store's own delete path. */
+export type { AssetRefSource };
+
+/** The one thing the comment-backed source reads. Narrowed so tests can stand in for it. */
+export interface CommentBodyReader {
+  commentBodiesContaining(needle: string): string[];
+}
+
 /**
- * Of these page ids, the ones an `/_assets/<id>/` url outside the content tree still names.
+ * Of these page ids, the ones a comment still shows an attachment of.
  *
- * Throwing is how a source that cannot answer says so, and it is the only way to say it: an
- * empty result means "nothing points at any of these", which is what deletes the files.
+ * A comment body is markdown in the account database, so `![x](/_assets/<id>/y.png)` renders as
+ * a picture there and the file behind it is in use, even though no page file names it. A comment
+ * body is the only markdown the account database holds; every other free-text column in it is
+ * shown as plain text, so no url in one of those can render a file.
+ *
+ * A failed read is reported and then rethrown. The rethrow is what keeps the attachments: every
+ * caller reads a throw as "cannot say", and an empty answer would read as "no references".
  */
-export type AssetRefSource = (
-  candidates: readonly PageId[],
-) => Iterable<PageId> | Promise<Iterable<PageId>>;
+export function commentAssetRefs(
+  accounts: CommentBodyReader,
+  onError?: (err: unknown) => void,
+): AssetRefSource {
+  return (candidates) => {
+    try {
+      const bodies = accounts.commentBodiesContaining(`/${ASSETS_DIR}/`);
+      if (bodies.length === 0) return [];
+      return candidates.filter((id) =>
+        bodies.some((body) => body.includes(`/${assetDirRelPath(id)}/`)),
+      );
+    } catch (err: unknown) {
+      onError?.(err);
+      throw err;
+    }
+  };
+}
 
 export interface CleanupParts {
   /** The unfiltered store: a private space somebody else owns still owns its files. */

@@ -4,6 +4,7 @@ export {
   DEFAULT_SPACE_SLUG,
   WELCOME_MARKDOWN,
   WELCOME_TITLE,
+  type AssetRefSource,
   type ContentStoreOptions,
   type CreatePageInput,
   type CreateRowInput,

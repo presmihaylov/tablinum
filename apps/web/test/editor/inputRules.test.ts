@@ -29,28 +29,20 @@ function type(instance: Editor, text: string): void {
 
 /**
  * A key press, down the same path the browser uses. jsdom reports no platform, so
- * prosemirror-keymap reads `Mod` as Control here.
+ * prosemirror-keymap reads `Mod` as Control here. A shifted press also needs `keyCode`, because
+ * prosemirror-keymap falls back to it when the name itself matches nothing.
  */
-function press(instance: Editor, key: string, mod = false): boolean {
-  const event = new KeyboardEvent('keydown', { key, ctrlKey: mod });
-  return (
-    instance.view.someProp('handleKeyDown', (handler) => handler(instance.view, event)) ?? false
-  );
-}
-
-/**
- * Redo. Which letter a browser reports for this press is not settled: Chromium sends the
- * shifted `Z` on some platforms and the plain `z` on others. Both spellings are tested, because
- * only the plain one reaches the `Mod-z` binding through prosemirror-keymap's stripped-shift
- * lookup, and that is the press that used to undo the whole typed run.
- */
-function pressRedo(instance: Editor, key: 'z' | 'Z'): boolean {
+function press(
+  instance: Editor,
+  key: string,
+  options: { mod?: boolean; shift?: boolean; keyCode?: number } = {},
+): boolean {
   const event = new KeyboardEvent('keydown', {
     key,
-    ctrlKey: true,
-    shiftKey: true,
-    keyCode: 90,
-  } as KeyboardEventInit);
+    ctrlKey: options.mod ?? false,
+    shiftKey: options.shift ?? false,
+    keyCode: options.keyCode ?? 0,
+  });
   return (
     instance.view.someProp('handleKeyDown', (handler) => handler(instance.view, event)) ?? false
   );
@@ -177,7 +169,7 @@ describe('the arrow input rule', () => {
     type(instance, 'Ship it ->');
     expect(toMarkdown(instance)).toBe('Ship it →\n');
 
-    expect(press(instance, 'z', true)).toBe(true);
+    expect(press(instance, 'z', { mod: true })).toBe(true);
     expect(toMarkdown(instance)).toBe('Ship it ->\n');
   });
 
@@ -191,41 +183,46 @@ describe('the arrow input rule', () => {
   it('undoes the whole run on a second undo', () => {
     const instance = open();
     type(instance, 'Ship it ->');
-    press(instance, 'z', true);
-    press(instance, 'z', true);
+    press(instance, 'z', { mod: true });
+    press(instance, 'z', { mod: true });
     expect(toMarkdown(instance)).toBe('\n');
   });
 
-  // Taking a rule back is an ordinary edit, and an ordinary edit closes the redo branch. The
-  // press must not be read as a plain undo either: `z` used to reach the `Mod-z` binding through
-  // the stripped-shift lookup, find no rule pending, carry on to history and wipe the whole run.
-  for (const key of ['z', 'Z'] as const) {
-    it(`leaves redo with nothing to give back, on a "${key}" press`, () => {
-      const instance = open();
-      type(instance, 'Ship it ->');
-      press(instance, 'z', true);
-      expect(toMarkdown(instance)).toBe('Ship it ->\n');
+  // Taking a rule back is an ordinary edit, and an ordinary edit closes the redo branch. The press
+  // must not read as a plain undo either: `z` reaches the `Mod-z` binding through the
+  // stripped-shift lookup, finds no rule pending, carries on to history and wipes the whole run.
+  it('leaves redo with nothing to give back', () => {
+    const instance = open();
+    type(instance, 'Ship it ->');
+    press(instance, 'z', { mod: true });
+    expect(toMarkdown(instance)).toBe('Ship it ->\n');
 
-      expect(pressRedo(instance, key)).toBe(true);
-      expect(toMarkdown(instance)).toBe('Ship it ->\n');
+    expect(press(instance, 'z', { mod: true, shift: true, keyCode: 90 })).toBe(true);
+    expect(toMarkdown(instance)).toBe('Ship it ->\n');
+  });
+
+  // Both letters a browser can report for the press are exercised, because they reach the binding
+  // by different routes: `z` matches `Shift-Mod-z` by name, while `Z` misses every named lookup
+  // and arrives through prosemirror-keymap's `keyCode` fallback. w3c-keyname is what splits the
+  // two, not the browser: on a Mac it drops `event.key` for a Cmd+Shift press and reads
+  // `shift[90]`, which is `Z`, and everywhere else it passes `event.key` straight through.
+  for (const key of ['z', 'Z'] as const) {
+    it(`still redoes what there is to redo, on a "${key}" press`, () => {
+      const instance = open();
+      type(instance, 'Ship it');
+      press(instance, 'z', { mod: true });
+      press(instance, 'z', { mod: true });
+      expect(toMarkdown(instance)).toBe('\n');
+
+      expect(press(instance, key, { mod: true, shift: true, keyCode: 90 })).toBe(true);
+      expect(toMarkdown(instance)).toBe('Ship it\n');
     });
   }
-
-  it('still redoes what there is to redo', () => {
-    const instance = open();
-    type(instance, 'Ship it');
-    press(instance, 'z', true);
-    press(instance, 'z', true);
-    expect(toMarkdown(instance)).toBe('\n');
-
-    expect(pressRedo(instance, 'z')).toBe(true);
-    expect(toMarkdown(instance)).toBe('Ship it\n');
-  });
 
   it('takes back a block rule the same way, once typing has moved on', () => {
     const instance = open();
     type(instance, '# Title');
-    press(instance, 'z', true);
+    press(instance, 'z', { mod: true });
     expect(toMarkdown(instance)).toBe('\n');
   });
 
@@ -234,7 +231,7 @@ describe('the arrow input rule', () => {
     type(instance, '# ');
     expect(instance.isActive('heading', { level: 1 })).toBe(true);
 
-    press(instance, 'z', true);
+    press(instance, 'z', { mod: true });
     expect(instance.isActive('heading', { level: 1 })).toBe(false);
     expect(instance.state.doc.textContent).toBe('# ');
   });

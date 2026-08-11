@@ -87,7 +87,7 @@ test.describe('the arrow rule', () => {
     await expect(editorBody(page)).toHaveText('Ship it ->');
 
     // Taking an input rule back is an ordinary edit, and an ordinary edit closes the redo branch.
-    // The press must not reach the undo binding either, which is what `InputRuleUndo` guards.
+    // The press must not reach the undo binding either, which is what `UndoRedo` guards.
     await page.keyboard.press('ControlOrMeta+Shift+z');
     await expect(editorBody(page)).toHaveText('Ship it ->');
   });

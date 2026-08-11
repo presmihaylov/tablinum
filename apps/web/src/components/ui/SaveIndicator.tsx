@@ -3,7 +3,6 @@ import type { SaveState } from '../../lib/autosave';
 const LABELS: Record<SaveState, string> = {
   idle: 'Saved to git',
   saving: 'Saving…',
-  saved: 'Saved',
   error: 'Retrying…',
 };
 

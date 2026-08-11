@@ -1388,10 +1388,6 @@ button.editor__icon:hover {
   color: var(--warning);
 }
 
-.save-indicator--saved {
-  color: var(--success);
-}
-
 /* ------------------------------------------------------------------ */
 /* comment highlights                                                  */
 /* ------------------------------------------------------------------ */

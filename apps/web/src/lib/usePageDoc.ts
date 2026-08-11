@@ -106,7 +106,7 @@ export function usePageDoc(page: Page | undefined): PageDocHandle {
       save: (patch) => save(pageId, doc, patch),
       onState: (state) => {
         setSaveState(state);
-        if (state === 'saved' || state === 'idle') setEditingRef.current(false);
+        if (state === 'idle') setEditingRef.current(false);
       },
     });
 

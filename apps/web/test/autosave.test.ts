@@ -20,7 +20,6 @@ function harness(options: { fail?: number } = {}) {
     save,
     onState: (state) => states.push(state),
     delayMs: 800,
-    savedResetMs: 1600,
     baseRetryMs: 1000,
     maxRetryMs: 8000,
   });
@@ -87,15 +86,14 @@ describe('Autosave debounce', () => {
     autosave.dispose();
   });
 
-  it('reports idle -> saving -> saved -> idle', async () => {
+  it('reports saving, then goes straight back to idle', async () => {
     const { autosave, states } = harness();
 
     autosave.queue({ markdown: 'x' });
     await vi.advanceTimersByTimeAsync(800);
-    expect(states).toEqual(['saving', 'saved']);
 
-    await vi.advanceTimersByTimeAsync(1600);
-    expect(states).toEqual(['saving', 'saved', 'idle']);
+    // No "saved" step in between. A page that is saved reads "Saved to git", nothing more.
+    expect(states).toEqual(['saving', 'idle']);
     expect(autosave.state).toBe('idle');
 
     autosave.dispose();
@@ -130,7 +128,7 @@ describe('Autosave debounce', () => {
     expect(save).toHaveBeenCalledTimes(3);
 
     expect(calls.every((patch) => patch.markdown === 'important')).toBe(true);
-    expect(autosave.state).toBe('saved');
+    expect(autosave.state).toBe('idle');
     expect(autosave.dirty).toBe(false);
     expect(states).toContain('error');
 

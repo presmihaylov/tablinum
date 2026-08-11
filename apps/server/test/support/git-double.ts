@@ -90,6 +90,18 @@ export class TestGitEngine implements GitEngine {
     await writeFile(file, `${head}${line}\n`, 'utf8');
   }
 
+  /** The mirror of excludePath(), line for line. */
+  async unexcludePath(relDir: string): Promise<void> {
+    const at = this.excluded.indexOf(relDir);
+    if (at !== -1) this.excluded.splice(at, 1);
+    const file = join(this.contentDir, '.git', 'info', 'exclude');
+    if (!existsSync(file)) return;
+    const lines = (await readFile(file, 'utf8')).split('\n');
+    const line = `/${relDir}/`;
+    if (!lines.includes(line)) return;
+    await writeFile(file, lines.filter((entry) => entry !== line).join('\n'), 'utf8');
+  }
+
   async excludedPaths(): Promise<string[]> {
     return [...this.excluded];
   }

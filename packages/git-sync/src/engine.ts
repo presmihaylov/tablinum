@@ -346,14 +346,38 @@ export class GitEngine {
     await this.mutex.runExclusive(() => this.appendExcludeLine(`/${relDir}/`));
   }
 
+  /**
+   * Stop hiding a directory, once whatever asked for the line is gone. The mirror of
+   * excludePath(), and it sits here so the two can never drift apart: a line nobody removes
+   * outlives its space, and the next space to take that slug is kept out of git for no reason.
+   * Idempotent, and safe on a repo that has no exclude file.
+   */
+  async unexcludePath(relDir: string): Promise<void> {
+    if (!isSafeExcludePath(relDir)) throw validation(`Cannot unexclude ${relDir}`);
+    await this.mutex.runExclusive(() => this.dropExcludeLine(`/${relDir}/`));
+  }
+
+  private excludeFile(): string {
+    return join(this.contentDir, '.git', 'info', 'exclude');
+  }
+
   /** Add one line to the exclude file if it is not already there. Call it under the mutex. */
   private async appendExcludeLine(line: string): Promise<void> {
-    const file = join(this.contentDir, '.git', 'info', 'exclude');
+    const file = this.excludeFile();
     const current = (await readTextOrEmpty(file)).replace(/\r\n/g, '\n');
     if (current.split('\n').includes(line)) return;
     const head = current.length === 0 || current.endsWith('\n') ? current : `${current}\n`;
     await mkdir(dirname(file), { recursive: true });
     await writeFile(file, `${head}${line}\n`, 'utf8');
+  }
+
+  /** Take one line back out, leaving every other line as it was. Call it under the mutex. */
+  private async dropExcludeLine(line: string): Promise<void> {
+    const file = this.excludeFile();
+    const current = (await readTextOrEmpty(file)).replace(/\r\n/g, '\n');
+    const lines = current.split('\n');
+    if (!lines.includes(line)) return;
+    await writeFile(file, lines.filter((entry) => entry !== line).join('\n'), 'utf8');
   }
 
   /** Every directory `.git/info/exclude` hides, as content-relative paths. */

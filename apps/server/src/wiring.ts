@@ -12,6 +12,7 @@ import {
   type PageId,
   type PagePath,
 } from '@tablinum/shared';
+import { cleanUpAfterDelete, type DeletedSubjects } from './cleanup.js';
 import type { ServerDeps } from './deps.js';
 import { LiveHub } from './live.js';
 
@@ -37,6 +38,13 @@ export function contentRelPath(contentDir: string, absolutePath: string): string
 
 function isPageFile(rel: string): boolean {
   return rel.toLowerCase().endsWith(PAGE_EXT) && !rel.startsWith(`${ASSETS_DIR}/`);
+}
+
+/** The space a `_space.yml` describes, or null when the file is not a space descriptor. */
+function spaceFileSlug(rel: string): string | null {
+  if (!rel.endsWith(`/${SPACE_FILE}`)) return null;
+  const slug = rel.slice(0, -(SPACE_FILE.length + 1));
+  return slug.includes('/') ? null : slug;
 }
 
 function isTrackedFile(rel: string): boolean {
@@ -198,9 +206,11 @@ export class Wiring {
     for (const page of pages) {
       await this.#indexPage(page);
     }
-    for (const id of record.removedIds ?? []) {
+    const removedIds = record.removedIds ?? [];
+    for (const id of removedIds) {
       await this.#removePage(id);
     }
+    if (removedIds.length > 0) await this.cleanUpAfterDelete({ pageIds: removedIds });
 
     const agent = record.agent ?? null;
     for (const page of pages) {
@@ -210,6 +220,27 @@ export class Wiring {
 
     if (record.skipCommit === true) return;
     this.deps.git.scheduleCommit(record.message);
+  }
+
+  /**
+   * Take away what a delete orphaned: the attachments of a page nothing points at any more, and
+   * the exclude lines that hid them or hid a space that is gone. Never fatal; the delete itself
+   * already happened.
+   */
+  async cleanUpAfterDelete(deleted: DeletedSubjects): Promise<string[]> {
+    try {
+      return await cleanUpAfterDelete(
+        {
+          store: this.deps.store,
+          git: this.deps.git,
+          markWritten: (files) => this.markWritten(files),
+        },
+        deleted,
+      );
+    } catch (err) {
+      this.log.warn({ err }, 'failed to clean up after a delete');
+      return [];
+    }
   }
 
   /** Rebuild the whole index from the store. Used at boot and after a pull. */
@@ -288,12 +319,18 @@ export function startContentWatcher(
 
     let changed = false;
     const removed: PagePath[] = [];
+    const deleted: { pageIds: PageId[]; spaceSlugs: string[] } = { pageIds: [], spaceSlugs: [] };
     for (const [rel, kind] of batch) {
       try {
         if (kind === 'remove') {
           const id = isPageFile(rel) ? await deps.store.forgetFile(rel) : null;
-          if (id !== null) await deps.search.removePage(id);
+          if (id !== null) {
+            await deps.search.removePage(id);
+            deleted.pageIds.push(id);
+          }
           if (isPageFile(rel)) removed.push(relFileToPagePath(rel));
+          const slug = spaceFileSlug(rel);
+          if (slug !== null) deleted.spaceSlugs.push(slug);
           changed = true;
           continue;
         }
@@ -313,6 +350,11 @@ export function startContentWatcher(
         log.warn({ err, file: rel }, 'failed to sync an out-of-band content change');
       }
     }
+
+    // A delete made outside the API orphans exactly what an API delete does. This is the only
+    // way a whole space goes: nothing in the API removes one, so the exclude line that hid a
+    // private space is dropped here, when its `_space.yml` disappears.
+    await wiring.cleanUpAfterDelete(deleted);
 
     live.pagesRemoved(removed);
     if (changed) deps.git.scheduleCommit();

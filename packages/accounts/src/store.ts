@@ -7,6 +7,8 @@ import {
   CUSTOM_EMOJI_MIME_TYPES,
   CommentAnchorSchema,
   DEFAULT_INVITE_DAYS,
+  HANDLE_CHANGE_COOLDOWN_MS,
+  HandleSchema,
   MAX_AVATAR_BYTES,
   MAX_COMMENT_LENGTH,
   MAX_CUSTOM_EMOJI_BYTES,
@@ -14,6 +16,7 @@ import {
   MAX_SHORTCODE_LENGTH,
   colorForId,
   conflict,
+  findMentions,
   isShortcode,
   isUserId,
   newAgentId,
@@ -23,7 +26,10 @@ import {
   newThreadId,
   newUserId,
   newWorkspaceId,
+  normalizeHandle,
   notFound,
+  parseOrThrow,
+  renameMentions,
   sniffImageMime,
   toHandle,
   unauthorized,
@@ -51,7 +57,7 @@ type Db = Database.Database;
 export const ACCOUNTS_DB_FILENAME = 'accounts.db';
 
 /** Stamped on the file so a future destructive migration knows what it is looking at. */
-const SCHEMA_VERSION = 8;
+const SCHEMA_VERSION = 10;
 
 /** How long a signed-in browser stays signed in. */
 export const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -83,6 +89,12 @@ export interface UpdateUserInput {
   role?: AccountRole;
   disabled?: boolean;
   color?: string;
+}
+
+/** What a handle change did. `previous` is null when the wanted handle was already theirs. */
+export interface HandleChange {
+  account: Account;
+  previous: string | null;
 }
 
 export interface CreateInviteInput {
@@ -460,6 +472,11 @@ function normalizeEmail(email: string): string {
   return trimmed;
 }
 
+/** A time a person can read, in the refusal that names it. */
+function asStamp(at: number): string {
+  return `${new Date(at).toISOString().slice(0, 16).replace('T', ' ')} UTC`;
+}
+
 /**
  * Every account, its password, its sessions, its avatar and every invite link.
  *
@@ -511,21 +528,29 @@ export class AccountStore {
   #migrate(db: Db): void {
     db.exec(`
       CREATE TABLE IF NOT EXISTS users (
-        id            TEXT PRIMARY KEY,
-        email         TEXT NOT NULL UNIQUE,
-        name          TEXT NOT NULL,
-        handle        TEXT,
-        slack_user_id TEXT,
-        role          TEXT NOT NULL,
-        color         TEXT NOT NULL,
-        password_hash TEXT NOT NULL,
-        avatar_mime   TEXT,
-        avatar_bytes  BLOB,
-        avatar_rev    TEXT,
-        disabled      INTEGER NOT NULL DEFAULT 0,
-        created       INTEGER NOT NULL,
-        updated       INTEGER NOT NULL
+        id             TEXT PRIMARY KEY,
+        email          TEXT NOT NULL UNIQUE,
+        name           TEXT NOT NULL,
+        handle         TEXT,
+        handle_changed INTEGER,
+        slack_user_id  TEXT,
+        role           TEXT NOT NULL,
+        color          TEXT NOT NULL,
+        password_hash  TEXT NOT NULL,
+        avatar_mime    TEXT,
+        avatar_bytes   BLOB,
+        avatar_rev     TEXT,
+        disabled       INTEGER NOT NULL DEFAULT 0,
+        created        INTEGER NOT NULL,
+        updated        INTEGER NOT NULL
       );
+
+      CREATE TABLE IF NOT EXISTS handle_reservations (
+        handle  TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS reservations_by_user ON handle_reservations(user_id);
 
       CREATE TABLE IF NOT EXISTS sessions (
         token_hash TEXT PRIMARY KEY,
@@ -644,12 +669,26 @@ export class AccountStore {
     // Where an agent is told that a page or a comment tagged it.
     addColumn(db, 'agents', 'webhook_url', 'TEXT');
 
+    // Version 8 predates the editable handle, so nobody in an older file has changed one yet.
+    // The CREATE TABLE above never runs against a file that exists, so this line is the one
+    // that reaches it.
+    addColumn(db, 'users', 'handle_changed', 'INTEGER');
+
     db.pragma(`user_version = ${SCHEMA_VERSION}`);
   }
 
-  /** People and agents share one handle namespace, so `@handle` names exactly one writer. */
+  /**
+   * People and agents share one handle namespace, so `@handle` names exactly one writer. A
+   * handle somebody gave up counts as taken too, so a mention on a page nobody rewrote can
+   * never come to mean a different person.
+   */
   #handleTaken = (candidate: string): boolean =>
     this.getUserByHandle(candidate) !== null || this.getAgentByHandle(candidate) !== null;
+
+  /** Who holds a handle right now: a person, an agent, or the person who gave it up. */
+  #handleOwner(candidate: string): string | null {
+    return this.getUserByHandle(candidate)?.id ?? this.getAgentByHandle(candidate)?.id ?? null;
+  }
 
   /** A free handle for a name, checked against every account that exists now. */
   #freeHandle(name: string, email: string): string {
@@ -905,12 +944,96 @@ export class AccountStore {
     return row === undefined ? null : toAccount(row);
   }
 
-  /** The account behind an `@mention`. The handle never changes, so old pages keep resolving. */
+  /**
+   * The account behind an `@mention`.
+   *
+   * A handle this person used to have answers as well, so a page that was written before the
+   * rename, or a copy of one that lives outside tablinum, still names the same person.
+   */
   getUserByHandle(handle: string): Account | null {
+    const wanted = normalizeHandle(handle);
     const row = this.#handle
       .prepare(`SELECT ${USER_COLUMNS} FROM users WHERE handle = ?`)
-      .get(handle.trim().replace(/^@/, '').toLowerCase()) as UserRow | undefined;
-    return row === undefined ? null : toAccount(row);
+      .get(wanted) as UserRow | undefined;
+    if (row !== undefined) return toAccount(row);
+
+    const reserved = this.#handle
+      .prepare('SELECT user_id FROM handle_reservations WHERE handle = ?')
+      .get(wanted) as { user_id: string } | undefined;
+    return reserved === undefined ? null : this.getUser(reserved.user_id);
+  }
+
+  /** Every handle this person gave up. They stay theirs and nobody else may take one. */
+  reservedHandles(id: string): string[] {
+    const rows = this.#handle
+      .prepare('SELECT handle FROM handle_reservations WHERE user_id = ? ORDER BY created')
+      .all(id) as { handle: string }[];
+    return rows.map((row) => row.handle);
+  }
+
+  /**
+   * When this person may change their handle again, or null when they may right now. A change
+   * rewrites every page that names them, so it is bounded rather than free.
+   */
+  handleChangeableAt(id: string, now: number = Date.now()): number | null {
+    const row = this.#handle
+      .prepare('SELECT handle_changed FROM users WHERE id = ?')
+      .get(id) as { handle_changed: number | null } | undefined;
+    if (row === undefined) throw notFound(`No account with id ${id}`);
+    if (row.handle_changed === null) return null;
+    const ready = row.handle_changed + HANDLE_CHANGE_COOLDOWN_MS;
+    return ready > now ? ready : null;
+  }
+
+  /**
+   * Give somebody a different handle and keep the old one theirs.
+   *
+   * Only the account database moves here. The pages and the comments that carry the old handle
+   * are plain text and are rewritten by the caller, which is what makes a rename one commit
+   * instead of a silent break.
+   */
+  changeHandle(id: string, wanted: string, now: number = Date.now()): HandleChange {
+    const current = this.getUser(id);
+    if (current === null) throw notFound(`No account with id ${id}`);
+
+    const next = parseOrThrow(HandleSchema, wanted, 'handle');
+    if (next === current.handle) return { account: current, previous: null };
+
+    const ready = this.handleChangeableAt(id, now);
+    if (ready !== null) {
+      throw conflict(`A handle changes once a day. Try again after ${asStamp(ready)}.`);
+    }
+
+    const write = this.#handle.transaction(() => {
+      // The check belongs inside the transaction. Two people asking for one free handle both
+      // pass a check made outside it, and the loser then hits the UNIQUE index on users.handle,
+      // which is a 500 where the contract promises a 409.
+      const owner = this.#handleOwner(next);
+      if (owner !== null && owner !== id) throw conflict(`@${next} is taken`);
+
+      // A plain INSERT, not INSERT OR IGNORE. A reservation that is silently dropped leaves the
+      // old handle claimable by anybody, and every stale page naming it would then point at a
+      // different person. That must be loud.
+      this.#handle
+        .prepare('INSERT INTO handle_reservations (handle, user_id, created) VALUES (?, ?, ?)')
+        .run(current.handle, id, now);
+      // Taking an old handle back frees its reservation, so one is never both live and reserved.
+      this.#handle.prepare('DELETE FROM handle_reservations WHERE handle = ?').run(next);
+      this.#handle
+        .prepare('UPDATE users SET handle = ?, handle_changed = ?, updated = ? WHERE id = ?')
+        .run(next, now, now, id);
+    });
+
+    try {
+      write();
+    } catch (cause) {
+      if (!isUniqueViolation(cause)) throw cause;
+      throw conflict(`@${next} is taken`);
+    }
+
+    const account = this.getUser(id);
+    if (account === null) throw notFound(`No account with id ${id}`);
+    return { account, previous: current.handle };
   }
 
   createUser(input: CreateUserInput, now: number = Date.now()): Account {
@@ -1219,7 +1342,7 @@ export class AccountStore {
   getAgentByHandle(handle: string): Agent | null {
     const row = this.#handle
       .prepare(`SELECT ${AGENT_COLUMNS} FROM agents WHERE handle = ?`)
-      .get(handle.trim().replace(/^@/, '').toLowerCase()) as AgentRow | undefined;
+      .get(normalizeHandle(handle)) as AgentRow | undefined;
     return row === undefined ? null : toAgent(row);
   }
 
@@ -1654,6 +1777,54 @@ export class AccountStore {
       return removed;
     });
     return remove();
+  }
+
+  /**
+   * Every comment that carries `@handle` right now, across every workspace.
+   *
+   * The count and the rewrite below both come from here. The preview is what a person agrees
+   * to, so a count that could disagree with the rewrite would be a consent bug rather than an
+   * untidiness.
+   *
+   * LIKE narrows the scan to the few rows that could carry the handle; `_` in a handle is a
+   * LIKE wildcard, which only ever hands back extra rows, and findMentions() is what decides.
+   */
+  #commentsMentioning(handle: string): { id: string; body: string }[] {
+    const wanted = normalizeHandle(handle);
+    const rows = this.#handle
+      .prepare("SELECT id, body FROM comments WHERE body LIKE '%@' || ? || '%'")
+      .all(wanted) as { id: string; body: string }[];
+    return rows.filter((row) => findMentions(row.body).includes(wanted));
+  }
+
+  /** How many comments carry `@handle` right now, across every workspace. */
+  countCommentMentions(handle: string): number {
+    return this.#commentsMentioning(handle).length;
+  }
+
+  /**
+   * Rewrite `@from` as `@to` in every comment that carries it. Returns how many changed.
+   *
+   * `updated` is deliberately left alone: the author did not edit their remark, so the card
+   * must not start claiming they did.
+   */
+  renameCommentMentions(from: string, to: string): number {
+    const before = normalizeHandle(from);
+    const after = normalizeHandle(to);
+    const rows = this.#commentsMentioning(before);
+    const update = this.#handle.prepare('UPDATE comments SET body = ? WHERE id = ?');
+
+    const write = this.#handle.transaction(() => {
+      let changed = 0;
+      for (const row of rows) {
+        const body = renameMentions(row.body, before, after);
+        if (body === row.body) continue;
+        update.run(body, row.id);
+        changed += 1;
+      }
+      return changed;
+    });
+    return write();
   }
 
   #insertComment(threadId: string, author: string, body: string, now: number): void {

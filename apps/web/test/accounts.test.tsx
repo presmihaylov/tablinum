@@ -11,7 +11,7 @@ import { ProfilePanel } from '../src/components/Account/ProfilePanel';
 import { AuthProvider } from '../src/lib/auth';
 import { InviteRoute } from '../src/routes/InviteRoute';
 import { LoginRoute } from '../src/routes/LoginRoute';
-import { installFetch, type MockServer, type Routes as MockRoutes } from './mockFetch';
+import { fail, installFetch, type MockServer, type Routes as MockRoutes } from './mockFetch';
 import { renderApp } from './render';
 
 const ADA: Account = {
@@ -382,6 +382,127 @@ describe('the profile panel', () => {
     start({ 'GET /api/v1/auth/state': authState({ user: ADA }) });
     renderWithAuth(<ProfilePanel user={{ ...ADA, avatarRev: 'abc123' }} />);
     expect(screen.getByRole('button', { name: 'Remove' })).toBeInTheDocument();
+  });
+});
+
+describe('the handle field', () => {
+  const PREVIEW = { handle: ADA.handle, pages: 3, comments: 2, changeableAt: null };
+
+  function handleRoutes(patch: MockRoutes = {}): MockRoutes {
+    return {
+      'GET /api/v1/auth/state': authState({ user: ADA }),
+      'GET /api/v1/me/handle': PREVIEW,
+      ...patch,
+    };
+  }
+
+  it('shows the handle and what a change would rewrite', async () => {
+    start(handleRoutes());
+    renderWithAuth(<ProfilePanel user={ADA} />);
+
+    expect(screen.getByLabelText('Handle')).toHaveValue('ada.lovelace');
+    await screen.findByText(/rewrites 3 pages and 2 comments in one commit/);
+  });
+
+  it('asks before it rewrites, then sends the new handle', async () => {
+    const mock = start(
+      handleRoutes({
+        'POST /api/v1/me/handle': {
+          user: { ...ADA, handle: 'ada.king' },
+          previous: 'ada.lovelace',
+          rewritten: { pages: 3, comments: 2, skipped: 0 },
+        },
+      }),
+    );
+    const user = userEvent.setup();
+    renderWithAuth(<ProfilePanel user={ADA} />);
+    await screen.findByText(/rewrites 3 pages and 2 comments in one commit/);
+
+    const field = screen.getByLabelText('Handle');
+    await user.clear(field);
+    await user.type(field, 'ada.king');
+    await user.click(screen.getByRole('button', { name: 'Change handle' }));
+
+    // Nothing is sent until the dialog says what will happen and the person agrees.
+    await screen.findByText(/@ada.lovelace stays reserved for you/);
+    expect(mock.calls.some((item) => item.method === 'POST')).toBe(false);
+
+    await user.click(screen.getByRole('button', { name: 'Rewrite the mentions' }));
+
+    await waitFor(() => {
+      const call = mock.calls.find((item) => item.method === 'POST');
+      expect(bodyOf(call ?? { body: null })).toEqual({ handle: 'ada.king' });
+    });
+  });
+
+  it('says how many pages kept the old handle', async () => {
+    start(
+      handleRoutes({
+        'POST /api/v1/me/handle': {
+          user: { ...ADA, handle: 'ada.king' },
+          previous: 'ada.lovelace',
+          rewritten: { pages: 2, comments: 2, skipped: 1 },
+        },
+      }),
+    );
+    const user = userEvent.setup();
+    renderWithAuth(<ProfilePanel user={ADA} />);
+    await screen.findByText(/rewrites 3 pages and 2 comments in one commit/);
+
+    const field = screen.getByLabelText('Handle');
+    await user.clear(field);
+    await user.type(field, 'ada.king');
+    await user.click(screen.getByRole('button', { name: 'Change handle' }));
+    await user.click(await screen.findByRole('button', { name: 'Rewrite the mentions' }));
+
+    // Somebody was editing that page, so it still reads @ada.lovelace. The person has to be
+    // told, or they would believe every mention of them now says the new name.
+    await screen.findByText('You are now @ada.king. 1 page kept the old one');
+  });
+
+  it('shows the refusal when the handle is taken', async () => {
+    start(
+      handleRoutes({
+        'POST /api/v1/me/handle': () => fail(409, 'CONFLICT', '@sam.rivers is taken'),
+      }),
+    );
+    const user = userEvent.setup();
+    renderWithAuth(<ProfilePanel user={ADA} />);
+    await screen.findByText(/rewrites 3 pages and 2 comments in one commit/);
+
+    const field = screen.getByLabelText('Handle');
+    await user.clear(field);
+    await user.type(field, 'sam.rivers');
+    await user.click(screen.getByRole('button', { name: 'Change handle' }));
+    await user.click(await screen.findByRole('button', { name: 'Rewrite the mentions' }));
+
+    await screen.findByText('@sam.rivers is taken');
+  });
+
+  it('refuses a handle that breaks the rules before it asks the server', async () => {
+    const mock = start(handleRoutes());
+    const user = userEvent.setup();
+    renderWithAuth(<ProfilePanel user={ADA} />);
+
+    const field = screen.getByLabelText('Handle');
+    await user.clear(field);
+    await user.type(field, 'ada lovelace');
+    await user.click(screen.getByRole('button', { name: 'Change handle' }));
+
+    await screen.findByText(/A handle looks like "ada.lovelace"/);
+    expect(mock.calls.some((item) => item.method === 'POST')).toBe(false);
+  });
+
+  it('will not change again until the cooldown is over', async () => {
+    start(
+      handleRoutes({
+        'GET /api/v1/me/handle': { ...PREVIEW, changeableAt: '2099-01-01T00:00:00.000Z' },
+      }),
+    );
+    renderWithAuth(<ProfilePanel user={ADA} />);
+
+    await screen.findByText(/the next change is possible after/);
+    expect(screen.getByRole('button', { name: 'Change handle' })).toBeDisabled();
   });
 });
 

@@ -52,6 +52,11 @@ function json(payload: unknown, status = 200): Response {
   });
 }
 
+/** A refusal in the shape the API sends, for a route that must not answer 200. */
+export function fail(status: number, code: string, message: string): Response {
+  return json({ error: { code, message } }, status);
+}
+
 /** Replaces global fetch with an in-memory router. Call `restore()` when done. */
 export function installFetch(routes: Routes): MockServer {
   const calls: RecordedCall[] = [];
@@ -68,7 +73,8 @@ export function installFetch(routes: Routes): MockServer {
       return json({ error: { code: 'NOT_FOUND', message: `No route for ${method} ${url.pathname}` } }, 404);
     }
     const payload = typeof route === 'function' ? route(url, body) : route;
-    return json(payload);
+    // A handler may hand back a whole Response, which is how a test asks for a refusal.
+    return payload instanceof Response ? payload : json(payload);
   };
 
   globalThis.fetch = vi.fn(impl);

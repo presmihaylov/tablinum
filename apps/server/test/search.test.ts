@@ -26,6 +26,18 @@ async function createPage(payload: Record<string, unknown>): Promise<string> {
   return bodyOf(response, PageResponseSchema).page.id;
 }
 
+/** GET /search, optionally narrowed to some columns of the index. */
+async function search(q: string, fields?: string) {
+  const scope = fields === undefined ? '' : `&fields=${encodeURIComponent(fields)}`;
+  const response = await harness.app.inject({
+    method: 'GET',
+    url: `/api/v1/search?q=${encodeURIComponent(q)}${scope}`,
+    headers: headers(),
+  });
+  expect(response.statusCode).toBe(200);
+  return bodyOf(response, SearchResponseSchema).hits;
+}
+
 describe('search', () => {
   it('finds a page immediately after it is written', async () => {
     await seed(harness);
@@ -117,5 +129,63 @@ describe('search', () => {
     });
     expect(response.statusCode).toBe(400);
     expect(bodyOf(response, ErrorBodySchema).error.code).toBe('VALIDATION');
+  });
+
+  it('returns the icon of a page, and omits the field when it has none', async () => {
+    await seed(harness);
+    await createPage({ path: 'eng/octopus', title: 'Octopus', icon: '🐙' });
+    await createPage({ path: 'eng/plain', title: 'Plain page' });
+
+    const octopus = await search('octopus');
+    expect(octopus[0]?.icon).toBe('🐙');
+
+    const plain = await search('plain');
+    expect(plain[0]).not.toHaveProperty('icon');
+  });
+});
+
+describe('search fields', () => {
+  beforeEach(async () => {
+    await seed(harness);
+    await createPage({
+      // The path names the page nothing like its title, so one column is visible on its own.
+      path: 'eng/mustard-notes',
+      title: 'Ferret playbook',
+      // "zebracoffee" reads in the body alone. It names no page.
+      markdown: 'We roll out with zebracoffee tooling.\n',
+    });
+  });
+
+  it('answers a body-only word with full text, and with nothing when the name is asked for', async () => {
+    expect((await search('zebracoffee')).map((hit) => hit.title)).toEqual(['Ferret playbook']);
+    expect(await search('zebracoffee', 'title,path')).toEqual([]);
+  });
+
+  it('still finds the page by a prefix of its name', async () => {
+    expect((await search('ferr', 'title,path')).map((hit) => hit.title)).toEqual([
+      'Ferret playbook',
+    ]);
+    expect((await search('ferret play', 'title,path')).map((hit) => hit.title)).toEqual([
+      'Ferret playbook',
+    ]);
+  });
+
+  it('accepts one column on its own', async () => {
+    expect((await search('mustard', 'title,path')).map((hit) => hit.title)).toEqual([
+      'Ferret playbook',
+    ]);
+    expect(await search('mustard', 'title')).toEqual([]);
+  });
+
+  it('rejects a column nobody indexes with VALIDATION', async () => {
+    for (const fields of ['owner', 'title,owner', '']) {
+      const response = await harness.app.inject({
+        method: 'GET',
+        url: `/api/v1/search?q=deploy&fields=${encodeURIComponent(fields)}`,
+        headers: headers(),
+      });
+      expect(response.statusCode).toBe(400);
+      expect(bodyOf(response, ErrorBodySchema).error.code).toBe('VALIDATION');
+    }
   });
 });

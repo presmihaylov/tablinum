@@ -16,6 +16,7 @@
     "build": "pnpm -r --sequential build",
     "typecheck": "pnpm -r typecheck && tsc --noEmit -p e2e/tsconfig.json",
     "test": "pnpm -r test",
+    "test:count": "bash scripts/test-count.sh",
     "test:load": "pnpm --filter @tablinum/server test:load",
     "e2e": "playwright test --config e2e/playwright.config.ts",
     "e2e:ui": "playwright test --config e2e/playwright.config.ts --ui",

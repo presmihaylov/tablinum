@@ -77,6 +77,18 @@
   flex: none;
 }
 
+/* The page's own emoji, or the blank-page glyph, ahead of its title in either page menu. */
+.menu__page-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 1.1rem;
+  color: var(--text-faint);
+  font-size: var(--text-sm);
+  line-height: 1;
+}
+
 .menu__text {
   display: flex;
   flex-direction: column;

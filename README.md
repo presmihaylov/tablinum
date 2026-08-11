@@ -285,11 +285,17 @@ you want the pages.
 ## Mentions and Slack
 
 Type `@` in the editor and pick a person. The page keeps plain `@handle` text, so a mention reads
-the same in a terminal, in a diff and on GitHub, and nothing breaks when somebody is renamed.
+the same in a terminal, in a diff and on GitHub.
 
 Every account gets a handle when it is created, derived from the display name: "Ada Lovelace"
-becomes `@ada.lovelace`. A second Ada Lovelace becomes `@ada.lovelace.2`. A handle never changes.
-You find yours under "Your account".
+becomes `@ada.lovelace`. A second Ada Lovelace becomes `@ada.lovelace.2`. You find yours under
+"Your account", where you can change it.
+
+Changing a handle rewrites every page and every comment that names you, in one commit, and the
+screen tells you how many of each before you agree to it. The handle you gave up stays reserved
+for you: nobody else can take it, and a copy of a page that still writes it points at you. An
+admin can change anybody's handle. Either way it changes at most once a day, so a rename cannot
+churn the repository.
 
 A mention must start a word, so `mail@example.com` stays an address. A mention inside code, either
 `@ada` in backticks or a line in a fenced block, names nobody.

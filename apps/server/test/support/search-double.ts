@@ -1,4 +1,4 @@
-import type { Page, PageId, SearchHit } from '@tablinum/shared';
+import type { Page, PageId, SearchField, SearchHit } from '@tablinum/shared';
 import type { SearchIndex, SearchOptions } from '../../src/deps.js';
 
 interface Entry {
@@ -7,9 +7,11 @@ interface Entry {
   space: string;
   title: string;
   body: string;
+  icon?: string;
 }
 
 const SNIPPET_RADIUS = 60;
+const ALL_FIELDS: readonly SearchField[] = ['title', 'body', 'path'];
 
 function toEntry(page: Page): Entry {
   return {
@@ -18,6 +20,7 @@ function toEntry(page: Page): Entry {
     space: page.space,
     title: page.title,
     body: page.markdown,
+    icon: page.icon,
   };
 }
 
@@ -65,14 +68,15 @@ export class MemorySearchIndex implements SearchIndex {
   async search(query: string, options: SearchOptions = {}): Promise<SearchHit[]> {
     const tokens = tokenize(query);
     if (tokens.length === 0) return [];
+    const fields = options.fields ?? ALL_FIELDS;
 
     const hits: SearchHit[] = [];
     for (const entry of this.#entries.values()) {
       if (options.space !== undefined && entry.space !== options.space) continue;
 
-      const title = entry.title.toLowerCase();
-      const body = entry.body.toLowerCase();
-      const path = entry.path.toLowerCase();
+      const title = fields.includes('title') ? entry.title.toLowerCase() : '';
+      const body = fields.includes('body') ? entry.body.toLowerCase() : '';
+      const path = fields.includes('path') ? entry.path.toLowerCase() : '';
 
       let score = 0;
       let matchedAll = true;
@@ -88,13 +92,15 @@ export class MemorySearchIndex implements SearchIndex {
       }
       if (!matchedAll) continue;
 
-      hits.push({
+      const hit: SearchHit = {
         id: entry.id,
         path: entry.path,
         title: entry.title,
         snippet: snippetFor(entry.body, tokens[0] ?? ''),
         score,
-      });
+      };
+      if (entry.icon !== undefined) hit.icon = entry.icon;
+      hits.push(hit);
     }
 
     hits.sort((a, b) => b.score - a.score || a.path.localeCompare(b.path));

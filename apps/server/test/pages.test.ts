@@ -8,6 +8,7 @@ import {
   ErrorBodySchema,
   PageListResponseSchema,
   PageResponseSchema,
+  SpacesResponseSchema,
 } from '@tablinum/shared';
 import { bodyOf, makeHarness, seed, type Harness } from './support/harness.js';
 
@@ -120,6 +121,38 @@ describe('page lifecycle', () => {
     const page = bodyOf(patched, PageResponseSchema).page;
     expect(page.icon).toBeUndefined();
     expect(page.order).toBeUndefined();
+  });
+});
+
+describe('creating into a space that does not exist yet', () => {
+  it('names the space into existence rather than refusing the page', async () => {
+    const created = await createPage({ path: 'brandnew/note', title: 'Note' });
+    expect(created.statusCode).toBe(201);
+    expect(bodyOf(created, PageResponseSchema).page.space).toBe('brandnew');
+
+    expect(existsSync(join(harness.contentDir, 'brandnew/_space.yml'))).toBe(true);
+    expect(existsSync(join(harness.contentDir, 'brandnew/index.md'))).toBe(true);
+    expect(existsSync(join(harness.contentDir, 'brandnew/note.md'))).toBe(true);
+
+    const spaces = await harness.app.inject({
+      method: 'GET',
+      url: '/api/v1/spaces',
+      headers: headers(),
+    });
+    const found = bodyOf(spaces, SpacesResponseSchema).spaces.find(
+      (space) => space.slug === 'brandnew',
+    );
+    expect(found?.name).toBe('Brandnew');
+    // Nobody owns it, so the space the page invented is one the whole workspace reads.
+    expect(found?.owner).toBeUndefined();
+  });
+
+  it('gives a depth-1 page its own space and a home page in one write', async () => {
+    const created = await createPage({ path: 'solo', title: 'Solo' });
+    expect(created.statusCode).toBe(201);
+    expect(bodyOf(created, PageResponseSchema).page.path).toBe('solo');
+    expect(existsSync(join(harness.contentDir, 'solo/_space.yml'))).toBe(true);
+    expect(existsSync(join(harness.contentDir, 'solo/index.md'))).toBe(true);
   });
 });
 

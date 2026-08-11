@@ -15,6 +15,7 @@ export function page(overrides: Partial<IndexablePage> & { path: string }): Inde
     path: overrides.path,
     space: overrides.space ?? space,
     title: overrides.title ?? `Page ${counter}`,
+    icon: overrides.icon,
     updated: overrides.updated ?? new Date(Date.UTC(2026, 0, 1)).toISOString(),
     markdown: overrides.markdown ?? '',
   };

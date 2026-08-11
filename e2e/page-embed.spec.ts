@@ -100,6 +100,40 @@ test.describe('page slash command', () => {
     await expect(page).toHaveURL(new RegExp(`/p/${slug}/notes$`));
   });
 
+  test('names each page with its icon, and lists none for a name nothing carries', async ({
+    api,
+    page,
+  }) => {
+    await api.createPage({
+      path: `${slug}/runbook`,
+      title: 'Runbook',
+      icon: '🐙',
+      // "zebracoffee" reads in the body alone. Full-text search answers with this page for it.
+      markdown: 'The zebracoffee rota lives here.\n',
+    });
+    await page.goto(`/p/${path}`);
+    await expect(editorBody(page)).toContainText('The work lives below.');
+
+    await runCommand(page, 'page', 'Page');
+    const picker = page.getByRole('dialog', { name: 'Embed a page' });
+    const field = picker.getByRole('textbox', { name: 'Page', exact: true });
+    const found = picker.getByRole('option', { name: `${slug}/runbook` });
+
+    await field.fill('Runb');
+    await expect(found).toBeVisible();
+    await expect(found.locator('.menu__page-icon')).toHaveText('🐙');
+
+    // One typo in the name still finds the page.
+    await field.fill('Runbok');
+    await expect(found).toBeVisible();
+
+    // A word the page only mentions names no page, so the offer to create one is all that is left.
+    await field.fill('zebracoffee');
+    await expect(found).toHaveCount(0);
+    await expect(picker.getByRole('option')).toHaveCount(1);
+    await expect(picker.getByRole('option')).toContainText('New page: zebracoffee');
+  });
+
   test('keeps the typed title when the picker opens a second time', async ({ content, page }) => {
     await page.goto(`/p/${path}`);
     await expect(editorBody(page)).toContainText('The work lives below.');

@@ -68,6 +68,27 @@ describe('toMatchExpression', () => {
 
   it('returns an empty string for no phrases', () => {
     expect(toMatchExpression([], false)).toBe('');
+    expect(toMatchExpression([], false, ['title'])).toBe('');
+  });
+
+  it('scopes every phrase to the named columns', () => {
+    expect(toMatchExpression([['zebracoffee']], false, ['title', 'path'])).toBe(
+      '{title path} : ("zebracoffee")',
+    );
+    expect(toMatchExpression([['deploy'], ['run']], true, ['title', 'path'])).toBe(
+      '{title path} : ("deploy" "run"*)',
+    );
+    expect(toMatchExpression([['rollback']], false, ['title'])).toBe('{title} : ("rollback")');
+  });
+
+  it('names the columns in the declared order, whatever order the caller gave', () => {
+    expect(toMatchExpression([['a']], false, ['path', 'title'])).toBe('{title path} : ("a")');
+  });
+
+  it('adds no filter when it would name every column, or none', () => {
+    expect(toMatchExpression([['a']], false, ['title', 'body', 'path'])).toBe('"a"');
+    expect(toMatchExpression([['a']], false, [])).toBe('"a"');
+    expect(toMatchExpression([['a']], false)).toBe('"a"');
   });
 });
 
@@ -79,6 +100,13 @@ describe('buildMatchExpressions', () => {
   it('returns nothing when the query has no usable term', () => {
     expect(buildMatchExpressions('*')).toEqual([]);
     expect(buildMatchExpressions('')).toEqual([]);
+  });
+
+  it('carries the column filter into both attempts', () => {
+    expect(buildMatchExpressions('depl', ['title', 'path'])).toEqual([
+      '{title path} : ("depl")',
+      '{title path} : ("depl"*)',
+    ]);
   });
 
   it('never produces an unbalanced quote', () => {

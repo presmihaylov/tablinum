@@ -471,7 +471,7 @@ A thread is now about a run of text, a database column, or the whole page. `Comm
 holds a property id, so a renamed column keeps its thread, and the two fields are mutually
 exclusive in the zod schema and in the store. The storage is the one that already held comments:
 `comment_threads` in `accounts.db` gained a `column_id` column, an index on
-`(workspace_id, page_id, column_id)` and a v7 to v8 migration. Nothing about a thread reaches the
+`(workspace_id, page_id, column_id)` and a migration that adds it on the next boot. Nothing about a thread reaches the
 page file.
 
 A column header with threads carries a badge labelled `Comments on <name>, N open`, and a click on

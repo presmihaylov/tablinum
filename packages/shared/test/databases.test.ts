@@ -19,6 +19,7 @@ import {
   newOptionId,
   newPropertyId,
   newViewId,
+  optionByName,
   opTakesNoValue,
   starterBoard,
   starterDatabase,
@@ -346,6 +347,34 @@ describe('compareValues', () => {
 
   it('sorts an unchecked box before a checked one', () => {
     expect(compareValues(done, false, true)).toBeLessThan(0);
+  });
+});
+
+describe('optionByName', () => {
+  it('finds the option that carries the name', () => {
+    expect(optionByName(status, 'Doing')?.id).toBe(DOING.id);
+  });
+
+  it('ignores case and the space at each end, so one name never makes two stacks', () => {
+    expect(optionByName(status, '  doing ')?.id).toBe(DOING.id);
+  });
+
+  it('reads a run of space inside a name as one space', () => {
+    expect(optionByName({ options: [{ id: DOING.id, name: 'In  Review', color: 'blue' }] }, 'In Review')?.id).toBe(
+      DOING.id,
+    );
+  });
+
+  it('is null when no option carries the name', () => {
+    expect(optionByName(status, 'Backlog')).toBeNull();
+  });
+
+  it('is null for a name that is empty or only space', () => {
+    expect(optionByName(status, '   ')).toBeNull();
+  });
+
+  it('is null on a property that holds no options at all', () => {
+    expect(optionByName(notes, 'Doing')).toBeNull();
   });
 });
 

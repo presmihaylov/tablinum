@@ -222,6 +222,38 @@ test.describe('kanban boards', () => {
     await expect(page.getByLabel('Stack menu for Doing')).toHaveCount(0);
   });
 
+  test('names the stack that holds no option and keeps its cards over a reload', async ({
+    page,
+    content,
+  }) => {
+    await page.goto(`/p/${path}`);
+    await openDatabase(page);
+    await addRow(page, 'Ship it');
+    await addRow(page, 'Write it');
+    await turnIntoBoard(page);
+    await expect(column(page, 'No Status').locator('.db-card')).toHaveCount(2);
+
+    await page.getByLabel('Stack menu for No Status').click();
+    const name = page.getByLabel('Stack name');
+    await name.fill('Backlog');
+    await name.press('Enter');
+
+    await expect(column(page, 'Backlog').locator('.db-card')).toHaveCount(2);
+    await expect(column(page, 'No Status').locator('.db-card')).toHaveCount(0);
+    await expect
+      .poll(async () => (await content.pageFileText(path)) ?? '', {
+        message: 'the new option never reached the database page',
+      })
+      .toContain('name: Backlog');
+
+    await page.reload();
+
+    await expect(board(page)).toBeVisible();
+    await expect(column(page, 'Backlog')).toContainText('Ship it');
+    await expect(column(page, 'Backlog')).toContainText('Write it');
+    await expect(column(page, 'No Status').locator('.db-card')).toHaveCount(0);
+  });
+
   test('deletes a stack and leaves its cards on the board', async ({ page }) => {
     await page.goto(`/p/${path}`);
     await openDatabase(page);

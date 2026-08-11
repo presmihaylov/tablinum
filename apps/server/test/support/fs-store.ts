@@ -121,6 +121,42 @@ function buildTree(pages: PageSummary[], space: string): TreeNode[] {
   return roots;
 }
 
+/** One row's cells after a patch. An absent property keeps its value; null clears it. */
+function patchProps(
+  database: Database,
+  current: RowProps,
+  patch: Record<string, unknown>,
+): RowProps {
+  const known = new Map(database.properties.map((property) => [property.id, property]));
+  const props: RowProps = { ...current };
+  for (const [key, raw] of Object.entries(patch)) {
+    const property = known.get(key);
+    if (property === undefined) throw validation(`No property ${key} on this database`);
+    const value = coerceValue(property, raw);
+    if (value === null) delete props[key];
+    if (value !== null) props[key] = value;
+  }
+  return props;
+}
+
+/** The same patch over many rows, so one write moves a whole stack of cards. */
+function setCells(
+  database: Database,
+  rows: readonly DbRow[],
+  patch: Record<string, RowProps>,
+  now: string,
+): DbRow[] {
+  const wanted = new Map(Object.entries(patch));
+  for (const rowId of wanted.keys()) {
+    if (!rows.some((row) => row.id === rowId)) throw notFound(`No row ${rowId} on this database`);
+  }
+  return rows.map((row) => {
+    const cells = wanted.get(row.id);
+    if (cells === undefined) return row;
+    return { ...row, props: patchProps(database, row.props, cells), updated: now };
+  });
+}
+
 /**
  * A real content store over a real directory of markdown files: the file layout, the
  * frontmatter, leaf/parent promotion and stable ids all behave as the contract describes.
@@ -421,12 +457,21 @@ export class FsContentStore implements ContentStore {
     return { page, database, rows };
   }
 
-  async setDatabase(id: PageId, database: Database, baseRev?: string): Promise<Page> {
+  async setDatabase(
+    id: PageId,
+    database: Database,
+    baseRev?: string,
+    rows?: Record<string, RowProps>,
+  ): Promise<Page> {
     return this.#writes.runExclusive(() =>
       this.#writeFrontmatter(id, (next) => {
         const settled = this.#reconcileSchema(id, database, next.db, baseRev);
         this.#rememberSchema(id, settled);
         next.db = settled;
+        // After the schema, so a cell may name an option this very write added.
+        if (rows !== undefined) {
+          next.rows = setCells(settled, next.rows ?? [], rows, new Date().toISOString());
+        }
       }),
     );
   }
@@ -501,15 +546,7 @@ export class FsContentStore implements ContentStore {
         const current = rows.find((row) => row.id === rowId);
         if (current === undefined) throw notFound(`No row ${rowId} on this database`);
 
-        const known = new Map(database.properties.map((property) => [property.id, property]));
-        const props: RowProps = { ...current.props };
-        for (const [key, raw] of Object.entries(patch.props ?? {})) {
-          const property = known.get(key);
-          if (property === undefined) throw validation(`No property ${key} on this database`);
-          const value = coerceValue(property, raw);
-          if (value === null) delete props[key];
-          if (value !== null) props[key] = value;
-        }
+        const props = patchProps(database, current.props, patch.props ?? {});
 
         const title = (patch.title ?? '').trim();
         const row: DbRow = {

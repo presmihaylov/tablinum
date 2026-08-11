@@ -14,10 +14,10 @@ REST API, the MCP server (stdio or remote), or the files themselves.
 | --- | --- | --- |
 | Typecheck | `pnpm -r typecheck` | PASS — 8 projects, strict + `noUncheckedIndexedAccess`, 0 errors |
 | Build | `pnpm -r build` | PASS — 8 dist outputs, Vite bundle 1,284 kB (410 kB gzip) |
-| Test | `pnpm -r test` | PASS — **2378 tests**, 0 failures |
+| Test | `pnpm -r test` | PASS — **2420 tests**, 0 failures |
 
-Per-package tests: shared 341, core 266, accounts 111, git-sync 97, search 59, mcp 143, server 384,
-web 977. The end-to-end suite (`pnpm e2e`) is 156 Playwright tests, all passing.
+Per-package tests: shared 361, core 266, accounts 119, git-sync 97, search 59, mcp 143, server 393,
+web 989. The end-to-end suite (`pnpm e2e`) is 159 Playwright tests, all passing.
 
 `packages/git-sync` cleans a temp repo at the end of every case and occasionally loses a race with
 git's own file handles (`ENOTEMPTY ... rmdir .git`). It passes on a re-run. It is a test-teardown
@@ -434,6 +434,38 @@ a picture. Making an agent is still an admin's job.
   heading, a reader answers it in the panel, the agent reads the answer back with both names, then
   replies and resolves, and the markdown file never changes.
 
+### A comment on a database column
+
+A thread is now about a run of text, a database column, or the whole page. `CommentThread.column`
+holds a property id, so a renamed column keeps its thread, and the two fields are mutually
+exclusive in the zod schema and in the store. The storage is the one that already held comments:
+`comment_threads` in `accounts.db` gained a `column_id` column, an index on
+`(workspace_id, page_id, column_id)` and a v7 to v8 migration. Nothing about a thread reaches the
+page file.
+
+A column header with threads carries a badge labelled `Comments on <name>, N open`, and a click on
+it opens the existing panel on that thread. The header menu offers "Comment on this column". A
+database embedded in another page shows neither, because the panel there belongs to the host page.
+
+A deleted column takes its threads with it, in `PUT` and `DELETE /api/v1/pages/:id/database`. The
+dropped ids are read after the `baseRev` merge, so a column another edit merged back in counts as
+kept, and the threads are dropped only after the commit lands, because a file can be recovered from
+git and a thread cannot. A property deleted by hand in the file never reaches the API, so the panel
+reads the page's schema and draws such a thread as a column that is gone.
+
+- `packages/shared/test/comments.test.ts`, 20 tests: the thread schema, the create body, the query,
+  `threadsForColumn`, and `threadTarget`, which every reader uses to tell the three kinds apart.
+- `packages/accounts/test/comments.test.ts`, 8 new tests: a column thread stored and read back, both
+  fields at once refused, a name in place of an id refused, the cascade delete, and the migration
+  from a v7 file.
+- `apps/server/test/comments.test.ts`, 9 new tests: open, list, narrow by column, reply, resolve,
+  the rename, the unknown column, and the two cascades.
+- `apps/web/test/dbColumnComments.test.tsx`, 12 tests: the badge and its count, the panel it opens,
+  the rename, the embedded database, the body that is posted, a column that is gone, and a page
+  whose whole database block was deleted by hand.
+- `e2e/db-column-comments.spec.ts`, 3 tests: write, reload, reply and resolve; a rename that keeps
+  the thread; and a delete that takes the thread with it.
+
 ### An agent at work on an open page
 
 An agent holds no socket, so the REST layer seats it. A page read or write made with an agent token
@@ -574,6 +606,10 @@ Both `scripts/dev.sh` and `scripts/seed.ts` now also accept the `--` that `pnpm 
   property" left one property. With `baseRev` the server settles the two per property id and per
   view id, and refuses only a real overlap with 409 CONFLICT. Without `baseRev` the schema is
   replaced whole, which is what an agent and a script want. The browser always sends it.
+- **Deleting a database column deletes the comment threads about it.** A column thread is
+  recognised by its column alone, so a kept thread would be a nameless card that nobody can reach.
+  `POST /api/v1/pages/:id/comments` also refuses a `column` the page's database does not have, and
+  refuses an `anchor` and a `column` together.
 
 ---
 

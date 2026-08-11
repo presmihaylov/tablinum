@@ -1,18 +1,30 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import Database from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
 import { MAX_COMMENT_LENGTH, isAppError, type CommentAnchor } from '@tablinum/shared';
 import { AccountStore } from '../src/store.js';
 
 const open: AccountStore[] = [];
+const dirs: string[] = [];
 
-function store(): AccountStore {
-  const created = new AccountStore({ dbPath: ':memory:' });
+function store(dbPath = ':memory:'): AccountStore {
+  const created = new AccountStore({ dbPath });
   created.init();
   open.push(created);
   return created;
 }
 
+function tempDb(): string {
+  const dir = mkdtempSync(join(tmpdir(), 'tablinum-accounts-'));
+  dirs.push(dir);
+  return join(dir, 'accounts.db');
+}
+
 afterEach(() => {
   while (open.length > 0) open.pop()?.close();
+  while (dirs.length > 0) rmSync(dirs.pop() ?? '', { recursive: true, force: true });
 });
 
 const PAGE = 'pg_01J8XYZABCDEFGHJKMNPQRSTV';
@@ -20,7 +32,10 @@ const OTHER_PAGE = 'pg_01J8XYZABCDEFGHJKMNPQRSTW';
 const ADA = 'us_ada';
 const GRACE = 'us_grace';
 
-const ANCHOR: CommentAnchor = { quote: 'ships on Friday', prefix: 'The build ', suffix: '.', start: 10 };
+const STATUS = 'pr_01J8XYZABCDEFGHJKMNPQRSTV1';
+const NOTES = 'pr_01J8XYZABCDEFGHJKMNPQRSTV2';
+
+const ANCHOR: CommentAnchor ={ quote: 'ships on Friday', prefix: 'The build ', suffix: '.', start: 10 };
 
 /** The error code an AppError carries, so a test can assert the wire behaviour. */
 function codeOf(work: () => unknown): string {
@@ -263,5 +278,152 @@ describe('cascade', () => {
     accounts.deleteWorkspace(main.id);
 
     expect(accounts.getThread(main.id, thread.id)).toBeNull();
+  });
+});
+
+describe('threads about a database column', () => {
+  it('keeps the property id, so a renamed column keeps its thread', () => {
+    const accounts = store();
+    const main = workspace(accounts);
+
+    const thread = accounts.createThread(main.id, {
+      pageId: PAGE,
+      author: ADA,
+      body: 'Should this be a select?',
+      column: STATUS,
+    });
+
+    expect(thread.column).toBe(STATUS);
+    expect(thread.anchor).toBeNull();
+    expect(accounts.listThreads(main.id, PAGE)[0]?.column).toBe(STATUS);
+  });
+
+  it('reads back as no column at all when the thread is about the page', () => {
+    const accounts = store();
+    const main = workspace(accounts);
+
+    const thread = accounts.createThread(main.id, { pageId: PAGE, author: ADA, body: 'One' });
+    expect(thread.column).toBeNull();
+  });
+
+  it('refuses a column name in place of a column id', () => {
+    const accounts = store();
+    const main = workspace(accounts);
+
+    expect(
+      codeOf(() =>
+        accounts.createThread(main.id, { pageId: PAGE, author: ADA, body: 'One', column: 'Status' }),
+      ),
+    ).toBe('VALIDATION');
+  });
+
+  it('refuses a thread that is about a selection and a column at once', () => {
+    const accounts = store();
+    const main = workspace(accounts);
+
+    expect(
+      codeOf(() =>
+        accounts.createThread(main.id, {
+          pageId: PAGE,
+          author: ADA,
+          body: 'One',
+          anchor: ANCHOR,
+          column: STATUS,
+        }),
+      ),
+    ).toBe('VALIDATION');
+  });
+
+  it('replies and resolves exactly as any other thread does', () => {
+    const accounts = store();
+    const main = workspace(accounts);
+
+    const thread = accounts.createThread(main.id, {
+      pageId: PAGE,
+      author: ADA,
+      body: 'Should this be a select?',
+      column: STATUS,
+    });
+    const replied = accounts.addReply(main.id, thread.id, GRACE, 'Yes, with three options.');
+    expect(replied.comments).toHaveLength(2);
+    expect(replied.column).toBe(STATUS);
+
+    const resolved = accounts.setThreadResolved(main.id, thread.id, true, GRACE);
+    expect(resolved.resolved).toBe(true);
+    expect(resolved.column).toBe(STATUS);
+  });
+
+  it('drops the threads of a deleted column and leaves every other thread alone', () => {
+    const accounts = store();
+    const main = workspace(accounts);
+    const other = workspace(accounts, 'Handbook', '/content/handbook');
+
+    accounts.createThread(main.id, { pageId: PAGE, author: ADA, body: 'One', column: STATUS });
+    accounts.createThread(main.id, { pageId: PAGE, author: GRACE, body: 'Two', column: STATUS });
+    accounts.createThread(main.id, { pageId: PAGE, author: ADA, body: 'Notes', column: NOTES });
+    accounts.createThread(main.id, { pageId: PAGE, author: ADA, body: 'The page' });
+    accounts.createThread(main.id, {
+      pageId: OTHER_PAGE,
+      author: ADA,
+      body: 'Elsewhere',
+      column: STATUS,
+    });
+    accounts.createThread(other.id, {
+      pageId: PAGE,
+      author: ADA,
+      body: 'Another workspace',
+      column: STATUS,
+    });
+
+    expect(accounts.deleteThreadsForColumns(main.id, PAGE, [STATUS])).toBe(2);
+    expect(accounts.listThreads(main.id, PAGE).map((one) => one.column)).toEqual([NOTES, null]);
+    expect(accounts.listThreads(main.id, OTHER_PAGE)).toHaveLength(1);
+    expect(accounts.listThreads(other.id, PAGE)).toHaveLength(1);
+    expect(accounts.deleteThreadsForColumns(main.id, PAGE, [])).toBe(0);
+  });
+
+  it('takes the replies of a column thread with it', () => {
+    const accounts = store();
+    const main = workspace(accounts);
+
+    const thread = accounts.createThread(main.id, {
+      pageId: PAGE,
+      author: ADA,
+      body: 'One',
+      column: STATUS,
+    });
+    accounts.addReply(main.id, thread.id, GRACE, 'Two');
+    accounts.deleteThreadsForColumns(main.id, PAGE, [STATUS]);
+
+    expect(accounts.getThread(main.id, thread.id)).toBeNull();
+    expect(accounts.getComment(main.id, thread.comments[0]!.id)).toBeNull();
+  });
+});
+
+describe('migration from version 7', () => {
+  it('adds the column to a file written before a thread could be about one', () => {
+    const dbPath = tempDb();
+    const first = store(dbPath);
+    const main = workspace(first);
+    const thread = first.createThread(main.id, { pageId: PAGE, author: ADA, body: 'One' });
+    first.close();
+    open.pop();
+
+    // Put the file back the way version 7 wrote it: no column, and the old version stamp.
+    const raw = new Database(dbPath);
+    raw.exec('DROP INDEX IF EXISTS threads_by_column');
+    raw.exec('ALTER TABLE comment_threads DROP COLUMN column_id');
+    raw.pragma('user_version = 7');
+    raw.close();
+
+    const again = store(dbPath);
+    expect(again.getThread(main.id, thread.id)?.column).toBeNull();
+    const later = again.createThread(main.id, {
+      pageId: PAGE,
+      author: GRACE,
+      body: 'Two',
+      column: STATUS,
+    });
+    expect(again.getThread(main.id, later.id)?.column).toBe(STATUS);
   });
 });

@@ -235,6 +235,7 @@ export function makeThread(overrides: Partial<CommentThread> = {}): CommentThrea
     id,
     pageId: newPageId(),
     anchor: { quote: 'the deploy runbook', prefix: 'The ', suffix: ' body.', start: 4 },
+    column: null,
     resolved: false,
     resolvedBy: null,
     resolvedAt: null,

@@ -148,6 +148,19 @@
   color: var(--text-faint);
 }
 
+.comments__column {
+  display: inline-block;
+  padding-left: var(--space-2);
+  border-left: 2px solid var(--accent);
+  color: var(--text-muted);
+}
+
+.comments__column.is-gone {
+  border-left-color: var(--border-strong);
+  color: var(--text-faint);
+  text-decoration: line-through;
+}
+
 .comments__orphan {
   margin-bottom: var(--space-2);
   font-size: var(--text-2xs);

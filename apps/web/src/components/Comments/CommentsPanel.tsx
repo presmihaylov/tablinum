@@ -8,7 +8,15 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from 'react';
-import type { Account, Agent, Comment, CommentAnchor, CommentThread } from '@tablinum/shared';
+import {
+  threadTarget,
+  type Account,
+  type Agent,
+  type Comment,
+  type CommentThread,
+  type CreateThreadBody,
+  type ThreadTarget,
+} from '@tablinum/shared';
 import {
   useAgents,
   useCreateThread,
@@ -19,7 +27,7 @@ import {
   useUsers,
 } from '../../api/hooks';
 import { useAuth } from '../../lib/auth';
-import { useComments } from '../../lib/comments';
+import { useComments, type CommentDraft } from '../../lib/comments';
 import { absoluteTime, relativeTime } from '../../lib/format';
 import { useToast } from '../../lib/toast';
 import { Avatar, type AvatarPerson } from '../Account/Avatar';
@@ -302,8 +310,58 @@ function CommentRow({
   );
 }
 
+interface AboutProps {
+  target: ThreadTarget;
+  /** The column's name as the schema has it, or null when it is not there any more. */
+  columnName: string | null;
+  gone: boolean;
+}
+
+/** The line at the top of a card that says what the remark is about. */
+function About({ target, columnName, gone }: AboutProps) {
+  switch (target.kind) {
+    case 'column':
+      return (
+        <div className="comments__quote">
+          <span className={gone ? 'comments__column is-gone' : 'comments__column'}>
+            Column: {columnName ?? 'gone'}
+          </span>
+        </div>
+      );
+    case 'page':
+      return (
+        <div className="comments__quote">
+          <span className="comments__quote-none">On the whole page</span>
+        </div>
+      );
+    case 'quote':
+      return (
+        <div className="comments__quote">
+          <q className={gone ? 'comments__quote-text is-gone' : 'comments__quote-text'}>
+            {target.anchor.quote}
+          </q>
+        </div>
+      );
+  }
+}
+
+/** Why a card is drawn as gone. A thread about the whole page is never orphaned. */
+function orphanNote(target: ThreadTarget): string | null {
+  if (target.kind === 'column') return 'This column is no longer on the page.';
+  if (target.kind === 'quote') return 'This text is no longer on the page.';
+  return null;
+}
+
+/** The two fields a new thread is posted with, from the one thing the draft is about. */
+function aboutBody(target: ThreadTarget): Omit<CreateThreadBody, 'body'> {
+  if (target.kind === 'quote') return { anchor: target.anchor };
+  if (target.kind === 'column') return { column: target.column };
+  return {};
+}
+
 interface ThreadCardProps {
   thread: CommentThread;
+  columnName: string | null;
   active: boolean;
   orphaned: boolean;
   busy: boolean;
@@ -321,6 +379,7 @@ interface ThreadCardProps {
 
 function ThreadCard({
   thread,
+  columnName,
   active,
   orphaned,
   busy,
@@ -336,6 +395,8 @@ function ThreadCard({
   onDelete,
 }: ThreadCardProps) {
   const [replying, setReplying] = useState(false);
+  const target = threadTarget(thread);
+  const note = orphaned ? orphanNote(target) : null;
   // The thread in focus is the open one. Every other card shows only as much as it takes to
   // recognise the remark, so a page full of comments can be read at a glance.
   const open = active;
@@ -356,19 +417,9 @@ function ThreadCard({
       onClick={onFocus}
       onFocusCapture={onFocus}
     >
-      <div className="comments__quote">
-        {thread.anchor === null ? (
-          <span className="comments__quote-none">On the whole page</span>
-        ) : (
-          <q className={orphaned ? 'comments__quote-text is-gone' : 'comments__quote-text'}>
-            {thread.anchor.quote}
-          </q>
-        )}
-      </div>
+      <About target={target} columnName={columnName} gone={orphaned} />
 
-      {orphaned && thread.anchor !== null ? (
-        <p className="comments__orphan">This text is no longer on the page.</p>
-      ) : null}
+      {note === null ? null : <p className="comments__orphan">{note}</p>}
 
       <ul className="comments__comments">
         {shown.map((comment) => (
@@ -431,7 +482,8 @@ function replyCount(rest: number): string {
 }
 
 interface DraftCardProps {
-  anchor: CommentAnchor | null;
+  draft: CommentDraft;
+  columnName: string | null;
   busy: boolean;
   people: MentionPerson[];
   onCancel: () => void;
@@ -439,16 +491,10 @@ interface DraftCardProps {
 }
 
 /** The card of a thread that is being written. It sits at the selection it is about. */
-function DraftCard({ anchor, busy, people, onCancel, onSubmit }: DraftCardProps) {
+function DraftCard({ draft, columnName, busy, people, onCancel, onSubmit }: DraftCardProps) {
   return (
     <li className="comments__thread comments__thread--draft">
-      <div className="comments__quote">
-        {anchor === null ? (
-          <span className="comments__quote-none">On the whole page</span>
-        ) : (
-          <q className="comments__quote-text">{anchor.quote}</q>
-        )}
-      </div>
+      <About target={threadTarget(draft)} columnName={columnName} gone={false} />
       <Composer
         placeholder="Write a comment"
         submitLabel="Comment"
@@ -567,13 +613,26 @@ export function CommentsPanel() {
   const resolvedCount = comments.threads.length - comments.threads.filter((one) => !one.resolved).length;
 
   // A thread whose words are still on the page is drawn beside them. One about the whole page,
-  // and one whose words are gone, have nowhere to point, so they stay at the top of the panel.
-  const orphaned = (thread: CommentThread): boolean =>
-    thread.anchor !== null && comments.located !== null && !comments.located.has(thread.id);
-  const anchored = visible.filter((thread) => thread.anchor !== null && !orphaned(thread));
+  // one about a column, and one whose words are gone have nowhere to point, so they stay at the
+  // top of the panel.
+  const columns = comments.columns;
+  const nameOfColumn = (id: string | null): string | null =>
+    id === null ? null : (columns?.find((one) => one.id === id)?.name ?? null);
+  const orphaned = (thread: CommentThread): boolean => {
+    const target = threadTarget(thread);
+    if (target.kind === 'column') return nameOfColumn(target.column) === null;
+    if (target.kind === 'quote') {
+      return comments.located !== null && !comments.located.has(thread.id);
+    }
+    return false;
+  };
+  const anchored = visible.filter(
+    (thread) => threadTarget(thread).kind === 'quote' && !orphaned(thread),
+  );
   const loose = visible.filter((thread) => !anchored.includes(thread));
 
-  const draftAnchored = comments.drafting && comments.draft !== null;
+  const draft = comments.draft;
+  const draftAnchored = draft !== null && threadTarget(draft).kind === 'quote';
   const ids = [...anchored.map((thread) => thread.id), ...(draftAnchored ? [DRAFT_KEY] : [])];
   // The draft is the thing being written, so it holds its place and everything else moves.
   const { field, fieldRef, registerGroup } = useField(
@@ -585,10 +644,9 @@ export function CommentsPanel() {
   const fail = (error: unknown, message: string): void => toast.pushError(error, message);
 
   const submitDraft = (body: string): void => {
-    if (pageId === null) return;
-    const anchor = comments.draft;
+    if (pageId === null || draft === null) return;
     createThread.mutate(
-      { pageId, body: { body, ...(anchor === null ? {} : { anchor }) } },
+      { pageId, body: { body, ...aboutBody(threadTarget(draft)) } },
       {
         onSuccess: (data) => {
           comments.cancelDraft();
@@ -605,6 +663,7 @@ export function CommentsPanel() {
       <ThreadCard
         key={thread.id}
         thread={thread}
+        columnName={nameOfColumn(thread.column)}
         active={thread.id === comments.activeId}
         orphaned={orphaned(thread)}
         busy={busy}
@@ -688,16 +747,21 @@ export function CommentsPanel() {
         </label>
       ) : null}
 
-      {comments.drafting ? null : (
-        <button type="button" className="btn comments__new" onClick={() => comments.startDraft(null)}>
+      {draft !== null ? null : (
+        <button
+          type="button"
+          className="btn comments__new"
+          onClick={() => comments.startDraft({ anchor: null, column: null })}
+        >
           Comment on the page
         </button>
       )}
 
-      {comments.drafting && !draftAnchored ? (
+      {draft !== null && !draftAnchored ? (
         <ul className="comments__list">
           <DraftCard
-            anchor={null}
+            draft={draft}
+            columnName={nameOfColumn(draft.column)}
             busy={busy}
             people={mentionable}
             onCancel={() => comments.cancelDraft()}
@@ -708,7 +772,7 @@ export function CommentsPanel() {
 
       {comments.loading ? <p className="empty-note">Loading…</p> : null}
 
-      {!comments.loading && visible.length === 0 && !comments.drafting ? (
+      {!comments.loading && visible.length === 0 && draft === null ? (
         <p className="empty-note">
           No comments yet. Select some text and choose Comment, or comment on the whole page.
         </p>
@@ -730,10 +794,11 @@ export function CommentsPanel() {
               style={{ transform: `translateY(${field.tops[key] ?? 0}px)` }}
             >
               {group.ids.map((id) =>
-                id === DRAFT_KEY ? (
+                id === DRAFT_KEY && draft !== null ? (
                   <DraftCard
                     key={DRAFT_KEY}
-                    anchor={comments.draft}
+                    draft={draft}
+                    columnName={null}
                     busy={busy}
                     people={mentionable}
                     onCancel={() => comments.cancelDraft()}

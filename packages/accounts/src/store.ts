@@ -14,6 +14,7 @@ import {
   MAX_SHORTCODE_LENGTH,
   colorForId,
   conflict,
+  isPropertyId,
   isShortcode,
   isUserId,
   newAgentId,
@@ -51,7 +52,7 @@ type Db = Database.Database;
 export const ACCOUNTS_DB_FILENAME = 'accounts.db';
 
 /** Stamped on the file so a future destructive migration knows what it is looking at. */
-const SCHEMA_VERSION = 8;
+const SCHEMA_VERSION = 9;
 
 /** How long a signed-in browser stays signed in. */
 export const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -193,6 +194,8 @@ export interface CreateThreadInput {
   body: string;
   /** Left out for a comment about the whole page. */
   anchor?: CommentAnchor | null;
+  /** The property id of the database column the thread is about. */
+  column?: string | null;
 }
 
 interface UserRow {
@@ -254,6 +257,7 @@ interface ThreadRow {
   id: string;
   page_id: string;
   anchor: string | null;
+  column_id: string | null;
   resolved_by: string | null;
   resolved_at: number | null;
   created: number;
@@ -318,7 +322,8 @@ const WORKSPACE_COLUMNS = 'id, slug, name, icon, dir, created, updated';
 /** Never selects `bytes`: a list of emoji is metadata, and the images are fetched one by one. */
 const CUSTOM_EMOJI_COLUMNS = 'id, shortcode, mime, user_id, created';
 
-const THREAD_COLUMNS = 'id, page_id, anchor, resolved_by, resolved_at, created, updated';
+const THREAD_COLUMNS =
+  'id, page_id, anchor, column_id, resolved_by, resolved_at, created, updated';
 
 const COMMENT_COLUMNS = 'id, thread_id, author, body, created, updated';
 
@@ -428,11 +433,17 @@ function readAnchor(raw: string | null): CommentAnchor | null {
   }
 }
 
+/** A column id the file no longer holds a valid value for reads as no column at all. */
+function readColumn(raw: string | null): string | null {
+  return isPropertyId(raw) ? raw : null;
+}
+
 function toThread(row: ThreadRow, comments: Comment[]): CommentThread {
   return {
     id: row.id,
     pageId: row.page_id,
     anchor: readAnchor(row.anchor),
+    column: readColumn(row.column_id),
     resolved: row.resolved_at !== null,
     resolvedBy: row.resolved_by,
     resolvedAt: row.resolved_at === null ? null : iso(row.resolved_at),
@@ -450,6 +461,11 @@ function cleanBody(body: string): string {
     throw validation(`A comment must be ${MAX_COMMENT_LENGTH} characters or shorter`);
   }
   return trimmed;
+}
+
+/** The `?, ?, ?` of an `IN` list, so a set of ids is one statement rather than a loop. */
+function marks(n: number): string {
+  return new Array(n).fill('?').join(', ');
 }
 
 function normalizeEmail(email: string): string {
@@ -598,6 +614,7 @@ export class AccountStore {
         workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
         page_id      TEXT NOT NULL,
         anchor       TEXT,
+        column_id    TEXT,
         resolved_by  TEXT,
         resolved_at  INTEGER,
         created      INTEGER NOT NULL,
@@ -643,6 +660,12 @@ export class AccountStore {
 
     // Where an agent is told that a page or a comment tagged it.
     addColumn(db, 'agents', 'webhook_url', 'TEXT');
+
+    // Version 7 predates a thread about a column of a database.
+    addColumn(db, 'comment_threads', 'column_id', 'TEXT');
+    db.exec(
+      'CREATE INDEX IF NOT EXISTS threads_by_column ON comment_threads(workspace_id, page_id, column_id)',
+    );
 
     db.pragma(`user_version = ${SCHEMA_VERSION}`);
   }
@@ -1515,19 +1538,27 @@ export class AccountStore {
     if (input.pageId.trim().length === 0) throw validation('A page id is required');
     const body = cleanBody(input.body);
     const anchor = input.anchor ?? null;
+    const column = input.column ?? null;
+    if (anchor !== null && column !== null) {
+      throw validation('A thread is about a selection or about a column, not both');
+    }
+    if (column !== null && !isPropertyId(column)) {
+      throw validation(`${JSON.stringify(column)} is not a property id`);
+    }
 
     const threadId = newThreadId(now);
     const write = this.#handle.transaction(() => {
       this.#handle
         .prepare(
-          `INSERT INTO comment_threads (id, workspace_id, page_id, anchor, resolved_by, resolved_at, created, updated)
-           VALUES (@id, @workspaceId, @pageId, @anchor, NULL, NULL, @now, @now)`,
+          `INSERT INTO comment_threads (id, workspace_id, page_id, anchor, column_id, resolved_by, resolved_at, created, updated)
+           VALUES (@id, @workspaceId, @pageId, @anchor, @column, NULL, NULL, @now, @now)`,
         )
         .run({
           id: threadId,
           workspaceId,
           pageId: input.pageId,
           anchor: anchor === null ? null : JSON.stringify(anchor),
+          column,
           now,
         });
       this.#insertComment(threadId, input.author, body, now);
@@ -1645,15 +1676,26 @@ export class AccountStore {
    */
   deleteThreadsForPages(workspaceId: string, pageIds: readonly string[]): number {
     if (pageIds.length === 0) return 0;
-    const statement = this.#handle.prepare(
-      'DELETE FROM comment_threads WHERE workspace_id = ? AND page_id = ?',
-    );
-    const remove = this.#handle.transaction(() => {
-      let removed = 0;
-      for (const pageId of pageIds) removed += statement.run(workspaceId, pageId).changes;
-      return removed;
-    });
-    return remove();
+    return this.#handle
+      .prepare(
+        `DELETE FROM comment_threads WHERE workspace_id = ? AND page_id IN (${marks(pageIds.length)})`,
+      )
+      .run(workspaceId, ...pageIds).changes;
+  }
+
+  /**
+   * Drop every thread about the given columns of one page. A column thread names only a property
+   * id, so once the column is gone there is nothing left for a reader to recognise it by: the
+   * conversation goes with the column rather than lingering as an unanswerable card.
+   */
+  deleteThreadsForColumns(workspaceId: string, pageId: string, columnIds: readonly string[]): number {
+    if (columnIds.length === 0) return 0;
+    return this.#handle
+      .prepare(
+        `DELETE FROM comment_threads
+         WHERE workspace_id = ? AND page_id = ? AND column_id IN (${marks(columnIds.length)})`,
+      )
+      .run(workspaceId, pageId, ...columnIds).changes;
   }
 
   #insertComment(threadId: string, author: string, body: string, now: number): void {

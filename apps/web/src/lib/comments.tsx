@@ -1,6 +1,19 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
-import { unresolvedCount, type CommentAnchor, type CommentThread, type PageId } from '@tablinum/shared';
-import { useCommentThreads } from '../api/hooks';
+import {
+  unresolvedCount,
+  type CommentAnchor,
+  type CommentThread,
+  type DbProperty,
+  type PageId,
+} from '@tablinum/shared';
+import { useCommentThreads, useDatabase } from '../api/hooks';
+
+/** What a thread being written is about. Both fields null means the whole page. */
+export interface CommentDraft {
+  anchor: CommentAnchor | null;
+  /** The property id of a database column. */
+  column: string | null;
+}
 
 /**
  * The comment panel's shared state. The editor and the panel both need to know which thread
@@ -18,10 +31,9 @@ export interface CommentsValue {
   activeId: string | null;
   /** Show the panel and put one thread in focus. Null only clears the focus. */
   focus: (threadId: string | null) => void;
-  /** The selection a new thread is being written about, or null for the whole page. */
-  draft: CommentAnchor | null;
-  drafting: boolean;
-  startDraft: (anchor: CommentAnchor | null) => void;
+  /** The thread being written, or null while nothing is being written. */
+  draft: CommentDraft | null;
+  startDraft: (draft: CommentDraft) => void;
   cancelDraft: () => void;
   showResolved: boolean;
   setShowResolved: (show: boolean) => void;
@@ -31,6 +43,8 @@ export interface CommentsValue {
    */
   located: ReadonlySet<string> | null;
   reportLocated: (ids: string[]) => void;
+  /** The columns the page's database has now. Null when the page is not a database. */
+  columns: DbProperty[] | null;
 }
 
 const IDLE: CommentsValue = {
@@ -43,13 +57,13 @@ const IDLE: CommentsValue = {
   activeId: null,
   focus: () => undefined,
   draft: null,
-  drafting: false,
   startDraft: () => undefined,
   cancelDraft: () => undefined,
   showResolved: false,
   setShowResolved: () => undefined,
   located: null,
   reportLocated: () => undefined,
+  columns: null,
 };
 
 const CommentsContext = createContext<CommentsValue>(IDLE);
@@ -63,32 +77,34 @@ export function CommentsProvider({ pageId, children }: { pageId: PageId; childre
   const query = useCommentThreads(pageId);
   const [open, setOpen] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [draft, setDraft] = useState<CommentAnchor | null>(null);
-  const [drafting, setDrafting] = useState(false);
+  const [draft, setDraft] = useState<CommentDraft | null>(null);
   const [showResolved, setShowResolved] = useState(false);
   const [located, setLocated] = useState<ReadonlySet<string> | null>(null);
 
   const threads = useMemo(() => query.data?.threads ?? [], [query.data]);
 
+  // Only the schema names a column, and it comes from the cache the grid already fills, so a
+  // rename shows here at once. Read only while a column is in play: a page that is not a database
+  // has no schema to answer with, which is why null here reads as "no columns to name".
+  const aboutColumn =
+    (draft !== null && draft.column !== null) || threads.some((thread) => thread.column !== null);
+  const schema = useDatabase(aboutColumn ? pageId : undefined);
+  const columns = schema.data?.database.properties ?? null;
+
   const focus = useCallback((threadId: string | null) => {
     setActiveId(threadId);
     if (threadId === null) return;
-    setDrafting(false);
     setDraft(null);
     setOpen(true);
   }, []);
 
-  const startDraft = useCallback((anchor: CommentAnchor | null) => {
-    setDraft(anchor);
-    setDrafting(true);
+  const startDraft = useCallback((next: CommentDraft) => {
+    setDraft(next);
     setActiveId(null);
     setOpen(true);
   }, []);
 
-  const cancelDraft = useCallback(() => {
-    setDraft(null);
-    setDrafting(false);
-  }, []);
+  const cancelDraft = useCallback(() => setDraft(null), []);
 
   // Written on every recompute, so the identical set must not become a new render.
   const reportLocated = useCallback((ids: string[]) => {
@@ -111,13 +127,13 @@ export function CommentsProvider({ pageId, children }: { pageId: PageId; childre
       activeId,
       focus,
       draft,
-      drafting,
       startDraft,
       cancelDraft,
       showResolved,
       setShowResolved,
       located,
       reportLocated,
+      columns,
     }),
     [
       pageId,
@@ -127,12 +143,12 @@ export function CommentsProvider({ pageId, children }: { pageId: PageId; childre
       activeId,
       focus,
       draft,
-      drafting,
       startDraft,
       cancelDraft,
       showResolved,
       located,
       reportLocated,
+      columns,
     ],
   );
 

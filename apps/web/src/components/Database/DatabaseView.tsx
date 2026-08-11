@@ -316,6 +316,7 @@ export function DatabaseView({ page }: DatabaseViewProps) {
           view={view}
           rows={shown}
           people={people}
+          pageId={page.id}
           onDatabaseChange={save}
           onAddProperty={addProperty}
           onCellChange={changeCell}

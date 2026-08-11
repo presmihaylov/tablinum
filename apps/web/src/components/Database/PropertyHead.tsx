@@ -1,12 +1,15 @@
 import { useRef, useState } from 'react';
 import {
   PROPERTY_TYPES,
+  threadsForColumn,
+  unresolvedCount,
   type Database,
   type DbProperty,
   type DbView,
   type PropertyType,
 } from '@tablinum/shared';
-import { Trash } from '../ui/Icon';
+import { useComments } from '../../lib/comments';
+import { Bubble, Trash } from '../ui/Icon';
 import { Pop } from './Pop';
 
 export const TYPE_LABEL: Record<PropertyType, string> = {
@@ -24,14 +27,29 @@ interface PropertyHeadProps {
   property: DbProperty;
   database: Database;
   view: DbView;
+  /** The page the database is on. A database embedded in another page carries the host's id. */
+  pageId: string;
   onDatabaseChange: (next: Database) => void;
 }
 
 /** One column header, and the menu that renames, retypes, sorts, hides or deletes the column. */
-export function PropertyHead({ property, database, view, onDatabaseChange }: PropertyHeadProps) {
+export function PropertyHead({
+  property,
+  database,
+  view,
+  pageId,
+  onDatabaseChange,
+}: PropertyHeadProps) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(property.name);
   const trigger = useRef<HTMLButtonElement | null>(null);
+  const comments = useComments();
+
+  // An embedded database belongs to another page, and the panel here is the host page's. Only the
+  // grid on its own page may talk to it.
+  const ownPage = comments.pageId === pageId;
+  const mine = ownPage ? threadsForColumn(comments.threads, property.id) : [];
+  const openCount = unresolvedCount(mine);
 
   const patchProperty = (patch: Partial<DbProperty>): void => {
     onDatabaseChange({
@@ -99,6 +117,21 @@ export function PropertyHead({ property, database, view, onDatabaseChange }: Pro
         {property.name}
         <span className="db-table__kind">{TYPE_LABEL[property.type]}</span>
       </button>
+      {mine.length > 0 ? (
+        <button
+          type="button"
+          className={openCount > 0 ? 'db-table__note' : 'db-table__note is-quiet'}
+          aria-label={`Comments on ${property.name}, ${openCount} open`}
+          title={`Comments on ${property.name}, ${openCount} open`}
+          onClick={() => {
+            const first = mine.find((thread) => !thread.resolved) ?? mine[0];
+            if (first !== undefined) comments.focus(first.id);
+          }}
+        >
+          <Bubble size={11} />
+          {openCount > 0 ? openCount : null}
+        </button>
+      ) : null}
       {open ? (
         <Pop label={`${property.name} column`} anchor={trigger} onClose={() => setOpen(false)}>
           <input
@@ -146,6 +179,20 @@ export function PropertyHead({ property, database, view, onDatabaseChange }: Pro
           >
             Hide in this view
           </button>
+          {ownPage ? (
+            <button
+              type="button"
+              role="menuitem"
+              className="db-pop__item"
+              onClick={() => {
+                comments.startDraft({ anchor: null, column: property.id });
+                setOpen(false);
+              }}
+            >
+              <Bubble size={12} />
+              Comment on this column
+            </button>
+          ) : null}
           <div className="db-pop__sep" />
           <button
             type="button"

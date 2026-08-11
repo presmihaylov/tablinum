@@ -69,6 +69,7 @@ function thread(overrides: Partial<CommentThread> = {}): CommentThread {
     id,
     pageId: PAGE.id,
     anchor: ANCHOR,
+    column: null,
     resolved: false,
     resolvedBy: null,
     resolvedAt: null,
@@ -92,7 +93,7 @@ function thread(overrides: Partial<CommentThread> = {}): CommentThread {
 function Controls() {
   const comments = useComments();
   return (
-    <button type="button" onClick={() => comments.startDraft(ANCHOR)}>
+    <button type="button" onClick={() => comments.startDraft({ anchor: ANCHOR, column: null })}>
       Start a draft
     </button>
   );

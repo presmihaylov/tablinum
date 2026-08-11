@@ -40,8 +40,10 @@ describe('formatTreeOutline', () => {
     expect(text).toContain('2 pages in 1 space.');
   });
 
-  it('explains an empty site', () => {
-    expect(formatTreeOutline([])).toContain('No spaces exist yet');
+  it('explains an empty site, and that an agent token cannot fix it by itself', () => {
+    const text = formatTreeOutline([]);
+    expect(text).toContain('No space is visible to you');
+    expect(text).toContain('an agent token cannot start a space');
   });
 
   it('marks a space with no pages', () => {

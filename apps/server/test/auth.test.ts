@@ -4,12 +4,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  AgentTokenResponseSchema,
   AuthResponseSchema,
   ErrorBodySchema,
   HealthResponseSchema,
   InviteResponseSchema,
   OkResponseSchema,
   PageListResponseSchema,
+  PageResponseSchema,
   SpaceResponseSchema,
   SpacesResponseSchema,
 } from '@tablinum/shared';
@@ -471,6 +473,121 @@ describe('space role gates', () => {
       payload: { name: 'Platform' },
     });
     expect(renamed.statusCode).toBe(200);
+  });
+
+  function createPage(harness: Harness, headers: Record<string, string>, path: string) {
+    return harness.app.inject({
+      method: 'POST',
+      url: '/api/v1/pages',
+      headers,
+      payload: { path, title: 'Note', markdown: 'Hello.' },
+    });
+  }
+
+  async function slugsSeenBy(harness: Harness, cookie: string): Promise<string[]> {
+    const response = await harness.app.inject({
+      method: 'GET',
+      url: '/api/v1/spaces',
+      headers: { cookie },
+    });
+    return bodyOf(response, SpacesResponseSchema).spaces.map((space) => space.slug);
+  }
+
+  /**
+   * The escalation the gate above was open to: refused the space, a member wrote a page into it
+   * and the store made the space anyway, with no owner, so the whole workspace read it.
+   */
+  it('refuses a member the space they were refused, when they write a page into it instead', async () => {
+    const harness = await harnessFor();
+    const admin = await claimAdmin(harness);
+    const member = await inviteMember(harness, admin, 'grace@example.com');
+
+    const refused = await createSpace(harness, member, { slug: 'sneaky', name: 'Sneaky' });
+    expect(refused.statusCode).toBe(401);
+
+    const page = await createPage(harness, { cookie: member }, 'sneaky/note');
+    expect(page.statusCode).toBe(401);
+    expect(bodyOf(page, ErrorBodySchema).error.code).toBe('UNAUTHORIZED');
+
+    // Nothing was written, so no space appeared that the whole workspace can read.
+    expect(await slugsSeenBy(harness, admin)).not.toContain('sneaky');
+    expect(await slugsSeenBy(harness, member)).not.toContain('sneaky');
+    expect(existsSync(join(harness.contentDir, 'sneaky'))).toBe(false);
+  });
+
+  /** A move names a destination space, and the store creates that one too. */
+  it('refuses a member the space they move a page into', async () => {
+    const harness = await harnessFor();
+    const admin = await claimAdmin(harness);
+    expect((await createSpace(harness, admin, { slug: 'eng', name: 'Engineering' })).statusCode).toBe(200);
+    const member = await inviteMember(harness, admin, 'grace@example.com');
+
+    const page = await createPage(harness, { cookie: member }, 'eng/note');
+    expect(page.statusCode).toBe(201);
+    const { id } = bodyOf(page, PageResponseSchema).page;
+
+    const moved = await harness.app.inject({
+      method: 'PATCH',
+      url: `/api/v1/pages/${id}`,
+      headers: { cookie: member },
+      payload: { path: 'sneaky/note' },
+    });
+    expect(moved.statusCode).toBe(401);
+    expect(bodyOf(moved, ErrorBodySchema).error.code).toBe('UNAUTHORIZED');
+    expect(await slugsSeenBy(harness, admin)).not.toContain('sneaky');
+  });
+
+  /**
+   * The refusal must not depend on whether the slug is free, or the 401 would confirm that
+   * somebody else's private space exists, which is the one thing a private space must not do.
+   */
+  it('answers a member the same way for a free slug and for a private space they cannot see', async () => {
+    const harness = await harnessFor();
+    const admin = await claimAdmin(harness);
+    expect(
+      (await createSpace(harness, admin, { slug: 'notes', name: 'Notes', private: true })).statusCode,
+    ).toBe(200);
+    const member = await inviteMember(harness, admin, 'grace@example.com');
+
+    const taken = await createPage(harness, { cookie: member }, 'notes/intrusion');
+    const free = await createPage(harness, { cookie: member }, 'nobodys/note');
+    expect(taken.statusCode).toBe(free.statusCode);
+    expect(bodyOf(taken, ErrorBodySchema).error.code).toBe(bodyOf(free, ErrorBodySchema).error.code);
+  });
+
+  /** The space a first path segment invents is exactly what an admin was always allowed. */
+  it('still lets an admin start a space by writing a page into it', async () => {
+    const harness = await harnessFor();
+    const admin = await claimAdmin(harness);
+
+    const page = await createPage(harness, { cookie: admin }, 'brandnew/note');
+    expect(page.statusCode).toBe(201);
+    expect(bodyOf(page, PageResponseSchema).page.space).toBe('brandnew');
+    expect(await slugsSeenBy(harness, admin)).toContain('brandnew');
+  });
+
+  /**
+   * An agent token holds no role and owns nothing, so it can neither start a space everybody
+   * reads nor hold a private one. It writes into the spaces that already exist.
+   */
+  it('refuses an agent token the space it writes a page into', async () => {
+    const harness = await harnessFor();
+    const created = await harness.app.inject({
+      method: 'POST',
+      url: '/api/v1/agents',
+      headers: harness.authHeaders(),
+      payload: { name: 'Doc Bot', identity: 'You keep the runbooks tidy.' },
+    });
+    const { token } = bodyOf(created, AgentTokenResponseSchema);
+    const headers = { authorization: `Bearer ${token}` };
+
+    const refused = await createPage(harness, headers, 'sneaky/note');
+    expect(refused.statusCode).toBe(401);
+    expect(bodyOf(refused, ErrorBodySchema).error.code).toBe('UNAUTHORIZED');
+
+    await seed(harness);
+    const allowed = await createPage(harness, headers, 'eng/notes');
+    expect(allowed.statusCode).toBe(201);
   });
 });
 

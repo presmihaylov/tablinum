@@ -29,7 +29,8 @@ the same pages in a block editor in the browser. Write so that both stay readabl
 ## Paths, titles and spaces
 - A path looks like \`eng/runbooks/deploy\`: lowercase, kebab-case segments, slash separated, no
   leading or trailing slash, no \`.md\`, and never \`index\` as the last segment.
-- The first segment is the space. Reuse an existing space rather than inventing a new one.
+- The first segment is the space. Write into a space that exists: an agent token may not start
+  one, so a path naming a space nobody has made yet is refused.
 - Group by topic, not by author or by date. Keep the tree no deeper than four levels.
 
 ## Working safely next to humans

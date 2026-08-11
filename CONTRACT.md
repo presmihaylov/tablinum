@@ -629,10 +629,10 @@ POST   /api/v1/spaces                          body { slug, name, icon?, order?,
                                                 person: the owner comes from the session, never
                                                 from the body, so an agent or an operator token
                                                 answers 401 for one)
-                                               (NOT a boundary on the slug: POST /api/v1/pages
-                                                writes a `_space.yml` for a first path segment that
-                                                does not exist yet, so any writer still starts a
-                                                space that way)
+                                               (a boundary on the slug, not on this route: a page
+                                                write whose first path segment names no space
+                                                creates one, so POST and PATCH /api/v1/pages ask
+                                                for the same admin below)
 PATCH  /api/v1/spaces/:slug                    body { name?, icon?, order? } -> { space: Space }
                                                (icon: null clears it; the slug never changes)
                                                (admin, except on the caller's own private space,
@@ -655,8 +655,16 @@ GET    /api/v1/pages                           ?path=<PagePath> -> { page: Page 
 GET    /api/v1/pages/:id                       -> { page: Page }
 POST   /api/v1/pages                           body { path, title, markdown?, icon?, tags?, props?, order? }
                                                -> 201 { page: Page }
+                                               (the first path segment is the space, and a segment
+                                                naming no space the caller can see creates one, so
+                                                that create asks for an admin and answers 401 for
+                                                everybody else. A free slug and somebody else's
+                                                private space give the same 401, so neither
+                                                confirms the other)
 PATCH  /api/v1/pages/:id                       body { title?, markdown?, icon?, tags?, props?, order?, path?, baseRev? }
                                                (path = move/rename, across spaces too) -> { page: Page }
+                                               (a move into a space that does not exist creates it,
+                                                so `path` carries the same admin gate the create does)
                                                (baseRev + markdown that lost the race -> 409 CONFLICT,
                                                 error.info = { markdown, rev, updated })
 DELETE /api/v1/pages/:id                       ?recursive=true -> { deleted: PagePath[] }

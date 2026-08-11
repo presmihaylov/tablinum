@@ -51,7 +51,9 @@ function outlineNodes(nodes: TreeNode[], indent: string, out: string[]): void {
 /** Indented outline of the page tree: one line per page, path in brackets. */
 export function formatTreeOutline(spaces: SpaceTree[]): string {
   if (spaces.length === 0) {
-    return 'No spaces exist yet. Create the first page with tablinum_create_page; its first path segment becomes the space.';
+    // Starting a space is an admin's, whichever route asks for it, so an agent token is told to
+    // ask rather than sent at tablinum_create_page to find that out from a 401.
+    return 'No space is visible to you, and the first segment of every page path is a space. An admin credential starts one by creating the first page with tablinum_create_page; an agent token cannot start a space, so ask an admin for one.';
   }
   const lines: string[] = [];
   for (const space of spaces) {

@@ -226,7 +226,9 @@ describe('private spaces', () => {
       headers,
       payload: { path: 'notes/intrusion', title: 'Intrusion', markdown: 'Hello?' },
     });
-    expect(created.statusCode).toBe(404);
+    // A slug this member cannot see reads to them as a space that does not exist, and starting
+    // one is an admin's. The same 401 answers a free slug, so it tells them nothing about `notes`.
+    expect(created.statusCode).toBe(401);
 
     const patched = await harness.app.inject({
       method: 'PATCH',
@@ -264,7 +266,9 @@ describe('private spaces', () => {
       headers: { cookie: member },
       payload: { path: 'notes/stolen' },
     });
-    expect(moved.statusCode).toBe(404);
+    // 401 rather than 404, for the reason the write above gives: the answer is the one every
+    // slug this member cannot see gets, so it never says that `notes` is taken.
+    expect(moved.statusCode).toBe(401);
   });
 
   it('refuses a private space to a caller who is not a person', async () => {

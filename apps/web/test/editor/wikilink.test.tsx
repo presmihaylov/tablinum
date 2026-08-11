@@ -56,7 +56,7 @@ describe('wikilink picker', () => {
     await openPicker(async () => PAGES, '[[gui');
 
     const options = await screen.findAllByRole('option');
-    expect(options.map((item) => item.querySelector('.gd-editor-menu__title')?.textContent)).toEqual(
+    expect(options.map((item) => item.querySelector('.menu__title')?.textContent)).toEqual(
       ['Setup guide', 'Deploy guide'],
     );
   });

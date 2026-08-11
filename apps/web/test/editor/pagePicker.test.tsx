@@ -31,7 +31,7 @@ function field(): HTMLElement {
 function pageTitles(): string[] {
   return screen
     .queryAllByRole('option')
-    .map((row) => row.querySelector('.gd-editor-menu__title')?.textContent ?? '')
+    .map((row) => row.querySelector('.menu__title')?.textContent ?? '')
     .filter((title) => !title.startsWith('New page: '));
 }
 
@@ -139,7 +139,7 @@ function mountIconed() {
 function rowFor(title: string): HTMLElement {
   const row = screen
     .getAllByRole('option')
-    .find((option) => option.querySelector('.gd-editor-menu__title')?.textContent === title);
+    .find((option) => option.querySelector('.menu__title')?.textContent === title);
   if (!row) throw new Error(`No row for ${title}`);
   return row;
 }

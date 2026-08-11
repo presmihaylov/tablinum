@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Editor } from '@tiptap/core';
 import type { Transaction } from '@tiptap/pm/state';
-import { createTestEditor, toMarkdown } from './harness';
+import { createTestEditor, roundtrip, toMarkdown } from './harness';
 
 let editor: Editor | null = null;
 
@@ -25,6 +25,33 @@ function type(instance: Editor, text: string): void {
     if (handled) continue;
     instance.view.dispatch(insert());
   }
+}
+
+/**
+ * A key press, down the same path the browser uses. jsdom reports no platform, so
+ * prosemirror-keymap reads `Mod` as Control here.
+ */
+function press(instance: Editor, key: string, mod = false): boolean {
+  const event = new KeyboardEvent('keydown', { key, ctrlKey: mod });
+  return (
+    instance.view.someProp('handleKeyDown', (handler) => handler(instance.view, event)) ?? false
+  );
+}
+
+/**
+ * Redo. A browser reports the shifted letter and the code of the unshifted key, and
+ * prosemirror-keymap needs both to find a `Mod-Shift-z` binding, so both are given here.
+ */
+function pressRedo(instance: Editor): boolean {
+  const event = new KeyboardEvent('keydown', {
+    key: 'Z',
+    ctrlKey: true,
+    shiftKey: true,
+    keyCode: 90,
+  } as KeyboardEventInit);
+  return (
+    instance.view.someProp('handleKeyDown', (handler) => handler(instance.view, event)) ?? false
+  );
 }
 
 afterEach(() => {
@@ -125,5 +152,100 @@ describe('markdown input rules', () => {
     type(instance, 'two minus one is 2 - 1');
     expect(instance.isActive('bulletList')).toBe(false);
     expect(toMarkdown(instance)).toBe('two minus one is 2 - 1\n');
+  });
+});
+
+describe('the arrow input rule', () => {
+  it('turns "->" into an arrow as it is typed', () => {
+    const instance = open();
+    type(instance, 'Ship it -> today');
+    expect(toMarkdown(instance)).toBe('Ship it → today\n');
+  });
+
+  it('writes the arrow character to markdown and reads it back unchanged', () => {
+    const instance = open();
+    type(instance, 'Ship it -> today');
+    const markdown = toMarkdown(instance);
+    expect(markdown).toContain('→');
+    expect(roundtrip(markdown)).toBe(markdown);
+  });
+
+  it('gives the typed "->" back on undo', () => {
+    const instance = open();
+    type(instance, 'Ship it ->');
+    expect(toMarkdown(instance)).toBe('Ship it →\n');
+
+    expect(press(instance, 'z', true)).toBe(true);
+    expect(toMarkdown(instance)).toBe('Ship it ->\n');
+  });
+
+  it('gives the typed "->" back on backspace', () => {
+    const instance = open();
+    type(instance, 'Ship it ->');
+    expect(press(instance, 'Backspace')).toBe(true);
+    expect(toMarkdown(instance)).toBe('Ship it ->\n');
+  });
+
+  it('undoes the whole run on a second undo', () => {
+    const instance = open();
+    type(instance, 'Ship it ->');
+    press(instance, 'z', true);
+    press(instance, 'z', true);
+    expect(toMarkdown(instance)).toBe('\n');
+  });
+
+  it('leaves redo with nothing to give back, because the undo was no history step', () => {
+    const instance = open();
+    type(instance, 'Ship it ->');
+    press(instance, 'z', true);
+    expect(toMarkdown(instance)).toBe('Ship it ->\n');
+
+    // Taking a rule back is an ordinary edit, and an ordinary edit closes the redo branch.
+    expect(pressRedo(instance)).toBe(false);
+    expect(toMarkdown(instance)).toBe('Ship it ->\n');
+  });
+
+  it('takes back a block rule the same way, once typing has moved on', () => {
+    const instance = open();
+    type(instance, '# Title');
+    press(instance, 'z', true);
+    expect(toMarkdown(instance)).toBe('\n');
+  });
+
+  it('takes back a block rule on the undo right after it fires', () => {
+    const instance = open();
+    type(instance, '# ');
+    expect(instance.isActive('heading', { level: 1 })).toBe(true);
+
+    press(instance, 'z', true);
+    expect(instance.isActive('heading', { level: 1 })).toBe(false);
+    expect(instance.state.doc.textContent).toBe('# ');
+  });
+
+  it('leaves "->" alone inside a code block', () => {
+    const instance = open();
+    type(instance, '```js ');
+    type(instance, 'const next = a -> b;');
+    expect(toMarkdown(instance)).toBe('```js\nconst next = a -> b;\n```\n');
+  });
+
+  it('leaves "->" alone inside a mermaid block', () => {
+    const instance = open();
+    type(instance, '```mermaid ');
+    type(instance, 'graph LR; A->B');
+    expect(toMarkdown(instance)).toBe('```mermaid\ngraph LR; A->B\n```\n');
+  });
+
+  it('leaves "->" alone inside inline code', () => {
+    const instance = open();
+    instance.commands.toggleCode();
+    type(instance, 'a->b');
+    expect(toMarkdown(instance)).toBe('`a->b`\n');
+  });
+
+  it('rewrites nothing else Typography would have rewritten', () => {
+    const instance = open();
+    type(instance, '<- -- ... "quoted" 1/2 (c) != +/- 1/4');
+    expect(toMarkdown(instance)).toBe('<- -- ... "quoted" 1/2 (c) != +/- 1/4\n');
   });
 });

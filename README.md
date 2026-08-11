@@ -254,6 +254,20 @@ Only `Main` uses `TABLINUM_GIT_REMOTE`; the others are local repositories you mo
 Deleting a workspace forgets it and its members but leaves the files on disk, so export it first if
 you want the pages.
 
+## The arrow shortcut
+
+Type `->` and it becomes `→` straight away, wherever you write: the body of a page, a page title, a
+comment, a database cell, a filter box, a dialog. Nothing to switch on. Undo gives your two
+characters back everywhere, and in the body of a page backspace does the same.
+
+Code is left exactly as you typed it: `->` inside a fenced block, a mermaid block or a code span is
+never touched. So is anything that is not prose: an address, a number, a password, a date, and the
+raw markdown you edit to settle a conflict. Pasted text is never rewritten either, only what you
+type.
+
+The file on disk holds the character `→`, so the page reads the same in a terminal, in a diff and on
+GitHub. No other substitution is applied: quotes, dashes, ellipses and fractions stay as typed.
+
 ## Mentions and Slack
 
 Type `@` in the editor and pick a person. The page keeps plain `@handle` text, so a mention reads

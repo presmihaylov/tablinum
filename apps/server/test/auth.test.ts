@@ -222,6 +222,7 @@ describe('mutation audit', () => {
     { method: 'POST', url: '/api/v1/git/push' },
     { method: 'POST', url: '/api/v1/git/commit' },
     { method: 'POST', url: '/api/v1/git/resolve' },
+    { method: 'POST', url: '/api/v1/rescan' },
     { method: 'PATCH', url: '/api/v1/me' },
     { method: 'POST', url: '/api/v1/me/password' },
     { method: 'POST', url: '/api/v1/me/avatar' },

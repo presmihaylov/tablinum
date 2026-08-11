@@ -37,6 +37,43 @@ export interface WorkspaceParts {
   close?: () => Promise<void>;
 }
 
+/** What a rescan rebuilt, and what it collected on the way. */
+export interface RescanResult {
+  /** Pages in the search index once it was rebuilt. */
+  pages: number;
+  /** Content-relative attachment files the sweep removed. */
+  removedAssets: string[];
+}
+
+/**
+ * Re-read the working tree into both indexes: the store's, and the search index built from it.
+ *
+ * Anything that rewrites files behind the server's back needs this pair, and the order is the
+ * whole reason it is one function. The store must go first: reindexAll() reads through it, and
+ * its index still describes the tree as it was.
+ */
+export async function rebuildIndexes(parts: WorkspaceParts): Promise<number> {
+  await parts.store.rebuild();
+  return parts.wiring.reindexAll();
+}
+
+/**
+ * A rescan somebody asked for. It rebuilds both indexes and then takes away the attachments of
+ * pages that are gone, which is the only way an install that ran the code before a page delete
+ * collected its own attachments ever gets them back.
+ *
+ * The sweep runs last on purpose: it asks the store index whether a page still exists, so it
+ * needs the index the rebuild just wrote, not the one that predates the working tree.
+ */
+export async function rescanWorkspace(parts: WorkspaceParts): Promise<RescanResult> {
+  const pages = await rebuildIndexes(parts);
+  const removedAssets = await parts.wiring.sweepOrphanedAssets();
+  // The sweep marked those files as written by this process, so the watcher will not report
+  // them. Without this the deletions would sit in the working tree with nothing to commit them.
+  if (removedAssets.length > 0) parts.git.scheduleCommit('Collect attachments of deleted pages');
+  return { pages, removedAssets };
+}
+
 /** What `deps.openWorkspace` hands back. `close` runs when the server shuts down. */
 export interface WorkspaceInstance {
   store: ServerDeps['store'];

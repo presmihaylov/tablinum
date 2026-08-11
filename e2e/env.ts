@@ -20,6 +20,12 @@ export const RUN_DIR = join(tmpdir(), `tablinum-e2e-${PORT}`);
 export const CONTENT_DIR = join(RUN_DIR, 'content');
 export const STORAGE_STATE = join(RUN_DIR, 'admin-state.json');
 
+/**
+ * The content tree a fresh server writes, copied out before any spec has run. reset() puts it
+ * back, so the suite never has to describe what a fresh tree holds.
+ */
+export const SEED_DIR = join(RUN_DIR, 'seed');
+
 // The report and the traces are the one thing a run leaves behind for a human, so they go in
 // the checkout under the usual playwright names, where CI can upload them. Both are gitignored.
 export const RESULTS_DIR = join(REPO_ROOT, 'test-results');

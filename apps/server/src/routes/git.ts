@@ -19,7 +19,7 @@ import {
 import { requireWorkspaceAdmin } from '../auth.js';
 import { API_PREFIX, partsOf, type RouteContext } from '../context.js';
 import type { ContentStore } from '../deps.js';
-import type { WorkspaceParts } from '../workspaces.js';
+import { rebuildIndexes, type WorkspaceParts } from '../workspaces.js';
 
 /** Labels that end up inside the conflict markers of an unmergeable file. */
 const OURS_LABEL = 'local';
@@ -60,11 +60,9 @@ export function registerGitRoutes(app: FastifyInstance, ctx: RouteContext): void
   app.post(`${API_PREFIX}/git/pull`, async (request): Promise<GitPullResponse> => {
     const parts = await partsOf(ctx, request);
     const { status, pulled, files } = await parts.git.pull();
-    // A pull rewrites arbitrary files, so rescan instead of guessing which. The store must go
-    // first: reindexAll reads through it, and its index still describes the pre-pull tree.
+    // A pull rewrites arbitrary files, so rescan instead of guessing which.
     if (pulled > 0) {
-      await parts.store.rebuild();
-      await parts.wiring.reindexAll();
+      await rebuildIndexes(parts);
       await announcePulledPages(parts, files);
     }
     parts.live.gitChanged(status);
@@ -122,8 +120,7 @@ export function registerGitRoutes(app: FastifyInstance, ctx: RouteContext): void
     const resolved = await parts.git.resolveConflict(body.files, body.message);
 
     // The resolution rewrote the working tree behind the store's back.
-    await parts.store.rebuild();
-    await parts.wiring.reindexAll();
+    await rebuildIndexes(parts);
     await announcePulledPages(parts, resolved);
 
     const status = await parts.git.status();

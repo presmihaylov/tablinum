@@ -475,6 +475,7 @@ Authentication:
 | POST | `/git/commit` | `{ message? }` | `{ sha: string \| null }` |
 | GET | `/git/conflict` | - | `{ conflict, files: ConflictFile[] }` |
 | POST | `/git/resolve` | `{ files: [{ file, content }], message? }` | `{ status, resolved: string[] }` |
+| POST | `/rescan` | - | `{ pages: number, removedAssets: string[] }` (workspace admin) |
 | POST | `/assets` | multipart | `{ url, path }` |
 | GET | `/live` | `?client=<tab id>&workspace=<slug>` | WebSocket |
 

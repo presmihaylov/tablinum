@@ -210,7 +210,7 @@ export class Wiring {
     for (const id of removedIds) {
       await this.#removePage(id);
     }
-    if (removedIds.length > 0) await this.cleanUpAfterDelete({ pageIds: removedIds });
+    await this.cleanUpAfterDelete({ pageIds: removedIds });
 
     const agent = record.agent ?? null;
     for (const page of pages) {

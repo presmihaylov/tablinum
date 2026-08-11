@@ -1,21 +1,19 @@
-import { readdir, rm } from 'node:fs/promises';
-import { join } from 'node:path';
 import { assetDirRelPath, type PageId } from '@tablinum/shared';
 import type { ContentStore, GitEngine } from './deps.js';
 
 /**
- * What a delete leaves behind.
+ * What a delete leaves behind: the attachments under `_assets/<pageId>/`, and the
+ * `.git/info/exclude` line that hides a private page's attachments or a private space.
  *
- * A page owns two things outside its own file: the attachments under `_assets/<pageId>/`, and,
- * when the page is private, the `.git/info/exclude` line that hides them. A space owns the
- * exclude line that hides the space itself. Deleting the page or the space used to leave all of
- * it in place: the bytes stayed in the repo with nothing pointing at them, and the exclude line
- * outlived its subject, so a later space that took the same slug was silently kept out of git.
+ * The store owns the files, so it takes the attachments away; this decides which exclude lines
+ * have outlived their subject. Callers name candidates only: a move is a delete and a create,
+ * so whether the subject is really gone is settled here, against the store.
  *
- * This runs after any delete, whichever way it arrived: the API route reports what it removed,
- * and the content watcher reports what disappeared on disk. Both name candidates only. Whether
- * each one is really gone is decided here, against the store, because a move looks exactly like
- * a delete followed by a create and must not cost the page its attachments.
+ * Which references keep an attachment alive: any page file that names `/_assets/<id>/`,
+ * frontmatter and body alike. Comment bodies are NOT scanned. They live in the account database,
+ * which the content store cannot see, and a comment renders markdown, so an `![x](/_assets/…)`
+ * typed into a comment on a surviving page does not save the file. Nothing in the UI uploads an
+ * attachment from a comment, so such a url can only get there by hand.
  */
 
 /** Subjects a delete may have removed. Each one is checked before anything is deleted. */
@@ -45,21 +43,15 @@ export async function cleanUpAfterDelete(
     await parts.git.unexcludePath(slug);
   }
 
-  const attachments = new Map<PageId, string[]>();
-  for (const id of await deadPages(parts.store, new Set(deleted.pageIds ?? []))) {
-    const names = await readdir(join(parts.store.contentDir, assetDirRelPath(id))).catch(() => null);
-    // Nothing left on disk to hide, so the line that hid it is stale whatever links to it.
-    if (names === null) await parts.git.unexcludePath(assetDirRelPath(id));
-    if (names !== null) attachments.set(id, names);
-  }
-  if (attachments.size === 0) return [];
+  const gone = await deadPages(parts.store, new Set(deleted.pageIds ?? []));
+  if (gone.length === 0) return [];
 
-  const shared = await stillReferenced(parts.store, [...attachments.keys()]);
-  const removed: string[] = [];
-  for (const [id, names] of attachments) {
-    if (shared.has(id)) continue;
-    removed.push(...(await removeAssets(parts, id, names)));
-    await parts.git.unexcludePath(assetDirRelPath(id));
+  const { removed, kept } = await parts.store.removeOrphanedAssets(gone);
+  parts.markWritten?.(removed);
+  const survives = new Set(kept);
+  for (const id of gone) {
+    // Nothing left on disk to hide, so the line that hid it is stale whatever links to it.
+    if (!survives.has(id)) await parts.git.unexcludePath(assetDirRelPath(id));
   }
   return removed;
 }
@@ -76,34 +68,4 @@ async function deadPages(store: ContentStore, candidates: Set<PageId>): Promise<
     if ((await store.getPageById(id)) === null) gone.push(id);
   }
   return gone;
-}
-
-/**
- * Of the given dead ids, the ones a surviving page still points at.
- *
- * This matters because an attachment URL carries the id of the page it was uploaded to, not of
- * the page it is shown on: duplicating a page copies the markdown as it stands, so the copy
- * reads the original's attachments. Deleting the original must not blank the copy. Every page
- * is read, so this only runs for a delete that really had attachments.
- */
-async function stillReferenced(store: ContentStore, gone: PageId[]): Promise<Set<PageId>> {
-  const referenced = new Set<PageId>();
-  for (const summary of await store.listPages()) {
-    if (referenced.size === gone.length) break;
-    const page = await store.getPageById(summary.id);
-    if (page === null) continue;
-    for (const id of gone) {
-      if (page.markdown.includes(`/${assetDirRelPath(id)}/`)) referenced.add(id);
-    }
-  }
-  return referenced;
-}
-
-/** Delete one page's attachment directory. Returns the files that were in it. */
-async function removeAssets(parts: CleanupParts, id: PageId, names: string[]): Promise<string[]> {
-  const relDir = assetDirRelPath(id);
-  const files = names.map((name) => `${relDir}/${name}`);
-  parts.markWritten?.(files);
-  await rm(join(parts.store.contentDir, relDir), { recursive: true, force: true });
-  return files;
 }

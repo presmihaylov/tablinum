@@ -371,13 +371,17 @@ export class GitEngine {
     await writeFile(file, `${head}${line}\n`, 'utf8');
   }
 
-  /** Take one line back out, leaving every other line as it was. Call it under the mutex. */
+  /**
+   * Take one line back out, leaving every other line as it was. Trimmed before it is compared,
+   * the way excludedPaths() reads the file, so a hand-written `/secrets/ ` can be removed and
+   * not only reported. Call it under the mutex.
+   */
   private async dropExcludeLine(line: string): Promise<void> {
     const file = this.excludeFile();
     const current = (await readTextOrEmpty(file)).replace(/\r\n/g, '\n');
     const lines = current.split('\n');
-    if (!lines.includes(line)) return;
-    await writeFile(file, lines.filter((entry) => entry !== line).join('\n'), 'utf8');
+    if (!lines.some((entry) => entry.trim() === line)) return;
+    await writeFile(file, lines.filter((entry) => entry.trim() !== line).join('\n'), 'utf8');
   }
 
   /** Every directory `.git/info/exclude` hides, as content-relative paths. */

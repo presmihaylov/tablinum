@@ -53,6 +53,14 @@ export interface FileResolution {
   content: string;
 }
 
+/** What removeOrphanedAssets() did. */
+export interface OrphanedAssets {
+  /** Content-relative attachment files it deleted. */
+  removed: string[];
+  /** Ids whose attachment directory is still on disk, so whatever hides it must go on hiding it. */
+  kept: PageId[];
+}
+
 /** Filters accepted by the full-text index. */
 export interface SearchOptions {
   space?: string;
@@ -105,8 +113,17 @@ export interface ContentStore {
   /** Apply a patch. A `path` in the patch moves or renames the page and keeps its id. */
   updatePage(id: PageId, patch: UpdatePageBody): Promise<Page>;
 
-  /** Delete a page. Without `recursive` a page that has children is a CONFLICT. */
+  /**
+   * Delete a page. Without `recursive` a page that has children is a CONFLICT. The attachments
+   * of every page it removes go with it, unless a surviving page still names them.
+   */
   deletePage(id: PageId, recursive: boolean): Promise<PagePath[]>;
+
+  /**
+   * Take away the attachment directory of every one of these pages that is gone and that no
+   * surviving page still names. Idempotent, so it is safe to run again after deletePage().
+   */
+  removeOrphanedAssets(pageIds: Iterable<PageId>): Promise<OrphanedAssets>;
 
   /** Pages whose body links to this page through a wikilink or a relative link. */
   getBacklinks(id: PageId): Promise<Backlink[]>;

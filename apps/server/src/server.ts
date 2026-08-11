@@ -37,6 +37,7 @@ import type {
   FileResolution,
   FileVersions,
   GitEngine,
+  OrphanedAssets,
   ParsedPageFile,
   SearchIndex,
   SearchOptions,
@@ -116,6 +117,10 @@ class CoreStoreAdapter implements ContentStore {
 
   deletePage(id: PageId, recursive: boolean): Promise<PagePath[]> {
     return this.core.deletePage(id, recursive);
+  }
+
+  removeOrphanedAssets(pageIds: Iterable<PageId>): Promise<OrphanedAssets> {
+    return this.core.removeOrphanedAssets(pageIds);
   }
 
   getBacklinks(id: PageId): Promise<Backlink[]> {

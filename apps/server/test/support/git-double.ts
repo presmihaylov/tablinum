@@ -98,8 +98,14 @@ export class TestGitEngine implements GitEngine {
     if (!existsSync(file)) return;
     const lines = (await readFile(file, 'utf8')).split('\n');
     const line = `/${relDir}/`;
-    if (!lines.includes(line)) return;
-    await writeFile(file, lines.filter((entry) => entry !== line).join('\n'), 'utf8');
+    if (!lines.some((entry) => entry.trim() === line)) return;
+    await writeFile(file, lines.filter((entry) => entry.trim() !== line).join('\n'), 'utf8');
+  }
+
+  /** Every file git tracks right now, so a test can see what a delete left in the repo. */
+  async lsFiles(): Promise<string[]> {
+    const raw = (await this.#tryGit(['ls-files'])) ?? '';
+    return raw.split('\n').filter((line) => line.length > 0);
   }
 
   async excludedPaths(): Promise<string[]> {

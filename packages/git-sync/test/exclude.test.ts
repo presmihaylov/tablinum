@@ -145,6 +145,34 @@ describe('excludePath', () => {
     expect(await gitLines(dir, 'ls-files')).toContain('secrets/index.md');
   });
 
+  it('drops the line from a file that ends without a newline', async () => {
+    const dir = await tempDir();
+    const engine = makeEngine({ contentDir: dir });
+    await engine.init();
+    await writeFileIn(dir, '.git/info/exclude', '# a comment\n/secrets/\n/vault/');
+
+    await engine.unexcludePath('vault');
+
+    // The last line carried no newline of its own, so the file still ends without one.
+    expect(await readFileIn(dir, '.git/info/exclude')).toBe('# a comment\n/secrets/');
+    await engine.unexcludePath('secrets');
+    expect(await readFileIn(dir, '.git/info/exclude')).toBe('# a comment');
+  });
+
+  it('drops a line somebody wrote with spaces around it', async () => {
+    const dir = await tempDir();
+    const engine = makeEngine({ contentDir: dir });
+    await engine.init();
+    await writeFileIn(dir, '.git/info/exclude', '# a comment\n  /secrets/ \n');
+
+    // excludedPaths() trims before it matches, so the removal has to trim as well.
+    expect(await engine.excludedPaths()).toEqual(['secrets']);
+    await engine.unexcludePath('secrets');
+
+    expect(await readFileIn(dir, '.git/info/exclude')).toBe('# a comment\n');
+    expect(await engine.excludedPaths()).toEqual([]);
+  });
+
   it('refuses to unexclude a path that could escape the content directory', async () => {
     const dir = await tempDir();
     const engine = makeEngine({ contentDir: dir });

@@ -124,7 +124,8 @@ test.describe('search', () => {
     await page.keyboard.press('ControlOrMeta+s');
 
     // The toast stack is a status region too, so the save indicator is picked by its text.
-    await expect(page.getByRole('status').filter({ hasText: /Sav/ })).toContainText('Saved');
+    // It settles on the resting label; the poll below is what proves the edit landed.
+    await expect(page.getByRole('status').filter({ hasText: /Sav/ })).toHaveText('Saved to git');
     await expect
       .poll(async () => (await api.getPage(TELESCOPE_PATH))?.markdown ?? '', {
         message: 'the edit never reached the server',

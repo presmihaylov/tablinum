@@ -1,21 +1,18 @@
 import type { UpdatePageBody } from '@tablinum/shared';
 
 /** What the save indicator shows. Passed straight to the editor. */
-export type SaveState = 'idle' | 'saving' | 'saved' | 'error';
+export type SaveState = 'idle' | 'saving' | 'error';
 
 export interface AutosaveOptions {
   save: (patch: UpdatePageBody) => Promise<unknown>;
   onState?: (state: SaveState) => void;
   /** Quiet period after the last edit before a PATCH goes out. */
   delayMs?: number;
-  /** How long "saved" stays on screen before it fades back to idle. */
-  savedResetMs?: number;
   baseRetryMs?: number;
   maxRetryMs?: number;
 }
 
 const DEFAULT_DELAY_MS = 800;
-const DEFAULT_SAVED_RESET_MS = 1600;
 const DEFAULT_BASE_RETRY_MS = 1000;
 const DEFAULT_MAX_RETRY_MS = 30_000;
 
@@ -28,13 +25,11 @@ export class Autosave {
   private readonly save: (patch: UpdatePageBody) => Promise<unknown>;
   private readonly onState: ((state: SaveState) => void) | undefined;
   private readonly delayMs: number;
-  private readonly savedResetMs: number;
   private readonly baseRetryMs: number;
   private readonly maxRetryMs: number;
 
   private pending: UpdatePageBody | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
-  private resetTimer: ReturnType<typeof setTimeout> | null = null;
   private current: Promise<void> | null = null;
   private attempt = 0;
   private disposed = false;
@@ -44,7 +39,6 @@ export class Autosave {
     this.save = options.save;
     this.onState = options.onState;
     this.delayMs = options.delayMs ?? DEFAULT_DELAY_MS;
-    this.savedResetMs = options.savedResetMs ?? DEFAULT_SAVED_RESET_MS;
     this.baseRetryMs = options.baseRetryMs ?? DEFAULT_BASE_RETRY_MS;
     this.maxRetryMs = options.maxRetryMs ?? DEFAULT_MAX_RETRY_MS;
   }
@@ -62,7 +56,6 @@ export class Autosave {
     if (this.disposed) return;
     this.pending = { ...(this.pending ?? {}), ...patch };
     this.attempt = 0;
-    this.clearResetTimer();
     this.arm(this.delayMs);
   }
 
@@ -76,7 +69,6 @@ export class Autosave {
   dispose(): void {
     this.disposed = true;
     this.clearTimer();
-    this.clearResetTimer();
   }
 
   private setState(next: SaveState): void {
@@ -89,12 +81,6 @@ export class Autosave {
     if (this.timer === null) return;
     clearTimeout(this.timer);
     this.timer = null;
-  }
-
-  private clearResetTimer(): void {
-    if (this.resetTimer === null) return;
-    clearTimeout(this.resetTimer);
-    this.resetTimer = null;
   }
 
   private arm(ms: number): void {
@@ -124,8 +110,7 @@ export class Autosave {
         this.arm(this.delayMs);
         return;
       }
-      this.setState('saved');
-      this.scheduleIdle();
+      this.setState('idle');
     } catch {
       // The failed patch is older than anything queued while it was in flight.
       this.pending = { ...patch, ...(this.pending ?? {}) };
@@ -138,13 +123,5 @@ export class Autosave {
   private retryDelay(): number {
     const exponent = Math.max(this.attempt - 1, 0);
     return Math.min(this.baseRetryMs * 2 ** exponent, this.maxRetryMs);
-  }
-
-  private scheduleIdle(): void {
-    this.clearResetTimer();
-    this.resetTimer = setTimeout(() => {
-      this.resetTimer = null;
-      if (this.pending === null && this.current === null) this.setState('idle');
-    }, this.savedResetMs);
   }
 }

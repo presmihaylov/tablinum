@@ -6,7 +6,7 @@ import {
   type Account,
   type CustomEmoji,
 } from '@tablinum/shared';
-import { useCustomEmoji, useDeleteEmoji, useUploadEmoji, useUsers } from '../../api/hooks';
+import { useCustomEmoji, useDeleteEmoji, useUploadEmoji, useUsers } from '../../api/accounts';
 import { describeError, useToast } from '../../lib/toast';
 import { ConfirmDialog, type ConfirmRequest } from '../ui/ConfirmDialog';
 import { EmojiGlyph } from '../ui/EmojiGlyph';

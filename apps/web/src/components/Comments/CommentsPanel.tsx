@@ -18,15 +18,14 @@ import {
   type CreateThreadBody,
   type ThreadTarget,
 } from '@tablinum/shared';
+import { useAgents, useUsers } from '../../api/accounts';
 import {
-  useAgents,
   useCreateThread,
   useDeleteComment,
   useReplyToThread,
   useResolveThread,
   useUpdateComment,
-  useUsers,
-} from '../../api/hooks';
+} from '../../api/content';
 import { useAuth } from '../../lib/auth';
 import { useComments, type CommentDraft } from '../../lib/comments';
 import { absoluteTime, relativeTime } from '../../lib/format';

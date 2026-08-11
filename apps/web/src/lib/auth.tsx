@@ -1,8 +1,8 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { Account } from '@tablinum/shared';
+import { useAuthState } from '../api/accounts';
 import { onUnauthorized } from '../api/client';
-import { useAuthState } from '../api/hooks';
 import { setAccountIdentity } from './identity';
 
 interface AuthContextValue {

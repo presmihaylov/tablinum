@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useLogout } from '../../api/hooks';
+import { useLogout } from '../../api/accounts';
 import { useAuth } from '../../lib/auth';
 import { Menu } from '../ui/Menu';
 import { Settings, SignOut } from '../ui/Icon';

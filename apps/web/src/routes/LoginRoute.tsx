@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { MIN_PASSWORD_LENGTH, workspaceSlugOf } from '@tablinum/shared';
-import { useLogin, useSetup, useUpdateWorkspace, useWorkspaces } from '../api/hooks';
+import { useLogin, useSetup, useUpdateWorkspace, useWorkspaces } from '../api/accounts';
 import { useAuth } from '../lib/auth';
 import { describeError } from '../lib/toast';
 import './login.css';

@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import type { Workspace } from '@tablinum/shared';
-import { useWorkspaces as useWorkspacesQuery } from '../api/hooks';
+import { useWorkspaces as useWorkspacesQuery } from '../api/accounts';
 import { currentWorkspace, setCurrentWorkspace } from './currentWorkspace';
 
 /**

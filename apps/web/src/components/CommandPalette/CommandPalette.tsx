@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactElement } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { useGitSync, useSearch } from '../../api/hooks';
+import { useSearch } from '../../api/content';
+import { useGitSync } from '../../api/git';
 import { useAuth } from '../../lib/auth';
 import { pageHref } from '../../lib/href';
 import { filterActions, type PaletteAction } from '../../lib/palette';

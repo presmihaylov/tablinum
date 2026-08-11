@@ -486,6 +486,8 @@ export function useSetDatabase(): UseMutationResult<PageResponse, ApiError, SetD
         client.setQueryData<DatabaseResponse>(key, { ...previous, database: saved });
       }
       void client.invalidateQueries({ queryKey: key });
+      // A deleted column takes its threads with it on the server, so the count here is stale.
+      void client.invalidateQueries({ queryKey: qk.comments(vars.pageId) });
       invalidateContent(client);
     },
   });
@@ -497,6 +499,7 @@ export function useRemoveDatabase(): UseMutationResult<PageResponse, ApiError, P
     mutationFn: (pageId: PageId) => api.removeDatabase(pageId),
     onSuccess: (_data, pageId) => {
       void client.invalidateQueries({ queryKey: qk.database(pageId) });
+      void client.invalidateQueries({ queryKey: qk.comments(pageId) });
       invalidateContent(client);
     },
   });

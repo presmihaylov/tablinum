@@ -9,6 +9,7 @@ import {
   DIAGRAM_EXT,
   parseAssetUrl,
   starterBoard,
+  threadTarget,
   type Page,
   type SearchField,
   type SearchQuery,
@@ -473,16 +474,18 @@ export function PageEditor({
     const located: string[] = [];
 
     for (const thread of threads) {
-      if (thread.anchor === null) continue;
-      const range = locateAnchor(doc, thread.anchor);
+      const target = threadTarget(thread);
+      if (target.kind !== 'quote') continue;
+      const range = locateAnchor(doc, target.anchor);
       if (range === null) continue;
       located.push(thread.id);
       if (thread.resolved && !showResolved && thread.id !== activeId) continue;
       spans.push({ id: thread.id, from: range.from, to: range.to, resolved: thread.resolved });
     }
 
-    if (draft !== null) {
-      const range = locateAnchor(doc, draft);
+    const drafted = draft === null ? null : threadTarget(draft);
+    if (drafted?.kind === 'quote') {
+      const range = locateAnchor(doc, drafted.anchor);
       if (range !== null) {
         spans.push({ id: DRAFT_SPAN_ID, from: range.from, to: range.to, resolved: false });
       }
@@ -496,7 +499,7 @@ export function PageEditor({
     const instance = editorRef.current;
     if (!instance) return;
     const { from, to } = instance.state.selection;
-    comments.startDraft(anchorFor(instance.state.doc, from, to));
+    comments.startDraft({ anchor: anchorFor(instance.state.doc, from, to), column: null });
   }, [comments]);
 
   const copyBlockLink = useCallback(

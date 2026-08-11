@@ -97,6 +97,11 @@ export async function removeFile(target: string): Promise<void> {
   }
 }
 
+/** Remove a directory and everything in it. A directory that is not there is not an error. */
+export async function removeDir(target: string): Promise<void> {
+  await fs.rm(target, { recursive: true, force: true });
+}
+
 export async function readDirNames(target: string): Promise<string[]> {
   try {
     return await fs.readdir(target);

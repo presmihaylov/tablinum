@@ -37,6 +37,7 @@ import type {
   FileResolution,
   FileVersions,
   GitEngine,
+  OrphanedAssets,
   ParsedPageFile,
   SearchIndex,
   SearchOptions,
@@ -118,6 +119,10 @@ class CoreStoreAdapter implements ContentStore {
     return this.core.deletePage(id, recursive);
   }
 
+  removeOrphanedAssets(pageIds: Iterable<PageId>): Promise<OrphanedAssets> {
+    return this.core.removeOrphanedAssets(pageIds);
+  }
+
   getBacklinks(id: PageId): Promise<Backlink[]> {
     return this.core.getBacklinks(id);
   }
@@ -180,6 +185,10 @@ class CoreGitAdapter implements GitEngine {
 
   excludePath(relDir: string): Promise<void> {
     return this.core.excludePath(relDir);
+  }
+
+  unexcludePath(relDir: string): Promise<void> {
+    return this.core.unexcludePath(relDir);
   }
 
   excludedPaths(): Promise<string[]> {

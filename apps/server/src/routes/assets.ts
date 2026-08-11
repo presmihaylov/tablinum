@@ -7,6 +7,7 @@ import {
   ASSETS_DIR,
   DIAGRAM_EXT,
   PageIdSchema,
+  assetDirRelPath,
   assetRelPath,
   assetUrl,
   isDiagramPath,
@@ -174,7 +175,7 @@ export function registerAssetRoutes(app: FastifyInstance, ctx: RouteContext): vo
     // page's images need their own exclude line. Written before the directory, as for a space.
     const spaces = await store.listSpaces();
     const owned = spaces.find((space) => space.slug === page.space)?.owner !== undefined;
-    if (owned) await git.excludePath(`${ASSETS_DIR}/${page.id}`);
+    if (owned) await git.excludePath(assetDirRelPath(page.id));
 
     const dir = join(store.contentDir, ASSETS_DIR, page.id);
     await mkdir(dir, { recursive: true });

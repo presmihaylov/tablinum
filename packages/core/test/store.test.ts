@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { isPageId } from '@tablinum/shared';
+import { isPageId, newPropertyId, newViewId } from '@tablinum/shared';
 import { ContentStore } from '../src/store.js';
 import { DEFAULT_HISTORY_DEPTH } from '../src/rev-history.js';
 import { parse } from '../src/frontmatter.js';
@@ -599,6 +599,71 @@ describe('deletePage', () => {
     await store.deletePage(home.id, true);
     expect(await exists(dir, 'docs/_space.yml')).toBe(true);
     expect((await store.listSpaces()).map((space) => space.slug)).toEqual(['docs']);
+  });
+
+  it('takes the attachments of every page it removed', async () => {
+    const parent = await store.createPage({ path: 'docs/a', title: 'A' });
+    const child = await store.createPage({ path: 'docs/a/b', title: 'B' });
+    await store.saveAsset(parent.id, 'parent.png', new Uint8Array([1]));
+    await store.saveAsset(child.id, 'child.png', new Uint8Array([2]));
+
+    await store.deletePage(parent.id, true);
+
+    expect(await exists(dir, `_assets/${parent.id}/parent.png`)).toBe(false);
+    expect(await exists(dir, `_assets/${child.id}/child.png`)).toBe(false);
+  });
+
+  it('keeps an attachment a surviving page still shows', async () => {
+    const source = await store.createPage({ path: 'docs/plan', title: 'Plan' });
+    const saved = await store.saveAsset(source.id, 'plan.png', new Uint8Array([1]));
+    // What "Duplicate page" writes: the copy carries the original's attachment urls.
+    await store.createPage({ path: 'docs/copy', title: 'Copy', markdown: `![plan](${saved.url})` });
+
+    await store.deletePage(source.id);
+
+    expect(await exists(dir, saved.path)).toBe(true);
+  });
+
+  /** A database row lives in the frontmatter, and `Page.markdown` is the body without it. */
+  it('keeps an attachment a surviving page names in a database row', async () => {
+    const source = await store.createPage({ path: 'docs/plan', title: 'Plan' });
+    const saved = await store.saveAsset(source.id, 'plan.png', new Uint8Array([1]));
+    const board = await store.createPage({ path: 'docs/board', title: 'Board' });
+    const text = newPropertyId();
+    await store.setDatabase(board.id, {
+      properties: [{ id: text, name: 'Cover', type: 'text', options: [] }],
+      views: [{ id: newViewId(), name: 'Table', type: 'table', filters: [], sorts: [], hidden: [] }],
+    });
+    await store.createRow(board.id, { title: 'Card', props: { [text]: saved.url } });
+    expect((await readFileAt(dir, 'docs/board.md')).includes(saved.url)).toBe(true);
+
+    await store.deletePage(source.id);
+
+    expect(await exists(dir, saved.path)).toBe(true);
+  });
+});
+
+describe('removeOrphanedAssets', () => {
+  beforeEach(async () => {
+    await store.init();
+  });
+
+  it('rethrows an error that is not a missing directory', async () => {
+    // A file where the directory belongs: readdir answers ENOTDIR, which stands in for every
+    // errno that is not ENOENT. Swallowing it would report attachments as gone while they are
+    // still in the working tree, and whatever hides them would be taken away.
+    const ghost = 'pg_01J0000000000000000000000Q';
+    await writeFileAt(dir, `_assets/${ghost}`, 'not a directory');
+
+    await expect(store.removeOrphanedAssets([ghost])).rejects.toMatchObject({ code: 'ENOTDIR' });
+  });
+
+  it('leaves a page that is still there alone', async () => {
+    const page = await store.getPageByPath('docs');
+    const saved = await store.saveAsset(page.id, 'plan.png', new Uint8Array([1]));
+
+    expect(await store.removeOrphanedAssets([page.id])).toEqual({ removed: [], kept: [page.id] });
+    expect(await exists(dir, saved.path)).toBe(true);
   });
 });
 

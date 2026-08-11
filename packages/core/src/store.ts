@@ -13,6 +13,7 @@ import {
   UpdatePageBodySchema,
   UpdateSpaceBodySchema,
   assertValidPagePath,
+  assetDirRelPath,
   assetRelPath,
   assetUrl,
   baseName,
@@ -67,6 +68,7 @@ import {
   pathExists,
   readDirNames,
   readTextOrNull,
+  removeDir,
   removeDirIfEmpty,
   removeFile,
   rename,
@@ -179,6 +181,14 @@ export interface CreateSpaceOptions {
    * it, and the git layer excludes its directory so the files never reach a remote.
    */
   owner?: string;
+}
+
+/** What removeOrphanedAssets() did. */
+export interface OrphanedAssets {
+  /** Content-relative attachment files it deleted. */
+  removed: string[];
+  /** Ids whose attachment directory is still on disk, so whatever hides it must go on hiding it. */
+  kept: PageId[];
 }
 
 function compareSpaces(a: Space, b: Space): number {
@@ -823,6 +833,13 @@ export class ContentStore {
     this.#index.markStale();
     await this.#demoteIfEmpty(parentPath(record.path));
     await this.#index.rebuild();
+    // The page files are gone already, so a disk that cannot be read here must not turn a
+    // finished delete into an error. The attachments stay, and so does anything hiding them.
+    await this.#removeOrphanedAssetsUnlocked(targets.map((target) => target.id)).catch(
+      (err: unknown) => {
+        this.#logger.warn(`Could not remove the attachments of ${record.path}: ${String(err)}`);
+      },
+    );
     return targets.map((target) => target.path).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
   }
 
@@ -1054,6 +1071,59 @@ export class ContentStore {
     const absolute = resolveInside(this.contentDir, relative);
     await writeBytes(absolute, data);
     return { url: assetUrl(pageId, candidate), path: relative };
+  }
+
+  /**
+   * Take away the attachments of pages that are gone. deletePage() calls it for its own victims,
+   * and a caller that saw pages disappear another way calls it directly.
+   */
+  async removeOrphanedAssets(pageIds: Iterable<PageId>): Promise<OrphanedAssets> {
+    return this.#writes.runExclusive(() => this.#removeOrphanedAssetsUnlocked(pageIds));
+  }
+
+  async #removeOrphanedAssetsUnlocked(pageIds: Iterable<PageId>): Promise<OrphanedAssets> {
+    await this.#index.ensureBuilt();
+    const candidates = new Map<PageId, string[]>();
+    const kept: PageId[] = [];
+    for (const id of new Set(pageIds)) {
+      const names = await readDirNames(path.join(this.contentDir, assetDirRelPath(id)));
+      if (names.length === 0) continue;
+      // A move is a delete and a create, so an id the index still answers to is not gone.
+      if (this.#index.byId(id) === undefined) candidates.set(id, names);
+      if (this.#index.byId(id) !== undefined) kept.push(id);
+    }
+    if (candidates.size === 0) return { removed: [], kept };
+
+    const referenced = await this.#pagesReferencingAssets([...candidates.keys()]);
+    const removed: string[] = [];
+    for (const [id, names] of candidates) {
+      if (referenced.has(id)) {
+        kept.push(id);
+        continue;
+      }
+      const relDir = assetDirRelPath(id);
+      await removeDir(resolveInside(this.contentDir, relDir));
+      removed.push(...names.map((name) => `${relDir}/${name}`));
+    }
+    return { removed, kept };
+  }
+
+  /**
+   * Of these ids, the ones a page file still names. An attachment url carries the id of the page
+   * it was uploaded to, not of the page it is shown on, so a duplicated page reads the original's
+   * files. The whole file is read, frontmatter and body, because a database cell is free text.
+   */
+  async #pagesReferencingAssets(ids: PageId[]): Promise<Set<PageId>> {
+    const found = new Set<PageId>();
+    for (const record of this.#index.all()) {
+      if (found.size === ids.length) break;
+      const raw = await readTextOrNull(record.filePath);
+      if (raw === null) continue;
+      for (const id of ids) {
+        if (raw.includes(`/${assetDirRelPath(id)}/`)) found.add(id);
+      }
+    }
+    return found;
   }
 
   // -------------------------------------------------------------------------

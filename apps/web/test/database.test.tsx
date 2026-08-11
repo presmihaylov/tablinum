@@ -954,6 +954,27 @@ function savedOptions(): Array<{ id: string; name: string }> {
   return saved?.database.properties.find((entry) => entry.id === STATUS)?.options ?? [];
 }
 
+/** Two records the select column says nothing about: the cards of the stack that holds none. */
+const LOOSE: DbRow[] = [row('la', 'Alpha'), row('lb', 'Bravo')];
+
+/** A board whose empty stack holds cards, with a route for the write each card needs. */
+function mountLoose(): void {
+  const routes: Routes = {};
+  for (const entry of LOOSE) {
+    routes[`PATCH /api/v1/pages/${PAGE.id}/database/rows/${entry.id}`] = () => ({ row: entry });
+  }
+  mount({ db: boardDatabase(), rows: LOOSE, routes });
+}
+
+/** Rename a stack through the menu in its own head. */
+async function renameStack(from: string, to: string): Promise<void> {
+  const user = userEvent.setup();
+  await user.click(screen.getByLabelText(`Stack menu for ${from}`));
+  const box = await screen.findByLabelText('Stack name');
+  await user.clear(box);
+  await user.type(box, `${to}{Enter}`);
+}
+
 describe('the stacks of a board', () => {
   it('adds a stack from the right end of the board', async () => {
     const user = userEvent.setup();
@@ -994,11 +1015,91 @@ describe('the stacks of a board', () => {
     await waitFor(() => expect(savedOptions().map((one) => one.name)).toEqual(['Done']));
   });
 
-  it('has no menu on the stack that holds no option', async () => {
+  it('gives the stack that holds no option the same head as any other', async () => {
     mount({ db: boardDatabase() });
     await screen.findByTestId('db-board');
 
-    expect(within(await column(null)).queryByRole('button', { name: /Stack menu/ })).toBeNull();
+    expect(within(await column(null)).getByLabelText('Stack menu for No Status')).toBeTruthy();
+  });
+
+  it('names the stack that holds no option by making the option real', async () => {
+    mountLoose();
+    await screen.findByTestId('db-board');
+
+    await renameStack('No Status', 'Backlog');
+
+    await waitFor(() =>
+      expect(savedOptions().map((one) => one.name)).toEqual(['Todo', 'Done', 'Backlog']),
+    );
+    // The write says where it started from, so the server merges it with any other schema edit.
+    expect(writes().at(-1)?.baseRev).toBe(databaseRev(boardDatabase()));
+  });
+
+  it('carries every card of that stack onto the option it made', async () => {
+    mountLoose();
+    await screen.findByTestId('db-board');
+
+    await renameStack('No Status', 'Backlog');
+
+    await waitFor(() => {
+      const made = savedOptions().find((one) => one.name === 'Backlog');
+      expect(made?.id).toBeTruthy();
+      expect(lastCall('PATCH', LOOSE[0]!.id)).toEqual({ props: { [STATUS]: made?.id } });
+      expect(lastCall('PATCH', LOOSE[1]!.id)).toEqual({ props: { [STATUS]: made?.id } });
+    });
+  });
+
+  it('gathers the cards on the stack a name already answers to, and adds no twin', async () => {
+    mountLoose();
+    await screen.findByTestId('db-board');
+
+    await renameStack('No Status', 'done');
+
+    await waitFor(() =>
+      expect(lastCall('PATCH', LOOSE[0]!.id)).toEqual({ props: { [STATUS]: DONE } }),
+    );
+    expect(writes()).toHaveLength(0);
+  });
+
+  it('says nothing at all when the name it is given is the one it already has', async () => {
+    mountLoose();
+    await screen.findByTestId('db-board');
+
+    await renameStack('No Status', 'No Status');
+
+    expect(writes()).toHaveLength(0);
+    expect(lastCall('PATCH', LOOSE[0]!.id)).toBeNull();
+  });
+
+  it('offers no delete on the stack that holds no option, there being none to take away', async () => {
+    const user = userEvent.setup();
+    mount({ db: boardDatabase() });
+    await screen.findByTestId('db-board');
+
+    await user.click(screen.getByLabelText('Stack menu for No Status'));
+
+    expect(await screen.findByLabelText('Stack name')).toBeTruthy();
+    expect(screen.queryByRole('menuitem', { name: /Delete stack/ })).toBeNull();
+  });
+
+  it('keeps a named stack on the board once its last card has left', async () => {
+    mount({ db: boardDatabase(), rows: [ROWS[0]!] });
+    await screen.findByTestId('db-board');
+
+    // Done holds no card, and it stays a stack of its own until somebody deletes it.
+    const stack = await column(DONE);
+    expect(within(stack).getByLabelText('Stack menu for Done')).toBeTruthy();
+    expect(within(stack).getByText('0')).toBeTruthy();
+  });
+
+  it('adds a card to the stack that holds no option without naming a cell', async () => {
+    const user = userEvent.setup();
+    mount({ db: boardDatabase() });
+    await screen.findByTestId('db-board');
+
+    await user.click(screen.getByLabelText('New card in No Status'));
+
+    await waitFor(() => expect(lastCall('POST', '/rows')).toEqual({}));
   });
 });
 

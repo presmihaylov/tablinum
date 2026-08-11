@@ -1,7 +1,8 @@
-import { useRef, useState, type DragEvent } from 'react';
+import { useEffect, useRef, useState, type DragEvent } from 'react';
 import {
   boardGroups,
   boardProperty,
+  optionByName,
   type Account,
   type BoardGroup,
   type Database,
@@ -128,6 +129,26 @@ export function BoardView({
     });
   };
 
+  /**
+   * Name the stack that holds no option. The name has to become an option of the column before
+   * a card can hold it, so the schema is written first and the cards follow it onto the option.
+   */
+  const nameEmptyGroup = async (group: BoardGroup, name: string): Promise<void> => {
+    const option = optionByName(property, name) ?? (await onCreateOption(property, name));
+    if (option === null) return;
+    for (const row of group.rows) write(row.id, { props: { [property.id]: option.id } });
+  };
+
+  /** A stack is renamed by its option, and the one that holds none earns an option by it. */
+  const renameGroup = (group: BoardGroup, name: string): void => {
+    const option = property.options.find((one) => one.id === group.id);
+    if (option === undefined) {
+      void nameEmptyGroup(group, name);
+      return;
+    }
+    renameOption(option, name);
+  };
+
   /** Take a stack off the board. The cards it held keep their place and lose their option. */
   const removeOption = (option: SelectOption): void => {
     onDatabaseChange({
@@ -165,7 +186,7 @@ export function BoardView({
           onCreateRow={() => onCreateRow(group.id === null ? {} : { [property.id]: group.id })}
           onDeleteRow={onDeleteRow}
           onOpenRow={onOpenRow}
-          onRename={renameOption}
+          onRename={(name) => renameGroup(group, name)}
           onRemove={removeOption}
         />
       ))}
@@ -198,7 +219,7 @@ interface ColumnProps {
   onCreateRow: () => void;
   onDeleteRow: (row: DbRow) => void;
   onOpenRow: (row: DbRow) => void;
-  onRename: (option: SelectOption, name: string) => void;
+  onRename: (name: string) => void;
   onRemove: (option: SelectOption) => void;
 }
 
@@ -263,15 +284,11 @@ function Column({
       onDrop={(event) => land(event, null)}
     >
       <header className="db-board__head">
-        {option === null ? (
-          <Tag option={{ id, name: group.name, color: group.color }} />
-        ) : (
-          <GroupMenu
-            option={option}
-            onRename={(name) => onRename(option, name)}
-            onRemove={() => onRemove(option)}
-          />
-        )}
+        <GroupMenu
+          group={group}
+          onRename={onRename}
+          onRemove={option === null ? null : () => onRemove(option)}
+        />
         <span className="db-board__count">{group.rows.length}</span>
       </header>
 
@@ -317,21 +334,30 @@ function Column({
 }
 
 interface GroupMenuProps {
-  option: SelectOption;
+  group: BoardGroup;
   onRename: (name: string) => void;
-  onRemove: () => void;
+  /** Null on the stack that holds no option, which has none to take away. */
+  onRemove: (() => void) | null;
 }
 
-/** The head of a named stack. It opens the menu that renames the option or takes it away. */
-function GroupMenu({ option, onRename, onRemove }: GroupMenuProps) {
+/** The head of a stack. It opens the menu that renames the stack or takes it off the board. */
+function GroupMenu({ group, onRename, onRemove }: GroupMenuProps) {
   const [open, setOpen] = useState(false);
-  const [name, setName] = useState(option.name);
+  const [name, setName] = useState(group.name);
   const trigger = useRef<HTMLButtonElement | null>(null);
+
+  // The stack that holds no option keeps its own name through a rename, so the box follows it.
+  useEffect(() => setName(group.name), [group.name]);
+
+  const close = (): void => {
+    setOpen(false);
+    setName(group.name);
+  };
 
   const commit = (): void => {
     const next = name.trim();
-    if (next.length === 0 || next === option.name) {
-      setName(option.name);
+    if (next.length === 0 || next === group.name) {
+      setName(group.name);
       return;
     }
     onRename(next);
@@ -343,22 +369,15 @@ function GroupMenu({ option, onRename, onRemove }: GroupMenuProps) {
         ref={trigger}
         type="button"
         className="db-board__group"
-        aria-label={`Stack menu for ${option.name}`}
+        aria-label={`Stack menu for ${group.name}`}
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((prev) => !prev)}
       >
-        <Tag option={option} />
+        <Tag option={{ id: group.id ?? 'none', name: group.name, color: group.color }} />
       </button>
       {open ? (
-        <Pop
-          label={`Stack ${option.name}`}
-          anchor={trigger}
-          onClose={() => {
-            setOpen(false);
-            setName(option.name);
-          }}
-        >
+        <Pop label={`Stack ${group.name}`} anchor={trigger} onClose={close}>
           <input
             className="input"
             autoFocus
@@ -370,22 +389,26 @@ function GroupMenu({ option, onRename, onRemove }: GroupMenuProps) {
               if (event.key !== 'Enter') return;
               event.preventDefault();
               commit();
-              setOpen(false);
+              close();
             }}
           />
-          <div className="db-pop__sep" />
-          <button
-            type="button"
-            role="menuitem"
-            className="db-pop__item db-pop__item--danger"
-            onClick={() => {
-              setOpen(false);
-              onRemove();
-            }}
-          >
-            <Trash size={12} />
-            Delete stack
-          </button>
+          {onRemove === null ? null : (
+            <>
+              <div className="db-pop__sep" />
+              <button
+                type="button"
+                role="menuitem"
+                className="db-pop__item db-pop__item--danger"
+                onClick={() => {
+                  setOpen(false);
+                  onRemove();
+                }}
+              >
+                <Trash size={12} />
+                Delete stack
+              </button>
+            </>
+          )}
         </Pop>
       ) : null}
     </>

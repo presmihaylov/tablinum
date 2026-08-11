@@ -90,6 +90,20 @@ export const DbPropertySchema = z.object({
 });
 export type DbProperty = z.infer<typeof DbPropertySchema>;
 
+/**
+ * The option a name already answers to, ignoring case and spare space. Null when none does.
+ * A person who gives two stacks the same name means one stack, so a caller reuses what is there
+ * rather than adding a twin nobody can tell apart.
+ */
+export function optionByName(
+  property: Pick<DbProperty, 'options'>,
+  name: string,
+): SelectOption | null {
+  const wanted = name.trim().toLowerCase();
+  if (wanted.length === 0) return null;
+  return property.options.find((option) => option.name.trim().toLowerCase() === wanted) ?? null;
+}
+
 // ---------------------------------------------------------------------------
 // values
 // ---------------------------------------------------------------------------

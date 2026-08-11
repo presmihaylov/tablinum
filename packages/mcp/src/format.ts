@@ -2,6 +2,7 @@ import {
   markdownToPlainText,
   spanOffsets,
   splitBlocks,
+  threadTarget,
   type Block,
   type CommentThread,
   type CursorState,
@@ -163,6 +164,16 @@ export function formatCursorState(cursor: CursorState, markdown: string): string
 
 const QUOTE_MAX = 120;
 
+/** What `aboutLine` reads: the schema names a column, and the markdown says whether a quote is gone. */
+type AboutPage = Pick<Page, 'markdown' | 'database'>;
+
+/** What a thread is about when it is about a database column rather than a run of text. */
+function columnAbout(columnId: string, page: Pick<Page, 'database'>): string {
+  const named = page.database?.properties.find((property) => property.id === columnId);
+  if (named === undefined) return `a column that is no longer on the page (${columnId})`;
+  return `the ${JSON.stringify(named.name)} column`;
+}
+
 /**
  * Comment threads on one page, newest business first: the quoted text a thread is about, then
  * every remark in order. A thread whose quote is no longer in the page is called out, because
@@ -170,7 +181,7 @@ const QUOTE_MAX = 120;
  */
 export function formatComments(
   threads: CommentThread[],
-  page: Pick<Page, 'path' | 'id' | 'markdown'>,
+  page: Pick<Page, 'path' | 'id' | 'markdown' | 'database'>,
   nameOf: (userId: string) => string,
 ): string {
   if (threads.length === 0) {
@@ -181,13 +192,7 @@ export function formatComments(
   for (const thread of threads) {
     const state = thread.resolved ? 'resolved' : 'open';
     lines.push(`[${state}] thread ${thread.id}`);
-    if (thread.anchor === null) lines.push('  about: the whole page');
-    if (thread.anchor !== null) {
-      // Against the prose, not the markup: a thread quotes what a reader sees.
-      const found = markdownToPlainText(page.markdown).includes(thread.anchor.quote);
-      const note = found ? '' : '  (this text is no longer in the page)';
-      lines.push(`  about: ${JSON.stringify(clip(thread.anchor.quote, QUOTE_MAX))}${note}`);
-    }
+    lines.push(`  about: ${aboutLine(thread, page)}`);
     for (const comment of thread.comments) {
       const edited = comment.updated === comment.created ? '' : ' (edited)';
       lines.push(`  ${nameOf(comment.author)}  ${comment.created}${edited}`);
@@ -199,17 +204,36 @@ export function formatComments(
   return lines.join('\n').trim();
 }
 
+/**
+ * The one-line answer to what a thread is about. It also says when the quote is no longer in the
+ * page, because acting on such a thread means finding that sentence again first.
+ */
+function aboutLine(thread: CommentThread, page: AboutPage): string {
+  const target = threadTarget(thread);
+  switch (target.kind) {
+    case 'column':
+      return columnAbout(target.column, page);
+    case 'page':
+      return 'the whole page';
+    case 'quote': {
+      const quote = JSON.stringify(clip(target.anchor.quote, QUOTE_MAX));
+      // Against the prose, not the markup: a thread quotes what a reader sees.
+      if (!markdownToPlainText(page.markdown).includes(target.anchor.quote)) {
+        return `${quote}  (this text is no longer in the page)`;
+      }
+      return quote;
+    }
+  }
+}
+
 /** One thread, just after it was written to, so an agent reads back what a person will see. */
 export function formatThread(
   thread: CommentThread,
-  page: Pick<Page, 'path' | 'id'>,
+  page: Pick<Page, 'path' | 'id' | 'markdown' | 'database'>,
   what: string,
 ): string {
   const state = thread.resolved ? 'resolved' : 'open';
-  const about =
-    thread.anchor === null
-      ? 'the whole page'
-      : JSON.stringify(clip(thread.anchor.quote, QUOTE_MAX));
+  const about = aboutLine(thread, page);
   const last = thread.comments[thread.comments.length - 1];
 
   const lines = [

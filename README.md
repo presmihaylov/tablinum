@@ -176,6 +176,34 @@ status pill in the sidebar turns into a conflict button, and the dialog behind i
 with the local version, the remote version and an automatic merge of the two. Your resolution is
 written to the working tree and committed like any other change.
 
+## Comments
+
+A comment is a conversation about a page, and it never touches the markdown. Threads live in
+`accounts.db`, so a `git clone` of the content repo carries the words of the page and nothing that
+was said about them.
+
+A thread is about one of three things:
+
+- **A run of text.** Select some words and choose Comment. The thread keeps the quote, so the
+  highlight is found again on every load. Text that is edited away leaves the thread readable in
+  the panel, marked as no longer on the page.
+- **A database column.** Open the column header menu and choose "Comment on this column". The
+  header then carries a badge with the number of open threads, and a click on the badge opens the
+  usual comment panel on that thread. The thread holds the column id rather than the column name,
+  so a rename keeps the conversation.
+- **The whole page.** Open the panel and choose "Comment on the page".
+
+Reply and Resolve work the same way whatever the thread is about, and a resolved thread comes back
+with "Show resolved". Deleting a column deletes the threads about it. A column thread is recognised
+by its column alone, so once the column is gone a reader has no way to tell what the thread was
+about. A property deleted by hand in the page file never reaches the API, so the panel draws such a
+thread as a column that is gone.
+
+An `@handle` in a comment notifies that person. An agent works the same threads through the MCP
+tools, with one limit: it opens a thread about a run of text or about the whole page, never about a
+column. Column threads are read, replied to and resolved by an agent, but only a person starts one.
+See "Tell an agent it was tagged" and "How an agent edits a page".
+
 ## Accounts, invites and avatars
 
 Every person who reaches the web UI has an account. Machines are the exception: they send a bearer

@@ -10,12 +10,14 @@ import {
   UpdateCommentBodySchema,
   notFound,
   parseOrThrow,
+  threadsForColumn,
   unauthorized,
+  validation,
   type CommentThread,
   type CommentThreadResponse,
   type CommentThreadsResponse,
   type DeleteCommentResponse,
-  type PageId,
+  type Page,
   type Writer,
 } from '@tablinum/shared';
 import { requireAccount, writerOf } from '../auth.js';
@@ -58,22 +60,35 @@ function writerFor(
 }
 
 /** The page a thread is about, or a 404. A page in another workspace is simply not there. */
-async function requirePageId(
+async function requirePage(
   ctx: RouteContext,
   request: FastifyRequest,
   id: string,
-): Promise<PageId> {
+): Promise<Page> {
   const { store } = await partsOf(ctx, request);
   const page = await store.getPageById(id);
   if (page === null) throw notFound(`No page with id ${id}`);
-  return page.id;
+  return page;
+}
+
+/**
+ * A column thread names a property the page's database actually has. A thread pointing at a
+ * column nobody can see would never be readable, so it is refused rather than stored.
+ */
+function requireColumnOn(page: Page, columnId: string | undefined): string | null {
+  if (columnId === undefined) return null;
+  const properties = page.database?.properties ?? [];
+  if (!properties.some((property) => property.id === columnId)) {
+    throw validation(`No column with id ${columnId} on ${page.path}`);
+  }
+  return columnId;
 }
 
 export function registerCommentRoutes(app: FastifyInstance, ctx: RouteContext): void {
   const { accounts } = ctx.deps;
 
   /** Tell the other tabs on this page to read the threads again. */
-  async function announce(request: FastifyRequest, pageId: PageId): Promise<void> {
+  async function announce(request: FastifyRequest, pageId: string): Promise<void> {
     const { live } = await partsOf(ctx, request);
     live.commentsChanged(pageId, clientOf(request));
   }
@@ -100,9 +115,10 @@ export function registerCommentRoutes(app: FastifyInstance, ctx: RouteContext): 
     const workspaceId = workspaceFor(ctx, request);
     const { id } = parseOrThrow(PageParamsSchema, request.params, 'page id');
     const query = parseOrThrow(CommentsQuerySchema, request.query, 'query');
-    const pageId = await requirePageId(ctx, request, id);
+    const page = await requirePage(ctx, request, id);
 
-    const threads = accounts.listThreads(workspaceId, pageId);
+    const all = accounts.listThreads(workspaceId, page.id);
+    const threads = query.column === undefined ? all : threadsForColumn(all, query.column);
     if (query.resolved === undefined) return { threads };
     const wanted = query.resolved === 'true';
     return { threads: threads.filter((thread) => thread.resolved === wanted) };
@@ -112,13 +128,16 @@ export function registerCommentRoutes(app: FastifyInstance, ctx: RouteContext): 
     const { writer, workspaceId } = writerFor(ctx, request);
     const { id } = parseOrThrow(PageParamsSchema, request.params, 'page id');
     const body = parseOrThrow(CreateThreadBodySchema, request.body, 'comment');
-    const pageId = await requirePageId(ctx, request, id);
+    const page = await requirePage(ctx, request, id);
+    const column = requireColumnOn(page, body.column);
+    const pageId = page.id;
 
     const thread = accounts.createThread(workspaceId, {
       pageId,
       author: writer.id,
       body: body.body,
       anchor: body.anchor ?? null,
+      column,
     });
     await announce(request, pageId);
     await notify(request, thread, body.body, null, writer, workspaceId);

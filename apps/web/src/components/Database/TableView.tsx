@@ -18,6 +18,8 @@ interface TableViewProps {
   view: DbView;
   rows: DbRow[];
   people: Account[];
+  /** The page the database is on, so a column header can find its comments. */
+  pageId: string;
   onDatabaseChange: (next: Database) => void;
   onAddProperty: () => void;
   onCellChange: (rowId: string, propertyId: string, value: PropValue) => void;
@@ -33,6 +35,7 @@ export function TableView({
   view,
   rows,
   people,
+  pageId,
   onDatabaseChange,
   onAddProperty,
   onCellChange,
@@ -58,6 +61,7 @@ export function TableView({
                   property={property}
                   database={database}
                   view={view}
+                  pageId={pageId}
                   onDatabaseChange={onDatabaseChange}
                 />
               </th>

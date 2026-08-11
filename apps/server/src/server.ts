@@ -37,6 +37,7 @@ import type {
   FileResolution,
   FileVersions,
   GitEngine,
+  OrphanedAssets,
   ParsedPageFile,
   SearchIndex,
   SearchOptions,
@@ -89,6 +90,10 @@ class CoreStoreAdapter implements ContentStore {
     return this.core.updateSpace(slug, patch);
   }
 
+  deleteSpace(slug: string, recursive: boolean): Promise<PagePath[]> {
+    return this.core.deleteSpace(slug, recursive);
+  }
+
   getTree(): Promise<SpaceTree[]> {
     return this.core.getTree();
   }
@@ -116,6 +121,10 @@ class CoreStoreAdapter implements ContentStore {
 
   deletePage(id: PageId, recursive: boolean): Promise<PagePath[]> {
     return this.core.deletePage(id, recursive);
+  }
+
+  removeOrphanedAssets(pageIds: Iterable<PageId>): Promise<OrphanedAssets> {
+    return this.core.removeOrphanedAssets(pageIds);
   }
 
   getBacklinks(id: PageId): Promise<Backlink[]> {
@@ -180,6 +189,10 @@ class CoreGitAdapter implements GitEngine {
 
   excludePath(relDir: string): Promise<void> {
     return this.core.excludePath(relDir);
+  }
+
+  unexcludePath(relDir: string): Promise<void> {
+    return this.core.unexcludePath(relDir);
   }
 
   excludedPaths(): Promise<string[]> {

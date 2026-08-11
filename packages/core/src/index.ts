@@ -8,6 +8,7 @@ export {
   type CreatePageInput,
   type CreateRowInput,
   type CreateSpaceOptions,
+  type OrphanedAssets,
   type SpaceTree,
   type UpdatePageInput,
   type UpdateRowInput,
@@ -69,7 +70,14 @@ export {
 
 export { consoleLogger, silentLogger, type Logger } from './logger.js';
 
-export { resolveInside, writeBytes, writeText } from './fs-utils.js';
+export {
+  isMissingError,
+  readDirNames,
+  readTextOrNull,
+  resolveInside,
+  writeBytes,
+  writeText,
+} from './fs-utils.js';
 
 export { emitNumber, emitString, needsQuotes, quoteString } from './yaml-emit.js';
 

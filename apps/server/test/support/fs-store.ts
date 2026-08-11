@@ -7,6 +7,7 @@ import {
   MAX_ROWS,
   PAGE_EXT,
   UNTITLED_ROW,
+  assetDirRelPath,
   conflict,
   databaseRev,
   DatabaseSchema,
@@ -31,7 +32,7 @@ import {
   coerceProps,
   coerceValue,
 } from '@tablinum/shared';
-import { Mutex, RevHistory } from '@tablinum/core';
+import { Mutex, RevHistory, readDirNames, readTextOrNull } from '@tablinum/core';
 import type {
   Backlink,
   CreatePageBody,
@@ -51,7 +52,7 @@ import type {
   UpdateRowBody,
   UpdateSpaceBody,
 } from '@tablinum/shared';
-import type { ContentStore, ParsedPageFile, SpaceTree } from '../../src/deps.js';
+import type { ContentStore, OrphanedAssets, ParsedPageFile, SpaceTree } from '../../src/deps.js';
 import {
   parseFlatYaml,
   parsePageFile,
@@ -261,6 +262,22 @@ export class FsContentStore implements ContentStore {
     return next;
   }
 
+  /** The mirror of the real store's: the whole directory goes, `_space.yml` included. */
+  async deleteSpace(slug: string, recursive: boolean): Promise<PagePath[]> {
+    const dir = join(this.contentDir, slug);
+    if (!existsSync(dir)) throw notFound(`No space ${slug}`);
+
+    const pages = (await this.listPages()).filter((page) => page.space === slug);
+    const below = pages.filter((page) => depth(page.path) > 1);
+    if (below.length > 0 && !recursive) {
+      throw conflict(`Space ${slug} holds ${below.length} page(s). Pass recursive=true to delete them.`);
+    }
+
+    await rm(dir, { recursive: true, force: true });
+    await this.removeOrphanedAssets(pages.map((page) => page.id)).catch(() => null);
+    return pages.map((page) => page.path).sort();
+  }
+
   async getTree(): Promise<SpaceTree[]> {
     const spaces = await this.listSpaces();
     const pages = await this.listPages();
@@ -405,8 +422,52 @@ export class FsContentStore implements ContentStore {
       await rm(join(this.contentDir, pagePathToRelFile(page.path, false)), { force: true });
     }
     await this.#demoteIfEmpty(parentPath(page.path));
+    // Like the real store: the files are gone, so a disk that cannot be read here is not fatal.
+    await this.removeOrphanedAssets([page.id, ...descendants.map((summary) => summary.id)]).catch(
+      () => null,
+    );
 
     return [page.path, ...descendants.map((summary) => summary.path)].sort();
+  }
+
+  /** The mirror of the real store's, so the suite sees the ordering production sees. */
+  async removeOrphanedAssets(pageIds: Iterable<PageId>): Promise<OrphanedAssets> {
+    const candidates = new Map<PageId, string[]>();
+    const kept: PageId[] = [];
+    for (const id of new Set(pageIds)) {
+      const names = await readDirNames(join(this.contentDir, assetDirRelPath(id)));
+      if (names.length === 0) continue;
+      if ((await this.getPageById(id)) === null) candidates.set(id, names);
+      if ((await this.getPageById(id)) !== null) kept.push(id);
+    }
+    if (candidates.size === 0) return { removed: [], kept };
+
+    const referenced = await this.#pagesReferencingAssets([...candidates.keys()]);
+    const removed: string[] = [];
+    for (const [id, names] of candidates) {
+      if (referenced.has(id)) {
+        kept.push(id);
+        continue;
+      }
+      const relDir = assetDirRelPath(id);
+      await rm(join(this.contentDir, relDir), { recursive: true, force: true });
+      removed.push(...names.map((name) => `${relDir}/${name}`));
+    }
+    return { removed, kept };
+  }
+
+  /** Whole files, frontmatter and body, exactly as the real store scans them. */
+  async #pagesReferencingAssets(ids: PageId[]): Promise<Set<PageId>> {
+    const found = new Set<PageId>();
+    for (const rel of await this.#listFiles()) {
+      if (found.size === ids.length) break;
+      const raw = await readTextOrNull(join(this.contentDir, rel));
+      if (raw === null) continue;
+      for (const id of ids) {
+        if (raw.includes(`/${assetDirRelPath(id)}/`)) found.add(id);
+      }
+    }
+    return found;
   }
 
   async getBacklinks(id: PageId): Promise<Backlink[]> {

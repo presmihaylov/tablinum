@@ -1,0 +1,99 @@
+/* ------------------------------------------------------------------ */
+/* code blocks                                                         */
+/* ------------------------------------------------------------------ */
+
+.gd-editor-codeblock {
+  position: relative;
+  margin: var(--space-3) 0;
+}
+
+.gd-editor-codeblock__lang {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  z-index: 2;
+  max-width: 9rem;
+  padding: 2px var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-raised);
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: var(--text-2xs);
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.gd-editor-codeblock:hover .gd-editor-codeblock__lang,
+.gd-editor-codeblock__lang:focus {
+  opacity: 1;
+}
+
+.gd-editor-codeblock__pre,
+.gd-editor-surface pre {
+  margin: var(--space-3) 0;
+  padding: var(--space-4);
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-inset);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  tab-size: 2;
+}
+
+.gd-editor-codeblock__pre {
+  margin: 0;
+}
+
+.gd-editor-surface pre code {
+  padding: 0;
+  background: none;
+  color: inherit;
+  font-size: inherit;
+}
+
+/* syntax colours, driven by the shared palette */
+.gd-editor-surface .hljs-comment,
+.gd-editor-surface .hljs-quote {
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+.gd-editor-surface .hljs-keyword,
+.gd-editor-surface .hljs-selector-tag,
+.gd-editor-surface .hljs-literal,
+.gd-editor-surface .hljs-doctag {
+  color: var(--code-text);
+}
+
+.gd-editor-surface .hljs-string,
+.gd-editor-surface .hljs-regexp,
+.gd-editor-surface .hljs-addition {
+  color: var(--success);
+}
+
+.gd-editor-surface .hljs-number,
+.gd-editor-surface .hljs-symbol,
+.gd-editor-surface .hljs-bullet {
+  color: var(--warning);
+}
+
+.gd-editor-surface .hljs-title,
+.gd-editor-surface .hljs-name,
+.gd-editor-surface .hljs-section,
+.gd-editor-surface .hljs-attr {
+  color: var(--accent);
+}
+
+.gd-editor-surface .hljs-type,
+.gd-editor-surface .hljs-built_in,
+.gd-editor-surface .hljs-attribute {
+  color: var(--text-strong);
+}
+
+.gd-editor-surface .hljs-deletion {
+  color: var(--danger);
+}

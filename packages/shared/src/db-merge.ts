@@ -1,4 +1,4 @@
-import type { Database, DbView } from './databases.js';
+import { TITLE_COLUMN_ID, type Database, type DbView } from './databases.js';
 
 /**
  * Merging two database schema edits.
@@ -10,7 +10,8 @@ import type { Database, DbView } from './databases.js';
  *
  * Properties and views both carry permanent ids, so the settlement is per id and needs no
  * guessing: two additions both survive, an edit on one side wins over an untouched other side,
- * and only the same id edited differently on both sides is a real conflict.
+ * and only the same id edited differently on both sides is a real conflict. The name of the
+ * title column has no id to key on, so it is settled as the single value it is.
  */
 
 /** A stable revision of a schema. Two equal schemas always hash the same. */
@@ -32,13 +33,20 @@ export interface DatabaseMerge {
 export function mergeDatabases(base: Database, mine: Database, theirs: Database): DatabaseMerge {
   const properties = mergeById(base.properties, mine.properties, theirs.properties);
   const views = mergeById(base.views, mine.views, theirs.views);
-  if (properties === null || views === null) return { database: theirs, clean: false };
+  const titleName = settleValue(base.titleName, mine.titleName, theirs.titleName);
+  if (properties === null || views === null || titleName === CONFLICT) {
+    return { database: theirs, clean: false };
+  }
 
-  const kept = new Set(properties.map((property) => property.id));
+  // The title column is on every database and no side can take it away, so a sort by it survives.
+  const kept = new Set([TITLE_COLUMN_ID, ...properties.map((property) => property.id)]);
   const pruned = views.map((view) => prune(view, kept));
   // A view is what a reader looks at, so the schema keeps at least one even after a merge.
   if (pruned.length === 0) return { database: theirs, clean: false };
-  return { database: { properties, views: pruned }, clean: true };
+
+  const merged: Database = { properties, views: pruned };
+  if (titleName !== undefined) merged.titleName = titleName;
+  return { database: merged, clean: true };
 }
 
 // ---------------------------------------------------------------------------
@@ -70,6 +78,13 @@ function mergeById<T extends Keyed>(base: T[], mine: T[], theirs: T[]): T[] | nu
 
 /** A conflict is its own value, because null already means "deleted, and rightly so". */
 const CONFLICT = Symbol('conflict');
+
+/** One value that carries no id of its own. Whichever side moved it wins; both moving it is a clash. */
+function settleValue<T>(base: T, mine: T, theirs: T): T | typeof CONFLICT {
+  if (mine === base) return theirs;
+  if (theirs === base) return mine;
+  return mine === theirs ? mine : CONFLICT;
+}
 
 function settle<T extends Keyed>(
   base: T | undefined,

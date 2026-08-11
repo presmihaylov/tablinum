@@ -1,0 +1,24 @@
+/* ------------------------------------------------------------------ */
+/* raw HTML atoms                                                      */
+/* ------------------------------------------------------------------ */
+
+.gd-editor-html {
+  border-radius: var(--radius-sm);
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  white-space: pre-wrap;
+}
+
+.gd-editor-html--block {
+  display: block;
+  margin: var(--space-3) 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px dashed var(--border-strong);
+  overflow-x: auto;
+}
+
+.gd-editor-html--inline {
+  padding: 0 var(--space-1);
+}

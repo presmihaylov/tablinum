@@ -1,0 +1,137 @@
+.editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 100%;
+}
+
+.editor__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.editor__title-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  flex: 1;
+  min-width: 0;
+}
+
+/* Negative margin so the glyph, not its hover box, lines up with the title. */
+.editor__icon {
+  font-size: 3rem;
+  line-height: 1.15;
+  flex: none;
+  user-select: none;
+  margin-left: calc(var(--space-1) * -1);
+  padding: 0 var(--space-1);
+  border: 0;
+  background: none;
+  color: inherit;
+  font-family: inherit;
+}
+
+button.editor__icon {
+  cursor: pointer;
+  border-radius: var(--radius-md);
+}
+
+button.editor__icon:hover {
+  background: var(--bg-hover);
+}
+
+/*
+ * Offered only on hover, so an empty title row stays quiet. It keeps its space while
+ * invisible: appearing would push the title down under the pointer.
+ */
+.editor__icon-add {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex: none;
+  margin-left: calc(var(--space-2) * -1);
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--text-faint);
+  font: inherit;
+  font-size: var(--text-xs);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.editor__title-row:hover .editor__icon-add,
+.editor__icon-add:focus-visible {
+  opacity: 1;
+}
+
+.editor__icon-add:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+/* Holds the `:emoji` menu, which is placed against the field rather than the caret. */
+.editor__title-field {
+  position: relative;
+  display: flex;
+  width: 100%;
+  min-width: 0;
+}
+
+.editor__title-emoji {
+  position: absolute;
+  z-index: 40;
+  top: 100%;
+  left: 0;
+}
+
+.editor__title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-strong);
+  font-family: var(--font-sans);
+  font-size: var(--text-3xl);
+  font-weight: var(--weight-bold);
+  letter-spacing: -0.02em;
+  line-height: var(--leading-tight);
+  outline: none;
+  overflow: hidden;
+  resize: none;
+}
+
+.editor__title::placeholder {
+  color: var(--text-faint);
+}
+
+.editor__canvas {
+  position: relative;
+  flex: 1;
+  min-height: 50vh;
+}
+
+/*
+ * A database follows the body, so the empty body must not claim half the viewport first.
+ * Its click target shrinks to a line, which is all a description above a table needs.
+ */
+.page-shell--database .editor__canvas {
+  flex: none;
+  min-height: 0;
+}
+
+.page-shell--database .gd-editor-surface {
+  padding-bottom: 0;
+}
+
+.editor__file {
+  display: none;
+}

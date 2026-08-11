@@ -14,7 +14,7 @@ import type {
   UpdateRowBody,
   UpdateSpaceBody,
 } from '@tablinum/shared';
-import type { ContentStore, ParsedPageFile, SpaceTree } from './deps.js';
+import type { ContentStore, OrphanedAssets, ParsedPageFile, SpaceTree } from './deps.js';
 
 /**
  * Private spaces.
@@ -115,6 +115,11 @@ class PrivateContentStore implements ContentStore {
     return this.inner.updateSpace(slug, patch);
   }
 
+  async deleteSpace(slug: string, recursive: boolean): Promise<PagePath[]> {
+    await this.#refuseHiddenSpace(slug);
+    return this.inner.deleteSpace(slug, recursive);
+  }
+
   async getTree(): Promise<SpaceTree[]> {
     const tree = await this.inner.getTree();
     return tree.filter((space) => visibleTo(space.owner, this.viewer));
@@ -152,6 +157,11 @@ class PrivateContentStore implements ContentStore {
   async deletePage(id: PageId, recursive: boolean): Promise<PagePath[]> {
     await this.#refuseHiddenPage(id);
     return this.inner.deletePage(id, recursive);
+  }
+
+  // No filter: the page is already gone, so there is no space left to decide visibility from.
+  removeOrphanedAssets(pageIds: Iterable<PageId>): Promise<OrphanedAssets> {
+    return this.inner.removeOrphanedAssets(pageIds);
   }
 
   async getBacklinks(id: PageId): Promise<Backlink[]> {

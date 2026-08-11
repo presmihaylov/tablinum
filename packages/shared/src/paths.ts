@@ -149,6 +149,11 @@ export function spaceFileRelPath(slug: string): string {
   return `${valid}/${SPACE_FILE}`;
 }
 
+/** Content-root-relative directory that holds every attachment of one page. */
+export function assetDirRelPath(pageId: PageId): string {
+  return `${ASSETS_DIR}/${pageId}`;
+}
+
 /** Content-root-relative path of an attachment. */
 export function assetRelPath(pageId: PageId, filename: string): string {
   const safe = filename.replace(/\\/g, '/').split('/').pop() ?? '';

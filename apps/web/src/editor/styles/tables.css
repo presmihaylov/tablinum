@@ -1,0 +1,36 @@
+/* ------------------------------------------------------------------ */
+/* tables                                                              */
+/* ------------------------------------------------------------------ */
+
+.gd-editor-table {
+  width: 100%;
+  margin: var(--space-3) 0;
+  border-collapse: collapse;
+  table-layout: fixed;
+  overflow: hidden;
+  font-size: var(--text-sm);
+}
+
+.gd-editor-table td,
+.gd-editor-table th {
+  position: relative;
+  min-width: 4rem;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-strong);
+  vertical-align: top;
+}
+
+.gd-editor-table th {
+  background: var(--bg-subtle);
+  color: var(--text-strong);
+  font-weight: var(--weight-semibold);
+  text-align: left;
+}
+
+.gd-editor-table .selectedCell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--bg-selected);
+  pointer-events: none;
+}

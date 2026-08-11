@@ -8,6 +8,7 @@ import {
   ResolveThreadBodySchema,
   ThreadIdSchema,
   UpdateCommentBodySchema,
+  columnName,
   notFound,
   parseOrThrow,
   threadsForColumn,
@@ -72,13 +73,13 @@ async function requirePage(
 }
 
 /**
- * A column thread names a property the page's database actually has. A thread pointing at a
+ * A column thread names a column the page's database actually has. A thread pointing at a
  * column nobody can see would never be readable, so it is refused rather than stored.
  */
 function requireColumnOn(page: Page, columnId: string | undefined): string | null {
   if (columnId === undefined) return null;
-  const properties = page.database?.properties ?? [];
-  if (!properties.some((property) => property.id === columnId)) {
+  const database = page.database;
+  if (database === undefined || columnName(database, columnId) === null) {
     throw validation(`No column with id ${columnId} on ${page.path}`);
   }
   return columnId;

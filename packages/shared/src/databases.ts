@@ -39,6 +39,21 @@ export const ViewIdSchema = z.string().refine(isViewId, 'Expected a view id like
 export const OptionIdSchema = z.string().refine(isOptionId, 'Expected an option id like "op_<ULID>"');
 export const RowIdSchema = z.string().refine(isRowId, 'Expected a row id like "rw_<ULID>"');
 
+/**
+ * The id of the title column, which every database has and no schema lists. The title is not a
+ * property: it holds no cell and takes no type, but it is still a column a view can sort by and
+ * a reader can comment on, so it answers to an id of its own.
+ */
+export const TITLE_COLUMN_ID = 'title';
+
+/** Any column of a database: the title, or one of the properties the schema lists. */
+export const isColumnId = (value: unknown): value is string =>
+  value === TITLE_COLUMN_ID || isPropertyId(value);
+
+export const ColumnIdSchema = z
+  .string()
+  .refine(isColumnId, 'Expected a property id like "pr_<ULID>", or "title"');
+
 // ---------------------------------------------------------------------------
 // properties
 // ---------------------------------------------------------------------------
@@ -253,6 +268,7 @@ export function opTakesNoValue(op: FilterOp): boolean {
 }
 
 export const FilterSchema = z.object({
+  /** A property, never the title column: the menus offer no way to filter on a row's own name. */
   property: PropertyIdSchema,
   op: z.enum(FILTER_OPS),
   value: PropValueSchema,
@@ -260,7 +276,7 @@ export const FilterSchema = z.object({
 export type DbFilter = z.infer<typeof FilterSchema>;
 
 export const SortSchema = z.object({
-  property: PropertyIdSchema,
+  property: ColumnIdSchema,
   direction: z.enum(['asc', 'desc']),
 });
 export type DbSort = z.infer<typeof SortSchema>;
@@ -288,8 +304,46 @@ export type DbView = z.infer<typeof DbViewSchema>;
 export const DatabaseSchema = z.object({
   properties: z.array(DbPropertySchema).max(200),
   views: z.array(DbViewSchema).min(1).max(50),
+  /**
+   * What the title column is called. Absent while it is still the default, so a database nobody
+   * renamed carries no field for it and writes exactly as it always did.
+   */
+  titleName: z.string().min(1).max(100).optional(),
 });
 export type Database = z.infer<typeof DatabaseSchema>;
+
+/** What the title column is called until somebody renames it. */
+export const DEFAULT_TITLE_NAME = 'Name';
+
+/** What this database calls its title column. */
+export function titleColumnName(database: Pick<Database, 'titleName'>): string {
+  return database.titleName ?? DEFAULT_TITLE_NAME;
+}
+
+/** The name of one column, title or property. Null when the database has no such column. */
+export function columnName(
+  database: Pick<Database, 'titleName' | 'properties'>,
+  columnId: string,
+): string | null {
+  if (columnId === TITLE_COLUMN_ID) return titleColumnName(database);
+  return database.properties.find((property) => property.id === columnId)?.name ?? null;
+}
+
+/** The same database with one of its views changed. Every other view is left exactly as it was. */
+export function withView(database: Database, viewId: string, patch: Partial<DbView>): Database {
+  return {
+    ...database,
+    views: database.views.map((entry) => (entry.id === viewId ? { ...entry, ...patch } : entry)),
+  };
+}
+
+/** The same database under a new name for its title column. The default is stored as no name. */
+export function renameTitleColumn(database: Database, name: string): Database {
+  const wanted = name.trim();
+  const { titleName, ...rest } = database;
+  if (wanted.length === 0 || wanted === DEFAULT_TITLE_NAME) return rest;
+  return { ...rest, titleName: wanted };
+}
 
 /**
  * How many rows one database holds. A row is a record inside the page file, so the whole
@@ -414,6 +468,43 @@ function matches(property: DbProperty, filter: DbFilter, value: PropValue): bool
   return false;
 }
 
+/** One sort, resolved once: it puts two rows in order, or says they tie. */
+type SortPlan = (left: DbRow, right: DbRow) => number;
+
+/**
+ * A sort turned into the comparison it stands for. The column is looked up once here rather than
+ * on every pair of rows, and the two kinds of column differ only in what they read.
+ */
+function planSort<T>(
+  direction: DbSort['direction'],
+  read: (row: DbRow) => T | null,
+  compare: (left: T, right: T) => number,
+): SortPlan {
+  return (left, right) => {
+    const a = read(left);
+    const b = read(right);
+    // An empty cell sinks either way. Only the filled cells answer to the direction.
+    if (a === null || b === null) return a === b ? 0 : a === null ? 1 : -1;
+    const order = compare(a, b);
+    return direction === 'asc' ? order : -order;
+  };
+}
+
+/** Null when the sort names a property the schema no longer has. */
+function resolveSort(sort: DbSort, byId: ReadonlyMap<string, DbProperty>): SortPlan | null {
+  if (sort.property === TITLE_COLUMN_ID) {
+    // A row nobody has named sinks, the same way an empty cell does.
+    return planSort(sort.direction, (row) => (row.title.length > 0 ? row.title : null), compareText);
+  }
+  const property = byId.get(sort.property);
+  if (property === undefined) return null;
+  return planSort(
+    sort.direction,
+    (row) => row.props[sort.property] ?? null,
+    (left, right) => compareValues(property, left, right),
+  );
+}
+
 /** Rows the view keeps, in the view's order. Filters are joined with AND, as Notion does. */
 export function applyView(
   database: Database,
@@ -431,22 +522,15 @@ export function applyView(
     }),
   );
 
-  const sorts = view.sorts.filter((sort) => byId.has(sort.property));
-  if (sorts.length === 0) return kept;
+  const plans = view.sorts
+    .map((sort) => resolveSort(sort, byId))
+    .filter((plan): plan is SortPlan => plan !== null);
+  if (plans.length === 0) return kept;
 
   return [...kept].sort((left, right) => {
-    for (const sort of sorts) {
-      const property = byId.get(sort.property);
-      if (property === undefined) continue;
-      const a = left.props[sort.property] ?? null;
-      const b = right.props[sort.property] ?? null;
-      // An empty cell sinks either way. Only the filled cells answer to the direction.
-      if (a === null || b === null) {
-        if (a === null && b === null) continue;
-        return a === null ? 1 : -1;
-      }
-      const order = compareValues(property, a, b);
-      if (order !== 0) return sort.direction === 'asc' ? order : -order;
+    for (const plan of plans) {
+      const order = plan(left, right);
+      if (order !== 0) return order;
     }
     // A stable tie-break, or two rows would swap places on every re-render.
     return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
@@ -477,9 +561,12 @@ export function compareValues(property: DbProperty, left: PropValue, right: Prop
     const b = property.options.findIndex((option) => option.id === right);
     return a === b ? 0 : a < b ? -1 : 1;
   }
-  const a = textOf(property, left);
-  const b = textOf(property, right);
-  return a.localeCompare(b, 'en', { numeric: true, sensitivity: 'base' });
+  return compareText(textOf(property, left), textOf(property, right));
+}
+
+/** Two pieces of text, in the order a reader files them: case is ignored, and 2 comes before 10. */
+function compareText(left: string, right: string): number {
+  return left.localeCompare(right, 'en', { numeric: true, sensitivity: 'base' });
 }
 
 // ---------------------------------------------------------------------------

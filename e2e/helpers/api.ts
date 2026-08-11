@@ -246,9 +246,9 @@ export class ApiClient {
   }
 
   /**
-   * The page files and space files in the content directory, sorted. Attachments are left out:
-   * a page delete orphans its `_assets` directory, which is the server's bug and not this
-   * helper's to hide.
+   * The page files and space files in the content directory, sorted. Attachments are left out
+   * because the home page survives a reset and may still own the ones a spec uploaded to it. A
+   * deleted page takes its own with it, so nothing here can be orphaned.
    */
   private async ownedFiles(): Promise<string[]> {
     const files = await new ContentRepo(this.contentDir).list();

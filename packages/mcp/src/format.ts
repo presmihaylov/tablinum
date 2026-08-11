@@ -1,4 +1,5 @@
 import {
+  columnName,
   markdownToPlainText,
   spanOffsets,
   splitBlocks,
@@ -169,9 +170,10 @@ type AboutPage = Pick<Page, 'markdown' | 'database'>;
 
 /** What a thread is about when it is about a database column rather than a run of text. */
 function columnAbout(columnId: string, page: Pick<Page, 'database'>): string {
-  const named = page.database?.properties.find((property) => property.id === columnId);
-  if (named === undefined) return `a column that is no longer on the page (${columnId})`;
-  return `the ${JSON.stringify(named.name)} column`;
+  const database = page.database;
+  const named = database === undefined ? null : columnName(database, columnId);
+  if (named === null) return `a column that is no longer on the page (${columnId})`;
+  return `the ${JSON.stringify(named)} column`;
 }
 
 /**

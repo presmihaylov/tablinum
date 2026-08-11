@@ -422,6 +422,13 @@ export const GitResolveResponseSchema = z.object({
 
 export const AssetResponseSchema = z.object({ url: z.string(), path: z.string() });
 
+export const RescanResponseSchema = z.object({
+  /** Pages in the search index once it was rebuilt. */
+  pages: z.number().int(),
+  /** Content-relative attachment files the sweep collected. */
+  removedAssets: z.array(z.string()),
+});
+
 // ---------------------------------------------------------------------------
 // inferred types
 // ---------------------------------------------------------------------------
@@ -469,6 +476,7 @@ export type GitCommitResponse = z.infer<typeof GitCommitResponseSchema>;
 export type GitConflictResponse = z.infer<typeof GitConflictResponseSchema>;
 export type GitResolveResponse = z.infer<typeof GitResolveResponseSchema>;
 export type AssetResponse = z.infer<typeof AssetResponseSchema>;
+export type RescanResponse = z.infer<typeof RescanResponseSchema>;
 
 // ---------------------------------------------------------------------------
 // parse helper

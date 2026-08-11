@@ -1,4 +1,6 @@
-import { assetDirRelPath, type PageId } from '@tablinum/shared';
+import { join } from 'node:path';
+import { readDirNames } from '@tablinum/core';
+import { ASSETS_DIR, assetDirRelPath, isPageId, type PageId } from '@tablinum/shared';
 import type { ContentStore, GitEngine } from './deps.js';
 
 /**
@@ -54,6 +56,24 @@ export async function cleanUpAfterDelete(
     if (!survives.has(id)) await parts.git.unexcludePath(assetDirRelPath(id));
   }
   return removed;
+}
+
+/**
+ * The same clean-up over every attachment directory there is, for the orphans nobody named.
+ *
+ * An install that ran the code before a page delete collected its attachments still carries
+ * them, and no delete will ever name those ids again. Reading `_assets/` back is the only way
+ * to find them. Every candidate goes through the checks above unchanged, so a directory whose
+ * page still exists, or whose files a page still points at, is kept.
+ *
+ * The caller must have rebuilt the store index first. `deadPages()` asks the index whether a
+ * page is gone, and an index that predates the working tree would call a live page dead.
+ */
+export async function sweepOrphanedAssets(parts: CleanupParts): Promise<string[]> {
+  const names = await readDirNames(join(parts.store.contentDir, ASSETS_DIR));
+  // Only directories named after a page id: anything else was not put there by an upload, so
+  // nothing here can say whether it is orphaned.
+  return cleanUpAfterDelete(parts, { pageIds: names.filter(isPageId) });
 }
 
 async function spaceExists(store: ContentStore, slug: string): Promise<boolean> {

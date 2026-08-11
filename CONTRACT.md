@@ -694,6 +694,13 @@ POST   /api/v1/git/resolve                     workspace admin, body { files: Ar
                                                (each `file` is repo-relative, never under `.git`, and
                                                 must be one git itself reported as conflicted)
 
+POST   /api/v1/rescan                          workspace admin
+                                               -> { pages: number, removedAssets: string[] }
+                                               (reads the working tree back into the store index and
+                                                the search index, for a tree something rewrote from
+                                                outside the server, then removes the attachments of
+                                                pages no page file points at any more)
+
 POST   /api/v1/assets                          multipart -> { url, path }
 
 POST   /api/v1/mcp                             the remote MCP endpoint (see below)

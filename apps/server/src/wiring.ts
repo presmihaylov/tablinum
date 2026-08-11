@@ -1,4 +1,5 @@
-import { relative, sep } from 'node:path';
+import { existsSync } from 'node:fs';
+import { join, relative, sep } from 'node:path';
 import { type FSWatcher, watch } from 'chokidar';
 import type { FastifyBaseLogger } from 'fastify';
 import {
@@ -12,7 +13,12 @@ import {
   type PageId,
   type PagePath,
 } from '@tablinum/shared';
-import { cleanUpAfterDelete, type DeletedSubjects } from './cleanup.js';
+import {
+  cleanUpAfterDelete,
+  sweepOrphanedAssets,
+  type CleanupParts,
+  type DeletedSubjects,
+} from './cleanup.js';
 import type { ServerDeps } from './deps.js';
 import { LiveHub } from './live.js';
 
@@ -234,18 +240,34 @@ export class Wiring {
    */
   async cleanUpAfterDelete(deleted: DeletedSubjects): Promise<string[]> {
     try {
-      return await cleanUpAfterDelete(
-        {
-          store: this.deps.store,
-          git: this.deps.git,
-          markWritten: (files) => this.markWritten(files),
-        },
-        deleted,
-      );
+      return await cleanUpAfterDelete(this.#cleanupParts(), deleted);
     } catch (err) {
       this.log.warn({ err }, 'failed to clean up after a delete');
       return [];
     }
+  }
+
+  /**
+   * The same clean-up over every attachment directory, for the orphans a delete left behind
+   * before it took them with it. Only ever called for a rescan somebody asked for, and only
+   * once the store index has been rebuilt: the index is what says a page is gone.
+   */
+  async sweepOrphanedAssets(): Promise<string[]> {
+    try {
+      return await sweepOrphanedAssets(this.#cleanupParts());
+    } catch (err) {
+      this.log.warn({ err }, 'failed to sweep orphaned attachments');
+      return [];
+    }
+  }
+
+  /** The unfiltered store and repo: a private space somebody else owns still owns its files. */
+  #cleanupParts(): CleanupParts {
+    return {
+      store: this.deps.store,
+      git: this.deps.git,
+      markWritten: (files) => this.markWritten(files),
+    };
   }
 
   /** Rebuild the whole index from the store. Used at boot and after a pull. */
@@ -327,6 +349,10 @@ export function startContentWatcher(
     const deleted: { pageIds: PageId[]; spaceSlugs: string[] } = { pageIds: [], spaceSlugs: [] };
     for (const [rel, kind] of batch) {
       try {
+        // A removal whose file is back is not a removal. The return can only be missing from
+        // this batch because it was suppressed as an echo of an api write, and that write
+        // indexed what it wrote; forgetting it here would take a live page out of search.
+        if (kind === 'remove' && existsSync(join(contentDir, rel))) continue;
         if (kind === 'remove') {
           const id = isPageFile(rel) ? await deps.store.forgetFile(rel) : null;
           if (id !== null) {

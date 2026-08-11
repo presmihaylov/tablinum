@@ -8,6 +8,7 @@ import {
   REPO_ROOT,
   RESULTS_DIR,
   RUN_DIR,
+  SEED_DIR,
   STORAGE_STATE,
   WEBHOOK_SECRET,
 } from './env';
@@ -82,6 +83,7 @@ export default defineConfig({
       TABLINUM_AUTOPUSH_MS: '0',
       TABLINUM_WEBHOOK_SECRET: WEBHOOK_SECRET,
       TABLINUM_E2E_RUN_DIR: RUN_DIR,
+      TABLINUM_E2E_SEED_DIR: SEED_DIR,
     },
   },
 });

@@ -7,7 +7,7 @@
 // script never guesses a port or a directory.
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, rmSync, statSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -20,6 +20,7 @@ const BUILD_LOCK = join(REPO_ROOT, 'node_modules', '.tablinum-e2e-build.lock');
 
 const contentDir = required('TABLINUM_CONTENT_DIR');
 const runDir = required('TABLINUM_E2E_RUN_DIR');
+const seedDir = required('TABLINUM_E2E_SEED_DIR');
 
 function required(key) {
   const value = process.env[key];
@@ -85,10 +86,24 @@ function resetRunDir() {
   mkdirSync(contentDir, { recursive: true });
 }
 
+/**
+ * Keep the tree the fresh server just wrote. `reset()` puts it back between specs, so the
+ * suite never has to say what a fresh tree holds and cannot forget a kind of content.
+ */
+function captureSeed() {
+  mkdirSync(seedDir, { recursive: true });
+  for (const entry of readdirSync(contentDir)) {
+    // `.git` is the history, not the content, and a reset leaves it where it is.
+    if (entry === '.git') continue;
+    cpSync(join(contentDir, entry), join(seedDir, entry), { recursive: true });
+  }
+}
+
 await ensureBuilt();
 resetRunDir();
 
 // server.js only bootstraps when it is the process entry point, so import it and call start().
 const { start } = await import(pathToFileURL(SERVER_ENTRY).href);
 await start();
+captureSeed();
 console.log(`[e2e] server listening on ${process.env.TABLINUM_PORT ?? ''} over ${contentDir}`);

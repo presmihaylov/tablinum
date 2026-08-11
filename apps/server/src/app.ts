@@ -33,6 +33,7 @@ import { registerHealthRoutes } from './routes/health.js';
 import { registerInviteRoutes } from './routes/invites.js';
 import { registerMcpRoutes } from './routes/mcp.js';
 import { registerPageRoutes } from './routes/pages.js';
+import { registerRescanRoutes } from './routes/rescan.js';
 import { registerSearchRoutes } from './routes/search.js';
 import { registerSpaceRoutes } from './routes/spaces.js';
 import { registerTreeRoutes } from './routes/tree.js';
@@ -202,6 +203,7 @@ export async function buildApp(deps: ServerDeps): Promise<FastifyInstance> {
   registerDatabaseRoutes(app, ctx);
   registerSearchRoutes(app, ctx);
   registerGitRoutes(app, ctx);
+  registerRescanRoutes(app, ctx);
   registerAssetRoutes(app, ctx);
   // Last, because its tools reach the routes above through app.inject().
   registerMcpRoutes(app);

@@ -307,16 +307,8 @@ export class FsContentStore implements ContentStore {
     }
 
     const parent = parentPath(input.path);
-    if (parent === null && !existsSync(join(this.contentDir, input.path))) {
-      throw notFound(`No space ${input.path}. Create the space first.`);
-    }
-    if (parent !== null) {
-      const space = spaceOf(input.path);
-      if (!existsSync(join(this.contentDir, space))) {
-        throw notFound(`No space ${space}. Create the space first.`);
-      }
-      await this.#ensureAncestors(input.path);
-    }
+    await this.#ensureSpace(spaceOf(input.path));
+    if (parent !== null) await this.#ensureAncestors(input.path);
 
     const now = new Date().toISOString();
     const frontmatter: Frontmatter = {
@@ -657,6 +649,18 @@ export class FsContentStore implements ContentStore {
   // ---------------------------------------------------------------------------
   // internals
   // ---------------------------------------------------------------------------
+
+  /**
+   * Mirrors the core store's `#ensureSpace`: a page names its space into existence rather than
+   * being refused. Only the descriptor is written here; the home page comes from `#ensureAncestors`
+   * for a deep path, and from the create itself for a depth-1 one.
+   */
+  async #ensureSpace(slug: string): Promise<void> {
+    const file = join(this.contentDir, spaceFileRelPath(slug));
+    if (existsSync(file)) return;
+    await mkdir(dirname(file), { recursive: true });
+    await writeFile(file, serializeFlatYaml({ name: titleize(slug) }), 'utf8');
+  }
 
   /** Mirrors the core store: a deep create fills in every ancestor that is missing. */
   async #ensureAncestors(target: PagePath): Promise<void> {

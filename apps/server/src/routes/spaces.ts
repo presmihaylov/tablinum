@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import {
   CreateSpaceBodySchema,
@@ -15,10 +15,30 @@ import {
 } from '@tablinum/shared';
 import { requireAdmin } from '../auth.js';
 import { API_PREFIX, partsOf, type RouteContext } from '../context.js';
+import type { ContentStore } from '../deps.js';
 import { viewerOf } from '../private.js';
 import { pageFileVariants } from '../wiring.js';
 
 const SlugParamsSchema = z.object({ slug: SpaceSlugSchema });
+
+/**
+ * A space everybody reads is a top-level container, so changing one costs what deleting one
+ * costs: an admin. A private space is the caller's own corner and nobody else can see it, so
+ * its owner keeps it without holding the install.
+ *
+ * A slug this caller cannot see is left ungated on purpose. `updateSpace` answers NOT_FOUND for
+ * it, and a 401 here would confirm that somebody else's private space exists.
+ */
+async function requireSpaceAdminUnlessOwned(
+  store: ContentStore,
+  request: FastifyRequest,
+  slug: string,
+): Promise<void> {
+  const space = (await store.listSpaces()).find((candidate) => candidate.slug === slug);
+  if (space === undefined) return;
+  if (space.owner !== undefined && space.owner === viewerOf(request)) return;
+  requireAdmin(request);
+}
 
 /** Where the pages of a deleted space went. There is no soft delete, so git is the only copy. */
 function recoveryNote(slug: string, wasPrivate: boolean): string {
@@ -42,6 +62,10 @@ export function registerSpaceRoutes(app: FastifyInstance, ctx: RouteContext): vo
     if (body.private === true && owner === null) {
       throw unauthorized('Only a signed-in person can have a private space');
     }
+    // Everything past that check with no owner is a space the whole workspace reads, so it asks
+    // for the same authority the delete does.
+    if (owner === null) requireAdmin(request);
+
     // The exclude line goes in first. Written afterwards, there would be a moment where the
     // debounced autocommit could stage the space file and put the slug in the history for good.
     if (owner !== null) await git.excludePath(body.slug);
@@ -63,6 +87,7 @@ export function registerSpaceRoutes(app: FastifyInstance, ctx: RouteContext): vo
   app.patch(`${API_PREFIX}/spaces/:slug`, async (request): Promise<SpaceResponse> => {
     const { store, wiring } = await partsOf(ctx, request);
     const { slug } = parseOrThrow(SlugParamsSchema, request.params, 'params');
+    await requireSpaceAdminUnlessOwned(store, request, slug);
     const body = parseOrThrow(UpdateSpaceBodySchema, request.body, 'space');
     const space = await store.updateSpace(slug, body);
     await wiring.recordMutation({

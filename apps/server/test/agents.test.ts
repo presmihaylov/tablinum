@@ -91,14 +91,17 @@ describe('agents', () => {
     const { token } = await addAgent();
     const headers = { authorization: `Bearer ${token}` };
 
+    // An agent is not a person and holds no role, so it does not declare a space of its own.
     const space = await harness.app.inject({
       method: 'POST',
       url: '/api/v1/spaces',
       headers,
       payload: { slug: 'eng', name: 'Engineering' },
     });
-    expect(space.statusCode).toBe(200);
+    expect(space.statusCode).toBe(401);
+    expect(bodyOf(space, ErrorBodySchema).error.code).toBe('UNAUTHORIZED');
 
+    await seed(harness);
     const page = await harness.app.inject({
       method: 'POST',
       url: '/api/v1/pages',

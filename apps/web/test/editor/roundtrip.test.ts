@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CORPUS } from './corpus';
-import { roundtrip } from './harness';
+import { roundtrip, roundtripWithTrailingLine } from './harness';
 
 /**
  * THE contract of the editor: opening a page and saving it again must not change
@@ -43,6 +43,27 @@ describe('markdown round trip', () => {
   it('handles an empty document', () => {
     expect(roundtrip('')).toBe('');
   });
+});
+
+/**
+ * A click in the blank room below the document appends an empty paragraph, so the reader has
+ * a line to write on. That line must weigh nothing: the same bytes with it and without it, so
+ * the save is never queued and the click never reaches git. This is the only thing that keeps
+ * it out of the file, so it is pinned here rather than left to the editor code.
+ */
+describe('markdown round trip: an empty line at the end', () => {
+  const sources = [
+    'One line.\n',
+    'Intro line.\n\n| a | b |\n| --- | --- |\n| 1 | 2 |\n',
+    '# Title\n\nBody.\n',
+    '- one\n- two\n',
+    '```sh\nls\n```\n',
+  ];
+  for (const source of sources) {
+    it(`weighs nothing: ${JSON.stringify(source)}`, () => {
+      expect(roundtripWithTrailingLine(source)).toBe(source);
+    });
+  }
 });
 
 /**

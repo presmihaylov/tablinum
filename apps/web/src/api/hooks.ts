@@ -71,6 +71,7 @@ import type {
   UpdateUserBody,
   UserResponse,
   UsersResponse,
+  WebhookSigningResponse,
   CreateWorkspaceBody,
   UpdateWorkspaceBody,
   WorkspaceMembersResponse,
@@ -756,6 +757,15 @@ export function useAgents(enabled = true): UseQueryResult<AgentsResponse, ApiErr
   return useQuery({
     queryKey: qk.agents,
     queryFn: ({ signal }) => api.listAgents(signal),
+    enabled,
+  });
+}
+
+/** How agent webhooks are signed. Answers `enabled: false` while no secret is configured. */
+export function useWebhookSigning(enabled = true): UseQueryResult<WebhookSigningResponse, ApiError> {
+  return useQuery({
+    queryKey: qk.webhookSigning,
+    queryFn: ({ signal }) => api.webhookSigning(signal),
     enabled,
   });
 }

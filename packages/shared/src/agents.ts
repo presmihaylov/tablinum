@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { newUlid } from './ids.js';
 import { HandleSchema } from './mentions.js';
 import { IsoDateSchema } from './schemas.js';
+import { WebhookUrlSchema } from './webhooks.js';
 import { WorkspaceIdSchema } from './workspaces.js';
 
 /**
@@ -58,6 +59,8 @@ export const AgentSchema = z.object({
   color: z.string(),
   /** Revision of its picture, or null while it has none. See avatarUrl(). */
   avatarRev: z.string().nullable(),
+  /** Where a signed event goes when this agent is tagged. Null means it is never told. */
+  webhookUrl: z.string().nullable(),
   created: IsoDateSchema,
   updated: IsoDateSchema,
   /** When the token was last accepted, or null while the agent has never connected. */
@@ -73,12 +76,15 @@ export const CreateAgentBodySchema = z.object({
   identity: IdentitySchema.optional(),
   /** Derived from the name when it is absent. A taken handle gets a numeric suffix. */
   handle: HandleSchema.optional(),
+  webhookUrl: WebhookUrlSchema.optional(),
 });
 
 export const UpdateAgentBodySchema = z
   .object({
     name: AgentNameSchema.optional(),
     identity: IdentitySchema.optional(),
+    /** Null takes the webhook away, so the agent is no longer told about a tag. */
+    webhookUrl: WebhookUrlSchema.nullable().optional(),
   })
   .refine((body) => Object.keys(body).length > 0, 'Provide at least one field to update');
 

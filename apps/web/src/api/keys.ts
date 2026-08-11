@@ -7,6 +7,7 @@ export const qk = {
   users: ['users'] as const,
   invites: ['invites'] as const,
   agents: ['agents'] as const,
+  webhookSigning: ['webhook-signing'] as const,
   emoji: ['emoji'] as const,
   workspaces: ['workspaces'] as const,
   workspaceMembers: (id: string) => ['workspaces', id, 'members'] as const,

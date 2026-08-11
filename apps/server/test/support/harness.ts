@@ -14,6 +14,7 @@ import {
 import { buildApp } from '../../src/app.js';
 import type { ServerDeps } from '../../src/deps.js';
 import type { SlackApi } from '../../src/slack.js';
+import type { WebhookSender } from '../../src/webhooks.js';
 import { FsContentStore } from './fs-store.js';
 import { TestGitEngine } from './git-double.js';
 import { MemorySearchIndex } from './search-double.js';
@@ -43,6 +44,8 @@ export interface HarnessOptions {
   noToken?: boolean;
   /** A stub Slack transport. Undefined leaves Slack off unless the env configures a token. */
   slack?: SlackApi | null;
+  /** A stub webhook transport, so no test reaches the network. */
+  webhooks?: WebhookSender | null;
   /** A directory holding an index.html, so the SPA fallback is registered. */
   webDistDir?: string;
 }
@@ -94,6 +97,7 @@ export async function makeHarness(options: HarnessOptions = {}): Promise<Harness
     trustProxy: config.trustProxy,
   };
   if (options.slack !== undefined) deps.slack = options.slack;
+  if (options.webhooks !== undefined) deps.webhooks = options.webhooks;
 
   const app = await buildApp(deps);
 

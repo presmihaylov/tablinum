@@ -34,6 +34,7 @@ export const ENV_KEYS = [
   'TABLINUM_AUTOPULL_MS',
   'TABLINUM_AUTOPUSH_MS',
   'TABLINUM_SLACK_BOT_TOKEN',
+  'TABLINUM_WEBHOOK_SECRET',
   'TABLINUM_PUBLIC_URL',
   'TABLINUM_TRUST_PROXY',
 ] as const;
@@ -128,6 +129,12 @@ export function loadConfig(env: EnvSource = process.env): Config {
     throw validation(`TABLINUM_PUBLIC_URL must start with http:// or https://, got ${JSON.stringify(publicUrl)}`);
   }
 
+  // Nothing is delivered unsigned, so an unset secret turns the agent webhooks off.
+  const webhookSecret = read(env, 'TABLINUM_WEBHOOK_SECRET') ?? null;
+  if (webhookSecret !== null && webhookSecret.length < 16) {
+    throw validation('TABLINUM_WEBHOOK_SECRET must be at least 16 characters');
+  }
+
   const config: Config = {
     contentDir: contentDir.replace(/\/+$/, '') || '/',
     port,
@@ -142,6 +149,7 @@ export function loadConfig(env: EnvSource = process.env): Config {
     autopullMs: readInt(env, 'TABLINUM_AUTOPULL_MS', DEFAULT_AUTOPULL_MS, 0, 86400000),
     autopushMs: readInt(env, 'TABLINUM_AUTOPUSH_MS', DEFAULT_AUTOPUSH_MS, 0, 3600000),
     slackBotToken: read(env, 'TABLINUM_SLACK_BOT_TOKEN') ?? null,
+    webhookSecret,
     publicUrl: publicUrl === null ? null : publicUrl.replace(/\/+$/, ''),
     trustProxy: readBool(env, 'TABLINUM_TRUST_PROXY', false),
   };
@@ -196,6 +204,7 @@ export function redactConfig(config: Config): Record<string, string | number | b
     autopullMs: config.autopullMs,
     autopushMs: config.autopushMs,
     slackBotToken: config.slackBotToken === null ? 'unset' : 'set',
+    webhookSecret: config.webhookSecret === null ? 'unset' : 'set',
     publicUrl: config.publicUrl,
     trustProxy: config.trustProxy,
   };

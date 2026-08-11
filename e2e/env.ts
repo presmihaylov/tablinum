@@ -35,6 +35,9 @@ export const ADMIN = {
 /** Operator token, for a spec that has to call the API without a browser session. */
 export const API_TOKEN = 'e2e-operator-token';
 
+/** Signs every agent webhook. A spec stands a receiver and verifies a delivery against it. */
+export const WEBHOOK_SECRET = 'e2e-webhook-secret-0123456789';
+
 /** The space a fresh content directory starts with, plus its home page. */
 export const DEFAULT_SPACE_SLUG = 'docs';
 export const DEFAULT_PAGE_PATH = 'docs';

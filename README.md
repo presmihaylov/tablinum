@@ -543,6 +543,93 @@ writes, and it leaves about a minute after the agent's last tool call. An agent 
 in the open editor as it happens: the text updates in place, your own unsaved edits are kept, and
 a small message names the agent that wrote.
 
+## Tell an agent it was tagged
+
+An agent has no inbox, so it is told over HTTP. Give an agent a webhook address, and every time a
+page or a comment writes its `@handle`, tablinum posts one signed event there.
+
+1. Set `TABLINUM_WEBHOOK_SECRET` on the server to a value of at least 16 characters, for example
+   `openssl rand -hex 32`. Nothing is ever delivered unsigned, so an unset secret turns agent
+   webhooks off, and the Agents page says so.
+2. Open **Settings**, choose **Agents**, and put the address in the webhook field. Only `http://`
+   and `https://` are accepted.
+3. Set `TABLINUM_PUBLIC_URL` if you want the event to carry a link a person can open.
+
+The body is JSON:
+
+```json
+{
+  "id": "whd_01K2ZQ8P7M0000000000000000",
+  "type": "mention.comment",
+  "created": "2026-08-11T09:14:02.317Z",
+  "agent": { "id": "ag_...", "name": "Doc Bot", "handle": "doc.bot" },
+  "workspace": { "id": "ws_...", "slug": "main", "name": "Main" },
+  "page": {
+    "id": "pg_...",
+    "path": "eng/plan",
+    "title": "The plan",
+    "url": "https://docs.example.com/p/eng/plan"
+  },
+  "by": { "id": "us_...", "name": "Ada Lovelace", "handle": "ada.lovelace" },
+  "thread": { "id": "th_..." },
+  "text": "What do you think, @doc.bot?"
+}
+```
+
+`type` is `mention.page` when the handle is written in the body of a page, and `mention.comment`
+when it is written in a comment. `thread` is null for a page mention. `by` is null when the write
+arrived under an operator token, which names nobody. `text` is the whole page body for a page
+mention, and the comment itself for a comment mention. Only what a save *adds* is delivered, so a
+handle that was already there is never announced twice.
+
+Three headers come with it:
+
+| Header | What it carries |
+| --- | --- |
+| `x-tablinum-signature` | `t=<unix seconds>,v1=<hex>` |
+| `x-tablinum-event` | The event type, so you can route without parsing the body |
+| `x-tablinum-delivery` | The delivery id, the same value as `id` in the body |
+
+### Verify the signature
+
+The signature is HMAC-SHA256 over `<timestamp>.<raw body>`, keyed with `TABLINUM_WEBHOOK_SECRET`,
+in lower-case hex. Sign the exact bytes you received, before any JSON parse:
+
+```js
+import { createHmac, timingSafeEqual } from 'node:crypto';
+
+function verify(secret, header, rawBody) {
+  const parts = Object.fromEntries(header.split(',').map((p) => p.split('=')));
+  const age = Math.abs(Math.floor(Date.now() / 1000) - Number(parts.t));
+  if (!Number.isFinite(age) || age > 300) return false;   // refuse a replayed delivery
+  const wanted = createHmac('sha256', secret).update(`${parts.t}.${rawBody}`).digest('hex');
+  return wanted.length === parts.v1.length &&
+    timingSafeEqual(Buffer.from(wanted), Buffer.from(parts.v1));
+}
+```
+
+`GET /api/v1/webhooks/signing` describes the scheme, so a receiver can check it holds the right
+secret without ever sending it:
+
+```json
+{
+  "enabled": true,
+  "algorithm": "hmac-sha256",
+  "keyId": "3f1c9a5b2e7d4086",
+  "signatureHeader": "x-tablinum-signature",
+  "eventHeader": "x-tablinum-event",
+  "deliveryHeader": "x-tablinum-delivery",
+  "toleranceSeconds": 300
+}
+```
+
+`keyId` is a salted SHA-256 of the secret, cut to 16 hex characters. It names the secret and
+reveals nothing, so two servers that hold the same secret report the same id.
+
+Answer with any 2xx. A delivery that fails is logged and dropped: a save never fails because a
+receiver is unreachable, and there is no retry queue to fall out of step with the pages. Store
+`x-tablinum-delivery` and ignore an id you have already handled.
+
 ## How an agent edits a page
 
 An agent works on a page the way a person does. It opens the page, puts a caret somewhere, selects
@@ -591,6 +678,7 @@ All configuration comes from environment variables. See `.env.example` for the a
 | `TABLINUM_AUTOPULL_MS` | `60000` | Background pull interval; `0` disables it |
 | `TABLINUM_AUTOPUSH_MS` | `5000` | Quiet period after a commit before the push; `0` disables it |
 | `TABLINUM_SLACK_BOT_TOKEN` | - | Slack bot token; unset turns mention notifications off |
+| `TABLINUM_WEBHOOK_SECRET` | - | Signs every agent webhook, at least 16 characters; unset turns agent webhooks off |
 | `TABLINUM_PUBLIC_URL` | - | Public origin, used for the link inside a notification |
 | `TABLINUM_TRUST_PROXY` | `false` | Trust `X-Forwarded-Proto` and `X-Forwarded-For`. Turn it on behind a reverse proxy, or the session cookie never gets `Secure`. The Docker image defaults it to `true` |
 

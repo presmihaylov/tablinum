@@ -28,12 +28,23 @@ const DOC_BOT: Agent = {
   identity: 'You keep the runbooks tidy.',
   color: '#3b82f6',
   avatarRev: null,
+  webhookUrl: null,
   created: '2026-01-01T00:00:00.000Z',
   updated: '2026-01-01T00:00:00.000Z',
   lastUsed: null,
 };
 
 const MCP_URL = 'http://localhost:8080/api/v1/mcp';
+
+const SIGNING = {
+  enabled: true,
+  algorithm: 'hmac-sha256',
+  keyId: '0123456789abcdef',
+  signatureHeader: 'x-tablinum-signature',
+  eventHeader: 'x-tablinum-event',
+  deliveryHeader: 'x-tablinum-delivery',
+  toleranceSeconds: 300,
+};
 
 function authState(patch: Partial<AuthStateResponse> = {}): AuthStateResponse {
   return {
@@ -49,6 +60,7 @@ function start(routes: MockRoutes): MockServer {
   server = installFetch({
     'GET /api/v1/tree': { spaces: [] },
     'GET /api/v1/auth/state': authState(),
+    'GET /api/v1/webhooks/signing': SIGNING,
     ...routes,
   });
   return server;
@@ -188,7 +200,11 @@ describe('the agents dialog', () => {
     await waitFor(() => {
       const call = mock.calls.find((item) => item.method === 'PATCH');
       expect(call?.url.pathname).toBe(`/api/v1/agents/${DOC_BOT.id}`);
-      expect(bodyOf(call)).toEqual({ name: 'Doc Bot', identity: 'You only write release notes.' });
+      expect(bodyOf(call)).toEqual({
+        name: 'Doc Bot',
+        identity: 'You only write release notes.',
+        webhookUrl: null,
+      });
     });
   });
 
@@ -235,6 +251,72 @@ describe('the agents dialog', () => {
     await user.click(screen.getByRole('button', { name: 'Delete' }));
     await waitFor(() => {
       expect(mock.calls.some((item) => item.method === 'DELETE')).toBe(true);
+    });
+  });
+
+  it('sends the webhook address it is given, and says how a delivery is signed', async () => {
+    const mock = start({
+      ...routes,
+      'POST /api/v1/agents': { agent: DOC_BOT, token: 'gda_secret-token', url: MCP_URL },
+    });
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.type(screen.getByLabelText('Agent name'), 'Doc Bot');
+    await user.type(screen.getByLabelText('Agent webhook URL'), 'https://bot.example.com/hook');
+    await screen.findByText(/hmac-sha256/);
+    await user.click(screen.getByRole('button', { name: 'Add agent' }));
+
+    await waitFor(() => {
+      const call = mock.calls.find((item) => item.method === 'POST');
+      expect(bodyOf(call)).toEqual({
+        name: 'Doc Bot',
+        identity: '',
+        webhookUrl: 'https://bot.example.com/hook',
+      });
+    });
+  });
+
+  it('refuses an address that is not a http or https URL', async () => {
+    const mock = start(routes);
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.type(screen.getByLabelText('Agent name'), 'Doc Bot');
+    await user.type(screen.getByLabelText('Agent webhook URL'), 'bot.example.com/hook');
+    await user.click(screen.getByRole('button', { name: 'Add agent' }));
+
+    await screen.findByText('The webhook address must start with http:// or https://.');
+    expect(mock.calls.some((item) => item.method === 'POST')).toBe(false);
+  });
+
+  it('says that nothing is delivered while the server has no signing secret', async () => {
+    start({ ...routes, 'GET /api/v1/webhooks/signing': { ...SIGNING, enabled: false, keyId: null } });
+    renderPanel();
+
+    await screen.findByText(/TABLINUM_WEBHOOK_SECRET/);
+  });
+
+  it('edits the webhook address of an agent, and takes it away again', async () => {
+    const hooked: Agent = { ...DOC_BOT, webhookUrl: 'https://bot.example.com/hook' };
+    const mock = start({
+      'GET /api/v1/agents': { agents: [hooked] },
+      'PATCH /api/v1/agents/ag_00000000000000000000000001': { agent: hooked },
+    });
+    const user = userEvent.setup();
+    renderPanel();
+
+    expect(await screen.findByText(/notified by webhook/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Edit Doc Bot' }));
+    const field = screen.getByLabelText('Webhook URL of Doc Bot');
+    expect(field).toHaveValue('https://bot.example.com/hook');
+
+    await user.clear(field);
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      const call = mock.calls.find((item) => item.method === 'PATCH');
+      expect(bodyOf(call).webhookUrl).toBeNull();
     });
   });
 

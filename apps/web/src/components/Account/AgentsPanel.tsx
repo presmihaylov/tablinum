@@ -4,6 +4,7 @@ import {
   MAX_IDENTITY_LENGTH,
   type Agent,
   type AgentTokenResponse,
+  type WebhookSigningResponse,
 } from '@tablinum/shared';
 import {
   useAgents,
@@ -13,6 +14,7 @@ import {
   useRotateAgentToken,
   useUpdateAgent,
   useUploadAgentAvatar,
+  useWebhookSigning,
 } from '../../api/hooks';
 import { relativeTime } from '../../lib/format';
 import { describeError, useToast } from '../../lib/toast';
@@ -27,10 +29,24 @@ const PLACEHOLDER = [
   'Keep steps numbered and never delete a page without being asked.',
 ].join(' ');
 
-/** The name and the identity of the agent the admin is editing right now. */
+const WEBHOOK_PLACEHOLDER = 'https://example.com/tablinum-webhook';
+
+/** An empty box means no webhook, so it has to become null rather than an empty string. */
+function webhookOf(value: string): string | null {
+  const trimmed = value.trim();
+  return trimmed.length === 0 ? null : trimmed;
+}
+
+/** True for something this server would accept as a webhook address. */
+function looksLikeUrl(value: string): boolean {
+  return /^https?:\/\/\S+$/.test(value);
+}
+
+/** What the admin is editing right now. */
 interface Draft {
   name: string;
   identity: string;
+  webhookUrl: string;
 }
 
 /** Agents: the non-human writers, their identity, and the token each one connects with. */
@@ -43,12 +59,14 @@ export function AgentsPanel() {
   const rotateToken = useRotateAgentToken();
   const uploadAvatar = useUploadAgentAvatar();
   const removeAvatar = useRemoveAgentAvatar();
+  const signing = useWebhookSigning(true);
 
   const [name, setName] = useState('');
   const [identity, setIdentity] = useState('');
+  const [webhook, setWebhook] = useState('');
   const [secret, setSecret] = useState<AgentTokenResponse | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
-  const [draft, setDraft] = useState<Draft>({ name: '', identity: '' });
+  const [draft, setDraft] = useState<Draft>({ name: '', identity: '', webhookUrl: '' });
   const [error, setError] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -67,12 +85,18 @@ export function AgentsPanel() {
       setError('Give the agent a name.');
       return;
     }
+    const url = webhookOf(webhook);
+    if (url !== null && !looksLikeUrl(url)) {
+      setError('The webhook address must start with http:// or https://.');
+      return;
+    }
     createAgent.mutate(
-      { name: trimmed, identity: identity.trim() },
+      { name: trimmed, identity: identity.trim(), ...(url === null ? {} : { webhookUrl: url }) },
       {
         onSuccess: (result) => {
           setName('');
           setIdentity('');
+          setWebhook('');
           setSecret(result);
         },
         onError: (cause) => setError(describeError(cause, 'Could not add that agent.')),
@@ -83,16 +107,25 @@ export function AgentsPanel() {
   const startEdit = (agent: Agent): void => {
     setError(null);
     setEditing(agent.id);
-    setDraft({ name: agent.name, identity: agent.identity });
+    setDraft({ name: agent.name, identity: agent.identity, webhookUrl: agent.webhookUrl ?? '' });
   };
 
   const save = (agent: Agent): void => {
-    const next = { name: draft.name.trim(), identity: draft.identity.trim() };
+    const webhookUrl = webhookOf(draft.webhookUrl);
+    const next = { name: draft.name.trim(), identity: draft.identity.trim(), webhookUrl };
     if (next.name.length === 0) {
       setError('Give the agent a name.');
       return;
     }
-    if (next.name === agent.name && next.identity === agent.identity) {
+    if (webhookUrl !== null && !looksLikeUrl(webhookUrl)) {
+      setError('The webhook address must start with http:// or https://.');
+      return;
+    }
+    const same =
+      next.name === agent.name &&
+      next.identity === agent.identity &&
+      next.webhookUrl === agent.webhookUrl;
+    if (same) {
       setEditing(null);
       return;
     }
@@ -173,6 +206,15 @@ export function AgentsPanel() {
           The identity is the first thing the agent reads when it connects. Write it as instructions to
           the agent itself.
         </p>
+        <input
+          className="input"
+          type="url"
+          placeholder={WEBHOOK_PLACEHOLDER}
+          aria-label="Agent webhook URL"
+          value={webhook}
+          onChange={(event) => setWebhook(event.target.value)}
+        />
+        <p className="account-form__note">{signingNote(signing.data)}</p>
 
         {secret === null ? null : (
           <div className="agent-secret">
@@ -228,6 +270,7 @@ export function AgentsPanel() {
                   <div className="people-row__email">
                     @{agent.handle} ·{' '}
                     {agent.lastUsed === null ? 'never connected' : `last seen ${relativeTime(agent.lastUsed)}`}
+                    {agent.webhookUrl === null ? null : ' · notified by webhook'}
                   </div>
                 </div>
                 <button
@@ -305,6 +348,15 @@ export function AgentsPanel() {
                     value={draft.identity}
                     onChange={(event) => setDraft({ ...draft, identity: event.target.value })}
                   />
+                  <input
+                    className="input"
+                    type="url"
+                    placeholder={WEBHOOK_PLACEHOLDER}
+                    aria-label={`Webhook URL of ${agent.name}`}
+                    value={draft.webhookUrl}
+                    onChange={(event) => setDraft({ ...draft, webhookUrl: event.target.value })}
+                  />
+                  <p className="account-form__note">{signingNote(signing.data)}</p>
                   <div className="account-form__row">
                     <button
                       type="button"
@@ -328,4 +380,14 @@ export function AgentsPanel() {
       <ConfirmDialog request={confirm} onClose={() => setConfirm(null)} />
     </>
   );
+}
+
+/** Says whether a delivery would go out, because an unsigned one never does. */
+function signingNote(signing: WebhookSigningResponse | undefined): string {
+  const head = 'A signed event is posted here whenever the agent is tagged on a page or in a comment.';
+  if (signing === undefined) return head;
+  if (!signing.enabled) {
+    return `${head} Nothing is sent yet: set TABLINUM_WEBHOOK_SECRET on the server to turn signing on.`;
+  }
+  return `${head} Signed with ${signing.algorithm}, key ${signing.keyId ?? 'unknown'}, in ${signing.signatureHeader}.`;
 }

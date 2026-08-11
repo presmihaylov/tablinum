@@ -77,7 +77,6 @@ test.describe('an agent commenting on a page', () => {
   test('quotes a heading, answers a person and closes the thread', async ({
     page,
     api,
-    content,
     request,
     playwright,
   }) => {
@@ -160,12 +159,8 @@ test.describe('an agent commenting on a page', () => {
       expect(after?.markdown.trim()).toBe(MARKDOWN.trim());
     } finally {
       await asAgent.dispose();
+      // The agent outlives the content tree, so it is not the cleanContent fixture's to take.
       await request.delete(`/api/v1/agents/${agent.id}`);
-      // The sign-in landing page is the first page of the first space, so the scratch space
-      // must go, or a later spec starts somewhere it does not expect.
-      const home = await api.getPage(space.slug);
-      if (home !== null) await api.deletePage(home.id, { recursive: true });
-      await content.remove(space.slug);
     }
   });
 });

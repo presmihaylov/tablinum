@@ -3,6 +3,7 @@ import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, type APIRequestContext, type APIResponse } from '@playwright/test';
 import { CONTENT_DIR, DEFAULT_PAGE_PATH, DEFAULT_SPACE_SLUG } from '../env';
+import { ContentRepo } from './content';
 import type {
   AuthState,
   CreatePageInput,
@@ -17,9 +18,29 @@ import type {
 
 const PREFIX = '/api/v1';
 
-/** The state a fresh content directory is in, restored by reset(). */
+/**
+ * The page a fresh server writes, restored by reset(). Copied byte for byte from
+ * `WELCOME_TITLE` and `WELCOME_MARKDOWN` in packages/core/src/store.ts rather than imported:
+ * the suite is a black-box client of the running server and depends on no workspace package,
+ * so `npx tsc --noEmit -p e2e/tsconfig.json` needs nothing built first.
+ */
 const WELCOME_TITLE = 'Welcome';
-const WELCOME_MARKDOWN = 'This page is the starting point of the e2e content repository.\n';
+const WELCOME_MARKDOWN = `# Welcome to tablinum
+
+This page lives at \`docs/index.md\` in your content repository. Every page here is a markdown
+file with YAML frontmatter, and every edit is a commit.
+
+## Write
+
+- Type \`/\` on an empty line to insert a block.
+- Drag a page in the sidebar to move it or to change its order.
+- Link to another page with \`[[docs/welcome]]\`.
+
+## Automate
+
+The same content is available over the REST API under \`/api/v1\` and over MCP. Edits made in the
+editor, through the API, or straight in the git repository all land in the same history.
+`;
 
 /** A slug nothing else in the run can collide with, so specs never share a space. */
 export function uniqueSlug(prefix: string): string {
@@ -38,6 +59,15 @@ function byDepth(a: string, b: string): number {
   const depth = a.split('/').length - b.split('/').length;
   return depth === 0 ? a.localeCompare(b) : depth;
 }
+
+/** What the content directory holds once reset() is done, page files and space files only. */
+const FRESH_FILES = [`${DEFAULT_SPACE_SLUG}/_space.yml`, `${DEFAULT_SPACE_SLUG}/index.md`];
+
+/**
+ * Long enough for a directory removal to show up, short enough that a real leak is reported
+ * in seconds. The probe runs before the first sleep, so a clean tree pays nothing.
+ */
+const SETTLE_MS = 2_000;
 
 /**
  * Everything a spec needs from the REST API, over the browser session of the signed-in
@@ -153,47 +183,77 @@ export class ApiClient {
   }
 
   /**
-   * Put the server back where a fresh one starts: one space, one welcome page, nothing else.
-   * Extra spaces have no delete endpoint, so their directories go from disk and the content
-   * watcher re-indexes; the poll at the end waits for that to land.
+   * Put the content tree of this workspace back to the one space and one welcome page a fresh
+   * server writes. Nothing else: extra workspaces, favorites, accounts and agents are outside
+   * it, and a spec that makes one still removes it itself.
+   *
+   * Every page goes through the API, whatever space it sits in, because a page delete rebuilds
+   * the index and updates the search database before it answers. Removing the files instead
+   * would leave that to the content watcher, and the watcher drops any event for a file the
+   * API itself wrote in the last five seconds (`recentWrites.consume` at
+   * apps/server/src/wiring.ts:334, TTL at :28). A removal inside that window is swallowed for
+   * good, and the page lives on in the index and in search.db pointing at a file that is gone.
+   *
+   * Only the space file needs the filesystem, because no endpoint deletes a space. That same
+   * echo suppression eats the unlink, so nothing schedules a commit for it; the explicit
+   * commit below stages the working tree with `git add -A` and closes that hole. `GET /spaces`
+   * re-reads the directory on every call (`listSpaceSlugs`), so there is no cached space list
+   * to go stale and nothing to wait for.
    */
   async reset(): Promise<void> {
+    const gone = new Set<string>();
+    const pages = [...(await this.listPages())].sort((a, b) => byDepth(a.path, b.path));
+    // The home page keeps its id through every delete below, so the restore needs no re-read.
+    let homeId = pages.find((page) => page.path === DEFAULT_PAGE_PATH)?.id;
+    for (const page of pages) {
+      if (page.path === DEFAULT_PAGE_PATH) continue;
+      // A recursive delete already took every descendant with it. The server says which ones,
+      // so a delete that removed nothing cannot make this skip a page that is still there.
+      if (gone.has(page.path)) continue;
+      for (const path of await this.deletePage(page.id, { recursive: true })) gone.add(path);
+    }
+
     const spaces = await this.spaces();
-    for (const space of spaces) {
-      if (space.slug === DEFAULT_SPACE_SLUG) continue;
+    const extra = spaces.filter((space) => space.slug !== DEFAULT_SPACE_SLUG);
+    for (const space of extra) {
       await rm(join(this.contentDir, space.slug), { recursive: true, force: true });
     }
+    // Only when the filesystem was touched: on a clean tree this costs no request at all.
+    if (extra.length > 0) await this.commit('e2e: reset the content tree');
+
     // A spec may have removed the space the server started with; put it back with its home page.
     if (!spaces.some((space) => space.slug === DEFAULT_SPACE_SLUG)) {
       await this.createSpace({ slug: DEFAULT_SPACE_SLUG, name: 'Docs' });
+      homeId = (await this.getPage(DEFAULT_PAGE_PATH))?.id;
     }
 
-    const deleted: string[] = [];
-    const pages = [...(await this.listPages())].sort((a, b) => byDepth(a.path, b.path));
-    for (const page of pages) {
-      if (page.path === DEFAULT_PAGE_PATH) continue;
-      if (page.space !== DEFAULT_SPACE_SLUG) continue;
-      // A recursive delete already took every descendant with it.
-      if (deleted.some((parent) => page.path.startsWith(`${parent}/`))) continue;
-      await this.deletePage(page.id, { recursive: true });
-      deleted.push(page.path);
-    }
+    // Unconditional. An untouched page costs nothing on disk: serializePreserving hands back
+    // the original bytes and the store skips a write whose bytes already match, so this cannot
+    // dirty the git tree.
+    const restore = { title: WELCOME_TITLE, markdown: WELCOME_MARKDOWN };
+    if (homeId === undefined) await this.createPage({ path: DEFAULT_PAGE_PATH, ...restore });
+    if (homeId !== undefined) await this.updatePage(homeId, restore);
 
+    // Read the result off the disk, not back through the API. The API answers through the same
+    // viewer filter that chose what to delete, so it would only agree with itself; a private
+    // space owned by another account is invisible to it and would survive unnoticed.
     await expect
-      .poll(async () => (await this.spaces()).map((space) => space.slug), {
-        message: 'extra spaces were not removed from the content directory',
+      .poll(() => this.ownedFiles(), {
+        message: 'the content directory still holds files the reset should have removed',
+        timeout: SETTLE_MS,
       })
-      .toEqual([DEFAULT_SPACE_SLUG]);
+      .toEqual(FRESH_FILES);
+  }
 
-    await expect
-      .poll(async () => (await this.listPages()).map((page) => page.path).sort(), {
-        message: 'pages were still indexed after the reset',
-      })
-      .toEqual([DEFAULT_PAGE_PATH]);
-
-    const home = await this.getPage(DEFAULT_PAGE_PATH);
-    if (home !== null) {
-      await this.updatePage(home.id, { title: WELCOME_TITLE, markdown: WELCOME_MARKDOWN });
-    }
+  /**
+   * The page files and space files in the content directory, sorted. Attachments are left out:
+   * a page delete orphans its `_assets` directory, which is the server's bug and not this
+   * helper's to hide.
+   */
+  private async ownedFiles(): Promise<string[]> {
+    const files = await new ContentRepo(this.contentDir).list();
+    return files.filter(
+      (file) => !file.startsWith('_assets/') && (file.endsWith('.md') || file.endsWith('_space.yml')),
+    );
   }
 }

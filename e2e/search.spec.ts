@@ -63,7 +63,6 @@ async function searchFor(page: Page, query: string): Promise<Locator> {
 
 test.describe('search', () => {
   test.beforeEach(async ({ api }) => {
-    await api.reset();
     await seed(api);
   });
 

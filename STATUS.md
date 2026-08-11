@@ -14,10 +14,10 @@ REST API, the MCP server (stdio or remote), or the files themselves.
 | --- | --- | --- |
 | Typecheck | `pnpm -r typecheck` | PASS — 8 projects, strict + `noUncheckedIndexedAccess`, 0 errors |
 | Build | `pnpm -r build` | PASS — 8 dist outputs, Vite bundle 1,284 kB (410 kB gzip) |
-| Test | `pnpm -r test` | PASS — **2378 tests**, 0 failures |
+| Test | `pnpm -r test` | PASS — **2380 tests**, 0 failures |
 
 Per-package tests: shared 341, core 266, accounts 111, git-sync 97, search 59, mcp 143, server 384,
-web 977. The end-to-end suite (`pnpm e2e`) is 156 Playwright tests, all passing.
+web 979. The end-to-end suite (`pnpm e2e`) is 159 Playwright tests, all passing.
 
 `packages/git-sync` cleans a temp repo at the end of every case and occasionally loses a race with
 git's own file handles (`ENOTEMPTY ... rmdir .git`). It passes on a re-run. It is a test-teardown

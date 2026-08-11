@@ -161,7 +161,13 @@ export function buildExtensions(overrides: Partial<EditorExtensionOptions> = {})
   return [
     ...core,
     Placeholder.configure({
-      placeholder: ({ node }) => (node.type.name === 'heading' ? 'Heading' : options.placeholder),
+      placeholder: ({ node }) => {
+        if (node.type.name === 'heading') return 'Heading';
+        // The decoration lands on the list, not the item, so a hint here draws over the first
+        // checkbox. The box already says what the block is.
+        if (node.type.name === 'taskList') return '';
+        return options.placeholder;
+      },
       showOnlyWhenEditable: true,
       includeChildren: false,
     }),

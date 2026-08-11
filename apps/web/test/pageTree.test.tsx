@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import type { TreeNode } from '@tablinum/shared';
 import { PageTree } from '../src/components/Sidebar/PageTree';
+import { AuthProvider } from '../src/lib/auth';
 import { useContent } from '../src/lib/content';
 import { installFetch, type MockServer } from './mockFetch';
 import { node, page, space } from './fixtures';
@@ -29,7 +30,7 @@ function startServer(): MockServer {
 
 async function showTree(nodes: TreeNode[], spaceCount = 2): Promise<void> {
   renderApp(
-    <>
+    <AuthProvider>
       <SpacesProbe />
       <PageTree
         nodes={nodes}
@@ -39,7 +40,7 @@ async function showTree(nodes: TreeNode[], spaceCount = 2): Promise<void> {
         onExpand={vi.fn()}
         onOpen={vi.fn()}
       />
-    </>,
+    </AuthProvider>,
   );
   await waitFor(() => expect(screen.getByTestId('spaces').textContent).toBe(String(spaceCount)));
 }

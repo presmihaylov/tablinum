@@ -102,15 +102,20 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
         keywords: ['create', 'add', 'page'],
         run: () => newPage(currentPath || currentSpace || null),
       },
-      {
-        id: 'new-space',
-        label: 'New space',
-        group: 'Actions',
-        hint: 'everybody reads it',
-        icon: <Plus size={13} />,
-        keywords: ['create', 'add', 'space', 'public'],
-        run: () => newSpace(),
-      },
+      // A shared space is admin-only on the server, so a member is never offered the action.
+      ...(isAdmin
+        ? [
+            {
+              id: 'new-space',
+              label: 'New space',
+              group: 'Actions',
+              hint: 'everybody reads it',
+              icon: <Plus size={13} />,
+              keywords: ['create', 'add', 'space', 'public'],
+              run: () => newSpace(),
+            },
+          ]
+        : []),
       {
         id: 'new-private-space',
         label: 'New private space',

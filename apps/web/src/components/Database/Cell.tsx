@@ -10,7 +10,7 @@ import {
   type SelectOption,
 } from '@tablinum/shared';
 import { Check, Plus } from '../ui/Icon';
-import { Pop } from './Pop';
+import { Menu } from '../ui/Menu';
 
 export interface CellProps {
   property: DbProperty;
@@ -202,7 +202,7 @@ function SelectCell({ property, value, onChange, onCreateOption, multi }: CellPr
         ))}
       </button>
       {open ? (
-        <Pop label={`${property.name} options`} anchor={trigger} onClose={() => setOpen(false)}>
+        <Menu label={`${property.name} options`} anchor={trigger} onClose={() => setOpen(false)}>
           <input
             className="input"
             autoFocus
@@ -221,13 +221,13 @@ function SelectCell({ property, value, onChange, onCreateOption, multi }: CellPr
               if (match) pick(match.id);
             }}
           />
-          <div className="db-pop__list">
+          <div className="popmenu__list">
             {shown.map((option) => (
               <button
                 key={option.id}
                 type="button"
                 role="menuitem"
-                className="db-pop__item"
+                className="popmenu__item"
                 onClick={() => pick(option.id)}
               >
                 <Tag option={option} />
@@ -236,12 +236,12 @@ function SelectCell({ property, value, onChange, onCreateOption, multi }: CellPr
             ))}
           </div>
           {text.length > 0 && !exists ? (
-            <button type="button" role="menuitem" className="db-pop__item" onClick={() => void create()}>
+            <button type="button" role="menuitem" className="popmenu__item" onClick={() => void create()}>
               <Plus size={12} />
               Create “{text}”
             </button>
           ) : null}
-        </Pop>
+        </Menu>
       ) : null}
     </>
   );
@@ -280,8 +280,8 @@ function PersonCell({ property, value, people, onChange }: CellProps) {
         ))}
       </button>
       {open ? (
-        <Pop label={`${property.name} people`} anchor={trigger} onClose={() => setOpen(false)}>
-          <div className="db-pop__list">
+        <Menu label={`${property.name} people`} anchor={trigger} onClose={() => setOpen(false)}>
+          <div className="popmenu__list">
             {people
               .filter((person) => !person.disabled)
               .map((person) => (
@@ -289,7 +289,7 @@ function PersonCell({ property, value, people, onChange }: CellProps) {
                   key={person.id}
                   type="button"
                   role="menuitem"
-                  className="db-pop__item"
+                  className="popmenu__item"
                   onClick={() => toggle(person.id)}
                 >
                   {person.name}
@@ -297,7 +297,7 @@ function PersonCell({ property, value, people, onChange }: CellProps) {
                 </button>
               ))}
           </div>
-        </Pop>
+        </Menu>
       ) : null}
     </>
   );

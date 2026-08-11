@@ -13,8 +13,8 @@ import {
   type SelectOption,
 } from '@tablinum/shared';
 import { Plus, Trash } from '../ui/Icon';
+import { Menu } from '../ui/Menu';
 import { Tag } from './Cell';
-import { Pop } from './Pop';
 
 /** A private type, so a card dragged out of the board is never taken for a page from the tree. */
 const DRAG_MIME = 'application/x-tablinum-row';
@@ -368,7 +368,7 @@ function GroupMenu({ group, onRename, onRemove }: GroupMenuProps) {
         <Tag option={group} />
       </button>
       {open ? (
-        <Pop label={`Stack ${group.name}`} anchor={trigger} onClose={close}>
+        <Menu label={`Stack ${group.name}`} anchor={trigger} onClose={close}>
           <input
             className="input"
             autoFocus
@@ -385,11 +385,11 @@ function GroupMenu({ group, onRename, onRemove }: GroupMenuProps) {
           />
           {onRemove === null ? null : (
             <>
-              <div className="db-pop__sep" />
+              <div className="popmenu__sep" />
               <button
                 type="button"
                 role="menuitem"
-                className="db-pop__item db-pop__item--danger"
+                className="popmenu__item popmenu__item--danger"
                 onClick={() => {
                   setOpen(false);
                   onRemove();
@@ -400,7 +400,7 @@ function GroupMenu({ group, onRename, onRemove }: GroupMenuProps) {
               </button>
             </>
           )}
-        </Pop>
+        </Menu>
       ) : null}
     </>
   );
@@ -520,14 +520,14 @@ function Card({
           ⋯
         </button>
         {open ? (
-          <Pop label="Card menu" anchor={trigger} onClose={() => setOpen(false)}>
-            <div className="db-pop__label">Move to</div>
+          <Menu label="Card menu" anchor={trigger} onClose={() => setOpen(false)}>
+            <div className="popmenu__label">Move to</div>
             {groups.map((group) => (
               <button
                 key={group.id ?? 'none'}
                 type="button"
                 role="menuitem"
-                className="db-pop__item"
+                className="popmenu__item"
                 onClick={() => {
                   setOpen(false);
                   onMove(group);
@@ -536,11 +536,11 @@ function Card({
                 {group.name}
               </button>
             ))}
-            <div className="db-pop__sep" />
+            <div className="popmenu__sep" />
             <button
               type="button"
               role="menuitem"
-              className="db-pop__item db-pop__item--danger"
+              className="popmenu__item popmenu__item--danger"
               onClick={() => {
                 setOpen(false);
                 onDelete();
@@ -549,7 +549,7 @@ function Card({
               <Trash size={12} />
               Delete row
             </button>
-          </Pop>
+          </Menu>
         ) : null}
       </div>
 

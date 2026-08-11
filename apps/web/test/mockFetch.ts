@@ -72,7 +72,8 @@ export function installFetch(routes: Routes): MockServer {
     if (route === undefined) {
       return json({ error: { code: 'NOT_FOUND', message: `No route for ${method} ${url.pathname}` } }, 404);
     }
-    const payload = typeof route === 'function' ? route(url, body) : route;
+    // Awaited, so a handler can hold its answer back and a test can look at the app mid-flight.
+    const payload = typeof route === 'function' ? await route(url, body) : route;
     // A handler may hand back a whole Response, which is how a test asks for a refusal.
     return payload instanceof Response ? payload : json(payload);
   };

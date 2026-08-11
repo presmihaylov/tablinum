@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { screen } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import { Route, Routes } from 'react-router-dom';
 import userEvent from '@testing-library/user-event';
 import type { Account, AuthStateResponse, Workspace } from '@tablinum/shared';
@@ -127,5 +127,102 @@ describe('the settings page', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Back to the pages' }));
     expect(screen.getByTestId('location')).toHaveTextContent('/');
+  });
+});
+
+const MEMBERS = 'GET /api/v1/workspaces/ws_00000000000000000000000001/members';
+const RESCAN = '/api/v1/rescan';
+
+function rescanCalls(mock: MockServer): number {
+  return mock.calls.filter((call) => call.url.pathname === RESCAN).length;
+}
+
+/** The sweep deletes attachment files, so the control is admin-only and asks before it runs. */
+describe('the rescan control', () => {
+  it('stays hidden from somebody who is not an admin of the workspace', async () => {
+    start(SAM, {
+      [MEMBERS]: {
+        members: [
+          { account: ADA, role: 'admin' },
+          { account: SAM, role: 'member' },
+        ],
+      },
+    });
+    renderSettings('/settings/workspace');
+
+    await screen.findByRole('region', { name: 'People in this workspace' });
+    expect(screen.queryByRole('region', { name: 'Rescan the content directory' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Rescan' })).toBeNull();
+  });
+
+  it('shows for an install admin', async () => {
+    start(ADA);
+    renderSettings('/settings/workspace');
+
+    expect(await screen.findByRole('button', { name: 'Rescan' })).toBeEnabled();
+  });
+
+  // requireWorkspaceAdmin() takes an admin of this one workspace as well as an install admin,
+  // so the coarser install check would hide the button from somebody the route lets through.
+  it('shows for an admin of this workspace who is not an install admin', async () => {
+    start(SAM, { [MEMBERS]: { members: [{ account: SAM, role: 'admin' }] } });
+    renderSettings('/settings/workspace');
+
+    expect(await screen.findByRole('button', { name: 'Rescan' })).toBeEnabled();
+  });
+
+  it('asks first, then names every file it took away', async () => {
+    const mock = start(ADA, {
+      'POST /api/v1/rescan': {
+        pages: 12,
+        removedAssets: ['_assets/pg_00000000000000000000000009/old.png'],
+      },
+    });
+    const user = userEvent.setup();
+    renderSettings('/settings/workspace');
+
+    await user.click(await screen.findByRole('button', { name: 'Rescan' }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Rescan Main?' });
+    expect(dialog).toHaveTextContent(/deletes the attachment files of pages that are gone/);
+    expect(dialog).toHaveTextContent(/no history to restore from/);
+    // The whole point of the dialog: nothing has run yet.
+    expect(rescanCalls(mock)).toBe(0);
+
+    await user.click(within(dialog).getByRole('button', { name: 'Rescan' }));
+
+    expect(await screen.findByText('The search index now holds 12 pages.')).toBeInTheDocument();
+    expect(
+      screen.getByText('1 attachment file left the content directory for good:'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('_assets/pg_00000000000000000000000009/old.png')).toBeInTheDocument();
+    expect(rescanCalls(mock)).toBe(1);
+  });
+
+  it('goes dead while the rescan is in flight', async () => {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const mock = start(ADA, {
+      'POST /api/v1/rescan': async () => {
+        await held;
+        return { pages: 3, removedAssets: [] };
+      },
+    });
+    const user = userEvent.setup();
+    renderSettings('/settings/workspace');
+
+    await user.click(await screen.findByRole('button', { name: 'Rescan' }));
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Rescan' }));
+
+    const button = await screen.findByRole('button', { name: 'Rescanning…' });
+    await waitFor(() => expect(button).toBeDisabled());
+    // A second rescan while the first one reads every page would be a wasted CPU spike.
+    await user.click(button);
+    expect(rescanCalls(mock)).toBe(1);
+
+    release();
+    expect(await screen.findByText('No attachment was removed.')).toBeInTheDocument();
   });
 });

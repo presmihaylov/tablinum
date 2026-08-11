@@ -52,15 +52,8 @@ describe('markdown round trip', () => {
  * it out of the file, so it is pinned here rather than left to the editor code.
  */
 describe('markdown round trip: an empty line at the end', () => {
-  const sources = [
-    'One line.\n',
-    'Intro line.\n\n| a | b |\n| --- | --- |\n| 1 | 2 |\n',
-    '# Title\n\nBody.\n',
-    '- one\n- two\n',
-    '```sh\nls\n```\n',
-  ];
-  for (const source of sources) {
-    it(`weighs nothing: ${JSON.stringify(source)}`, () => {
+  for (const [name, source] of Object.entries(CORPUS)) {
+    it(`weighs nothing: ${name}`, () => {
       expect(roundtripWithTrailingLine(source)).toBe(source);
     });
   }

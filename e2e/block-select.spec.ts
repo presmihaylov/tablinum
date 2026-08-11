@@ -22,6 +22,12 @@ const TABLE = ['Intro line.', '', '| a | b |', '| --- | --- |', '| 1 | 2 |', '']
  */
 const GUTTER_X = 55;
 
+/**
+ * The strip left of the document that the old rule armed in, and nothing wider. A margin drag
+ * has to start well outside it, or the test says nothing about the fix.
+ */
+const OLD_GUTTER = 72;
+
 function editorBody(page: Page): Locator {
   return page.locator('.gd-editor-surface');
 }
@@ -107,16 +113,19 @@ async function dragGutter(
   await page.mouse.up();
 }
 
+/** How far inside the edge of a box a drag starts, so the press never lands on the edge. */
+const EDGE = 4;
+
 /**
- * The middle of the blank column beside the document. A person who wants a box over the lines
- * aims here, well past the narrow gutter the handles stand in.
+ * The far edge of the blank column beside the document, left or right. A drag starts there
+ * rather than halfway in, so the distance from the document is the whole margin and no change
+ * to `--content-measure` or `--sidebar-width` can quietly bring it back inside the old gutter.
  */
 async function marginX(page: Page, side: 'left' | 'right'): Promise<number> {
   const column = await page.locator('.app-content').boundingBox();
-  const surface = await editorBody(page).boundingBox();
-  if (column === null || surface === null) throw new Error('the page has no column');
-  if (side === 'left') return (column.x + surface.x) / 2;
-  return (surface.x + surface.width + column.x + column.width) / 2;
+  if (column === null) throw new Error('the page has no column');
+  if (side === 'left') return column.x + EDGE;
+  return column.x + column.width - EDGE;
 }
 
 /**
@@ -262,6 +271,12 @@ test.describe('selecting whole blocks', () => {
     await page.goto(`/p/${seeded.path}`);
     await expect(line(page, 'Alpha line.')).toBeVisible();
 
+    // Said out loud, so the test fails rather than quietly stops meaning anything the day
+    // the measure or the rail changes width: the drag begins clear outside the old strip.
+    const surface = await editorBody(page).boundingBox();
+    if (surface === null) throw new Error('the document has no box');
+    expect(surface.x - (await marginX(page, 'left'))).toBeGreaterThan(OLD_GUTTER * 2);
+
     await dragMargin(page, 'left', line(page, 'Beta line.'), line(page, 'Delta line.'), true);
 
     await expect(band(page)).toBeVisible();
@@ -405,6 +420,53 @@ test.describe('selecting whole blocks', () => {
     await expect
       .poll(async () => (await content.pageFileText(seeded.path)) ?? '')
       .toContain('Alpha line.\n\nDelta line.\n\nBeta line.\n\nGamma line.');
+  });
+
+  test('a shift click past a block boundary picks the whole blocks as well', async ({
+    api,
+    content,
+    page,
+  }) => {
+    const seeded = await seedPage(api, content, 'shift', PARAGRAPHS);
+
+    await page.goto(`/p/${seeded.path}`);
+    await expect(line(page, 'Alpha line.')).toBeVisible();
+    const beta = await line(page, 'Beta line.').boundingBox();
+    const delta = await line(page, 'Delta line.').boundingBox();
+    if (beta === null || delta === null) throw new Error('a line has no box');
+
+    // The box turns a shift click down, so the release is the only thing that widens it.
+    await page.mouse.click(beta.x + 20, beta.y + beta.height / 2);
+    await page.keyboard.down('Shift');
+    await page.mouse.click(delta.x + 20, delta.y + delta.height / 2);
+    await page.keyboard.up('Shift');
+
+    await expect(band(page)).toHaveCount(0);
+    await expect(litBlocks(page)).toHaveCount(3);
+  });
+
+  test('a drag out of a line and back into it still ends on the words', async ({
+    api,
+    content,
+    page,
+  }) => {
+    const seeded = await seedPage(api, content, 'back', PARAGRAPHS);
+
+    await page.goto(`/p/${seeded.path}`);
+    const beta = await line(page, 'Beta line.').boundingBox();
+    const delta = await line(page, 'Delta line.').boundingBox();
+    if (beta === null || delta === null) throw new Error('a line has no box');
+
+    // Down past the last line and back up into the one it started on. A reader overshoots a
+    // short line all the time, and what they let go on is a run of words in that one line.
+    await page.mouse.move(beta.x + 2, beta.y + beta.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(beta.x + 2, delta.y + delta.height - 2, { steps: 8 });
+    await page.mouse.move(beta.x + 60, beta.y + beta.height / 2, { steps: 8 });
+    await page.mouse.up();
+
+    await expect(litBlocks(page)).toHaveCount(0);
+    await expect(page.getByRole('toolbar', { name: 'Text formatting' })).toBeVisible();
   });
 
   test('a drag inside one line still picks words, so the mark bar comes up', async ({

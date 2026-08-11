@@ -19,8 +19,9 @@ export const BAND_CLASS = 'gd-block-band';
 
 /**
  * The mark the shell puts on every box of blank room around the document, and on nothing else.
- * A layout that grows a new box arms nothing there until it is marked too, which fails the
- * safe way: a band that will not start is seen at once, one that starts in the top bar is not.
+ * An opt-in, because the boxes the document merely sits inside include the scroller and the
+ * page itself, and telling those apart by measurement takes more rules than the mark does.
+ * `warnUnmarked` below shouts when a shell marks nothing at all.
  */
 export const BAND_CANVAS = '[data-band-canvas]';
 
@@ -163,7 +164,7 @@ class Band {
  * True when the point landed on the blank room itself. A button, a link or a block is its own
  * target, and a scroller reports its own bar as a press on the scroller, so none of them match.
  */
-export function besideDocument(target: EventTarget | null): boolean {
+function besideDocument(target: EventTarget | null): boolean {
   return target instanceof Element && target.matches(BAND_CANVAS);
 }
 
@@ -206,8 +207,15 @@ function belowLastBlock(view: EditorView, clientY: number): boolean {
  * cursor, and the reader has to press Enter before there is anything to write on.
  *
  * The line never reaches the file: the serializer writes the same bytes with it and without
- * it, so no save is queued. The round trip suite pins those bytes, because the day they differ
- * every stray click here becomes a commit. The line therefore goes away on the next load.
+ * it, so no save is queued. The round trip suite pins those bytes over the whole corpus,
+ * because the day they differ every stray click here becomes a commit.
+ *
+ * It stays out of the undo stack as well, so Cmd+Z after a stray click takes back the last
+ * real edit rather than a line the reader never typed.
+ *
+ * It is not free, though: the stream sends every transaction that changed the document, so a
+ * click here does broadcast one step to the other readers of a shared page. They see an empty
+ * line appear at the end, and it goes away on their next load.
  */
 function landAtEnd(view: EditorView): void {
   if (!view.editable) return;
@@ -219,7 +227,10 @@ function landAtEnd(view: EditorView): void {
   // Nothing to add when the line is already there: a second click only puts the caret back.
   const tr = ready ? view.state.tr : view.state.tr.insert(doc.content.size, paragraph.create());
   view.dispatch(
-    tr.setSelection(TextSelection.create(tr.doc, tr.doc.content.size - 1)).scrollIntoView(),
+    tr
+      .setMeta('addToHistory', false)
+      .setSelection(TextSelection.create(tr.doc, tr.doc.content.size - 1))
+      .scrollIntoView(),
   );
   view.focus();
 }
@@ -257,6 +268,29 @@ function collapse(view: EditorView, side: -1 | 1): boolean {
   return true;
 }
 
+/** Said at most once a page, however many editors a page mounts. */
+let unmarkedWarned = false;
+
+/**
+ * Shout when the shell put the document inside no marked box at all. That is the one way the
+ * opt-in above rots quietly: a band that never starts looks exactly like a page with nothing
+ * to select. Deferred a tick, because the React wrapper moves the document into the page
+ * after the view is built.
+ */
+function warnUnmarked(view: EditorView): void {
+  if (!import.meta.env.DEV || unmarkedWarned) return;
+  window.setTimeout(() => {
+    // A headless editor stands in no shell, so it has nothing to mark and nothing to say.
+    if (view.isDestroyed || !view.dom.isConnected) return;
+    if (view.dom.closest(BAND_CANVAS) !== null || unmarkedWarned) return;
+    unmarkedWarned = true;
+    console.warn(
+      `[tablinum] the document stands in no ${BAND_CANVAS} box: no drag beside it picks blocks, ` +
+        'and no click below it gives a line to write on. Mark the blank room around it.',
+    );
+  }, 0);
+}
+
 /** A button that is down. The phase is where it went down, until the pointer makes it a drag. */
 interface Press {
   phase: 'beside' | 'on' | 'dragging';
@@ -292,9 +326,12 @@ export const BlockSelect = Extension.create({
         props: {
           decorations: (state) => decorate(state),
 
-          // A drag inside the document is the browser's until the button comes up. The band
-          // below takes every plain press, so what is left to this is the shift click, which
-          // extends the marked stretch and may take it past a block boundary.
+          // A drag inside the document is the browser's until the button comes up, and the
+          // release widens whatever it marked to whole blocks. Every plain press registers
+          // this, and so does a shift click, which the band itself turns down: the band takes
+          // over a plain drag only once the marked stretch reaches past one block, and it
+          // never takes a shift click at all. A double or a triple click registers nothing,
+          // because picking a word and picking a paragraph are the browser's to answer.
           handleDOMEvents: {
             mousedown: (view, event) => {
               if (event.button !== 0 || event.detail > 1) return false;
@@ -310,6 +347,7 @@ export const BlockSelect = Extension.create({
         },
 
         view: (view) => {
+          warnUnmarked(view);
           const band = new Band();
           // The button that is down now, and nothing else: the two listeners `down` registers
           // live exactly as long as this record does, so their presence is the rest of the state.
@@ -320,6 +358,23 @@ export const BlockSelect = Extension.create({
             Math.abs(event.clientX - from.start.x) > SLOP ||
             Math.abs(event.clientY - from.start.y) > SLOP;
 
+          /**
+           * A drag beside the document begins. The caret and the focus land here rather than
+           * on the press: a press beside the page title would otherwise take the caret out of
+           * the title, and the caret it lands on flashes inside the document under a press
+           * below it. There is nothing to hand over on the document, which has the caret.
+           */
+          const armBeside = (from: Press): void => {
+            from.phase = 'dragging';
+            if (from.anchor === null) return;
+            view.dispatch(
+              view.state.tr.setSelection(
+                BlockSelection.between(view.state.doc, from.anchor, from.anchor),
+              ),
+            );
+            view.focus();
+          };
+
           // A press on the document leaves the words to the browser. Once the marked stretch
           // reaches past the block it began in, the reader is picking blocks, not words, so
           // the box takes the drag over from there.
@@ -329,15 +384,17 @@ export const BlockSelect = Extension.create({
             return runAcross(view, selection.from, selection.to) !== null;
           };
 
-          /** A press beside the document turns into a drag by moving, one on it by reaching. */
-          const becomesDrag = (from: Press, event: MouseEvent): boolean =>
-            from.phase === 'beside' ? far(from, event) : crossedBlocks();
-
           const move = (event: MouseEvent): void => {
             const from = press;
             if (from === null) return;
-            if (from.phase !== 'dragging' && !becomesDrag(from, event)) return;
-            from.phase = 'dragging';
+            if (from.phase === 'beside') {
+              if (!far(from, event)) return;
+              armBeside(from);
+            }
+            if (from.phase === 'on') {
+              if (!crossedBlocks()) return;
+              from.phase = 'dragging';
+            }
             // Painted first, so the box follows the pointer even over a gap the lookup misses.
             band.draw(from.start, { x: event.clientX, y: event.clientY });
             const pos = blockPosAt(view, event.clientY);
@@ -377,14 +434,9 @@ export const BlockSelect = Extension.create({
             window.addEventListener('mouseup', up);
             if (phase === 'on') return;
             // Beside the document there is nothing native to start, and letting the browser
-            // start one would mark the whole page instead.
+            // start one would mark the whole page instead. The press decides nothing else:
+            // `armBeside` answers a drag and `up` answers a click.
             event.preventDefault();
-            const { anchor } = press;
-            if (anchor === null) return;
-            view.dispatch(
-              view.state.tr.setSelection(BlockSelection.between(view.state.doc, anchor, anchor)),
-            );
-            view.focus();
           };
 
           window.addEventListener('mousedown', down);

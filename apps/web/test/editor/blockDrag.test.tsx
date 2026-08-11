@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, screen } from '@testing-library/react';
-import type { Editor } from '@tiptap/core';
-import { BAND_CLASS, BlockSelection } from '../../src/editor/extensions';
+import { Editor } from '@tiptap/core';
+import { BAND_CLASS, BlockSelection, buildExtensions } from '../../src/editor/extensions';
 import { serializeFragment } from '../../src/editor/markdown';
 import { mountEditor, settle } from './mount';
 
@@ -158,6 +158,56 @@ describe('a click in the room under the last block', () => {
     await clickUnder();
 
     expect(editor.state.doc.childCount).toBe(1);
+  });
+
+  it('keeps the line out of the undo stack, so Cmd+Z takes back the last real edit', async () => {
+    const editor = await mountEditor({ content: 'one\n' });
+    editor.commands.insertContentAt(editor.state.doc.content.size - 1, ' more');
+    expect(editor.state.doc.textContent).toBe('one more');
+
+    await clickUnder();
+    expect(editor.state.doc.childCount).toBe(2);
+
+    await settle(() => {
+      editor.commands.undo();
+    });
+
+    // The words the reader typed come back off, and the line the click made stays put.
+    expect(editor.state.doc.textContent).toBe('one');
+    expect(editor.state.doc.childCount).toBe(2);
+  });
+});
+
+describe('a document the shell put in no marked room', () => {
+  const hosts: HTMLElement[] = [];
+  const editors: Editor[] = [];
+
+  /** Straight in the body, inside no marked box, which is the mistake the guard shouts at. */
+  async function mountUnmarked(): Promise<Editor> {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    hosts.push(host);
+    const editor = new Editor({ element: host, extensions: buildExtensions({}), content: '' });
+    editors.push(editor);
+    await settle(() => {});
+    return editor;
+  }
+
+  afterEach(() => {
+    for (const editor of editors.splice(0)) editor.destroy();
+    for (const host of hosts.splice(0)) host.remove();
+  });
+
+  it('says so once, however many editors the page mounts', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    await mountUnmarked();
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]?.[0]).toContain('data-band-canvas');
+
+    // The second one is the same mistake, and saying it again helps nobody.
+    await mountUnmarked();
+    expect(warn).toHaveBeenCalledTimes(1);
   });
 });
 

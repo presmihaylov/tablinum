@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import type { Account } from '@tablinum/shared';
 import { CommandPalette } from '../src/components/CommandPalette/CommandPalette';
 import { Sidebar } from '../src/components/Sidebar/Sidebar';
 import { AuthProvider } from '../src/lib/auth';
@@ -13,10 +14,25 @@ const SECRET = node('notes/secret', { title: 'Secret' });
 const ENG: SpaceTree = { slug: 'eng', name: 'Engineering', tree: [DEPLOY] };
 const NOTES: SpaceTree = { slug: 'notes', name: 'Notes', tree: [SECRET], owner: 'us_ada' };
 
+const ADA: Account = {
+  id: 'us_ada',
+  email: 'ada@example.com',
+  name: 'Ada Lovelace',
+  handle: 'ada.lovelace',
+  role: 'admin',
+  color: '#3b82f6',
+  avatarRev: null,
+  disabled: false,
+  created: '2026-01-01T00:00:00.000Z',
+  updated: '2026-01-01T00:00:00.000Z',
+};
+
 let server: MockServer | null = null;
 
 function start(routes: MockRoutes = {}): MockServer {
   server = installFetch({
+    // An admin, because the Spaces bucket only offers a shared space to one.
+    'GET /api/v1/auth/state': { setupRequired: false, user: ADA },
     'GET /api/v1/workspaces': { workspaces: [], current: null },
     'GET /api/v1/tree': { spaces: [ENG, NOTES] },
     'GET /api/v1/favorites': { favorites: [] },

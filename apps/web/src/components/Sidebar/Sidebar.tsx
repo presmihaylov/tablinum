@@ -5,6 +5,7 @@ import { pageHref } from '../../lib/href';
 import { ancestorPaths, findNode } from '../../lib/tree';
 import { usePersistedState } from '../../lib/storage';
 import { useContent } from '../../lib/content';
+import { useAuth } from '../../lib/auth';
 import { PageIcon } from '../ui/PageIcon';
 import { PanelLeft, Search, Star } from '../ui/Icon';
 import { AccountMenu } from '../Account/AccountMenu';
@@ -27,6 +28,9 @@ export function Sidebar({ onOpenPalette, onCollapse }: SidebarProps) {
   const navigate = useNavigate();
   const { spaces, recents, favorites, toggleFavorite, currentPath, newSpace, isLoadingTree } =
     useContent();
+  const { user } = useAuth();
+  // Only an admin may create a space the whole workspace reads, so nobody else is offered one.
+  const isAdmin = user?.role === 'admin';
   const [expanded, setExpanded] = usePersistedState<string[]>('tree.expanded', []);
   const [sections, setSections] = usePersistedState<SectionState>('ui.sections', {});
 
@@ -127,7 +131,7 @@ export function Sidebar({ onOpenPalette, onCollapse }: SidebarProps) {
             label="Spaces"
             open={isSectionOpen('spaces')}
             onToggle={() => toggleSection('spaces')}
-            action={{ label: 'New space', onSelect: () => newSpace() }}
+            action={isAdmin ? { label: 'New space', onSelect: () => newSpace() } : undefined}
           >
             {!isLoadingTree && shared.length === 0 ? <p className="sidebar__hint">No spaces yet.</p> : null}
             {shared.map((space) => (

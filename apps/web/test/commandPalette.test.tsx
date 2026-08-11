@@ -24,10 +24,12 @@ const ADA: Account = {
   updated: '2026-01-01T00:00:00.000Z',
 };
 
-/** The rows an anybody sees on the home route: no page is open and nobody is signed in. */
+/**
+ * The rows anybody sees on the home route: no page is open and nobody is signed in, so the rows
+ * that ask for an admin ("New space", "Agents") are not among them.
+ */
 const BASE_ROWS = [
   'New page',
-  'New space',
   'New private space',
   'Sync with git',
   'Toggle theme',
@@ -193,7 +195,6 @@ describe('CommandPalette', () => {
     );
     expect(rowLabels()).toEqual([
       'New page',
-      'New space',
       'New private space',
       'Sync with git',
       'Toggle theme',
@@ -237,6 +238,27 @@ describe('CommandPalette', () => {
     await user.type(input, 'agents');
 
     await waitFor(() => expect(rowLabels()).not.toContain('Agents'));
+  });
+
+  it('offers a shared space to an admin', async () => {
+    startServer({ 'GET /api/v1/auth/state': { setupRequired: false, user: ADA } });
+    const { user, input } = await openPalette();
+
+    await user.type(input, 'space');
+
+    await waitFor(() => expect(rowLabels()).toContain('New space'));
+  });
+
+  it('keeps the shared space away from a member, who cannot create one', async () => {
+    startServer({
+      'GET /api/v1/auth/state': { setupRequired: false, user: { ...ADA, role: 'member' } },
+    });
+    const { user, input } = await openPalette();
+
+    await user.type(input, 'space');
+
+    await waitFor(() => expect(rowLabels()).toContain('New private space'));
+    expect(rowLabels()).not.toContain('New space');
   });
 
   it('runs a page action on the page that is open', async () => {
@@ -298,7 +320,7 @@ describe('CommandPalette', () => {
 
     expect(selectedLabel()).toBe('New page');
     await user.keyboard('{ArrowDown}');
-    expect(selectedLabel()).toBe('New space');
+    expect(selectedLabel()).toBe('New private space');
     await user.keyboard('{ArrowUp}{ArrowUp}');
     expect(selectedLabel()).toBe(BASE_ROWS.at(-1));
   });

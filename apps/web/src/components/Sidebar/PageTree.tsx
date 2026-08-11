@@ -5,6 +5,7 @@ import { sortNodes } from '../../lib/tree';
 import type { DropPosition } from '../../lib/treeMove';
 import type { TriggerBox } from '../../lib/menuPlacement';
 import { useContent } from '../../lib/content';
+import { useAuth } from '../../lib/auth';
 import { PageIcon } from '../ui/PageIcon';
 import { ContextMenu, type MenuItem } from '../ui/Overlay';
 import { ChevronRight, Copy, Dots, Link, MoveTo, Pencil, Plus, Star, Trash } from '../ui/Icon';
@@ -39,7 +40,19 @@ export function PageTree({ nodes, expanded, currentPath, onToggle, onExpand, onO
     editSpace,
     isFavorite,
     toggleFavorite,
+    spaces,
   } = useContent();
+  const { user } = useAuth();
+
+  // The server lets an admin rename any shared space, and lets an owner rename their own private
+  // one. A private space nobody else can see is never in this tree, so an owner is always me.
+  const canEditSpace = useCallback(
+    (slug: string): boolean => {
+      if (user?.role === 'admin') return true;
+      return spaces.find((space) => space.slug === slug)?.owner !== undefined;
+    },
+    [user, spaces],
+  );
   const { dragPath, setDragPath, drop, setDrop } = useTreeDrag();
   const [menu, setMenu] = useState<MenuState | null>(null);
 
@@ -72,7 +85,7 @@ export function PageTree({ nodes, expanded, currentPath, onToggle, onExpand, onO
       if (pathDepth(node.path) > 1) {
         items.push({ id: 'move', label: 'Move to space', icon: <MoveTo />, onSelect: () => moveToSpace(node) });
       }
-      if (pathDepth(node.path) === 1) {
+      if (pathDepth(node.path) === 1 && canEditSpace(node.path)) {
         items.push({ id: 'space', label: 'Edit space', icon: <Pencil />, onSelect: () => editSpace(node.path) });
       }
       items.push(
@@ -89,6 +102,7 @@ export function PageTree({ nodes, expanded, currentPath, onToggle, onExpand, onO
       duplicatePage,
       moveToSpace,
       editSpace,
+      canEditSpace,
       copyLink,
       deletePage,
     ],

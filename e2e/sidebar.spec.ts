@@ -161,6 +161,28 @@ test.describe('sidebar buckets', () => {
     await expect(row(bucket(page, 'Recents'), 'Person Bravo')).toHaveCount(0);
   });
 
+  test('never offers a shared space to a member, who may still make a private one', async ({
+    page,
+    api,
+    request,
+  }) => {
+    const space = await api.createUniqueSpace('sidebar-role');
+    await page.goto(`/p/${space.slug}`);
+    await expect(bucket(page, 'Spaces').getByRole('button', { name: 'New space' })).toBeVisible();
+
+    const member = await becomeMember(page, request, 'Sidebar Gated');
+    try {
+      await page.goto(`/p/${space.slug}`);
+
+      // The server refuses POST /spaces to a member, so the action must not be on offer at all.
+      await expect(bucket(page, 'Private').getByRole('button', { name: 'New private space' })).toBeVisible();
+      await expect(bucket(page, 'Spaces').getByRole('button', { name: 'New space' })).toHaveCount(0);
+    } finally {
+      await becomeAdmin(page);
+      await request.delete(`/api/v1/users/${member.id}`);
+    }
+  });
+
   test('creates a space from the header of the Spaces bucket', async ({ page, api }) => {
     const home = await api.createUniqueSpace('sidebar-new');
     await page.goto(`/p/${home.slug}`);

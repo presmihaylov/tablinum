@@ -113,13 +113,21 @@ export function useDocStream({ editor, room, frame, page, onTitle }: StreamOptio
      * text on screen was actually replaced.
      */
     const seed = (markdown: string, version: number, emit: boolean): boolean => {
+      // Read before the plugin goes: unregistering it takes the unconfirmed steps with it.
+      const unsent = seededRef.current && sendableSteps(editor.state) !== null;
       editor.unregisterPlugin('collab');
       const read = readMarkdown(markdown);
       // A room hands out its baseline every time it starts, and that baseline is usually the
       // text already on screen: on a join it is the page as it loaded. Replacing a document
       // with itself still rebuilds every node view, moves the caret and wipes everyone else's,
       // so the text is compared first and left alone when it already matches.
-      const settled = writeMarkdown(editor.state.doc, read.frame) === markdown;
+      //
+      // Matching text is not the same document, because markdown does not carry everything the
+      // document holds: an empty paragraph at the end writes nothing at all. Keeping such a
+      // document while the counter below restarts at the room's version would leave this tab one
+      // node ahead of the room with no record of it, and every offset it sent afterwards would
+      // miss by that node. So work the room has not seen is reseeded and folded back in instead.
+      const settled = !unsent && writeMarkdown(editor.state.doc, read.frame) === markdown;
       frame.current = read.frame;
       if (!settled) {
         editor.commands.setContent(read.body, emit, PARSE_OPTIONS);

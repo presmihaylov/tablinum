@@ -209,6 +209,36 @@ describe('the document stream', () => {
     }
   });
 
+  it('reseeds when the text matches but the document carries work the room has not seen', () => {
+    const source = '# Deploy\n\nRun the pipeline from main.\n';
+    const tab = mountStream(source);
+    let view: ReturnType<typeof tab.mount> | null = null;
+    try {
+      view = tab.mount();
+      tab.sendInit(myClientId());
+      const baseline = tab.editor.state.doc.childCount;
+
+      // Enter at the end of the page, which is the one keystroke that leaves the document and
+      // its markdown disagreeing: a trailing empty paragraph writes nothing at all.
+      act(() => {
+        tab.editor.commands.setTextSelection(tab.editor.state.doc.content.size);
+        tab.editor.commands.splitBlock();
+      });
+      expect(tab.editor.state.doc.childCount).toBe(baseline + 1);
+      expect(toMarkdown(tab.editor)).toBe(source);
+
+      // The room restarts and hands back a baseline that still matches the text on screen.
+      tab.sendInit(myClientId());
+
+      // Keeping the extra node while the step counter restarts at the room's version would leave
+      // this tab one node ahead of a room that has no record of it, and every offset it sent
+      // afterwards would miss by that node, which puts the next thing typed in the wrong block.
+      expect(tab.editor.state.doc.childCount).toBe(baseline);
+    } finally {
+      tab.stop(view);
+    }
+  });
+
   it('keeps the caret near where it was when a restarted room hands over new text', () => {
     const tab = mountStream('# Deploy\n\nRun the pipeline from main.\n');
     let view: ReturnType<typeof tab.mount> | null = null;

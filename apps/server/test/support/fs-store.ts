@@ -5,6 +5,7 @@ import {
   ASSETS_DIR,
   INDEX_BASENAME,
   MAX_ROWS,
+  NewSpaceSlugSchema,
   PAGE_EXT,
   UNTITLED_ROW,
   assetDirRelPath,
@@ -16,6 +17,7 @@ import {
   depth,
   internal,
   isDescendantOf,
+  isValidPagePath,
   mergeText,
   moveRowBefore,
   newPageId,
@@ -23,6 +25,7 @@ import {
   notFound,
   pagePathToRelFile,
   parentPath,
+  parseOrThrow,
   relFileToPagePath,
   saveConflict,
   slugify,
@@ -32,7 +35,15 @@ import {
   coerceProps,
   coerceValue,
 } from '@tablinum/shared';
-import { Mutex, RevHistory, readDirNames, readTextOrNull } from '@tablinum/core';
+import {
+  Mutex,
+  RevHistory,
+  frontmatterEqual,
+  normalizeIcon,
+  readDirNames,
+  readTextOrNull,
+  titleize,
+} from '@tablinum/core';
 import type {
   Backlink,
   CreatePageBody,
@@ -68,46 +79,62 @@ function toSummary(page: Page): PageSummary {
   return summary;
 }
 
-function titleize(segment: string): string {
-  const words = segment.replace(/[-_]+/g, ' ').trim();
-  return words.charAt(0).toUpperCase() + words.slice(1);
-}
-
 function isIndexRel(rel: string): boolean {
   return rel === INDEX_FILE || rel.endsWith(`/${INDEX_FILE}`);
 }
 
-function compareByOrderThenTitle(
-  a: { order?: number; title: string },
-  b: { order?: number; title: string },
-): number {
+/** The real store's rule: absent keeps the icon, null clears it, a string replaces it. */
+function patchedIcon(
+  current: string | undefined,
+  patch: string | null | undefined,
+): string | undefined {
+  if (patch === undefined) return current;
+  if (patch === null) return undefined;
+  return normalizeIcon(patch) ?? undefined;
+}
+
+/** The real store's `compareSpaces`. */
+function compareSpaces(a: Space, b: Space): number {
   const left = a.order ?? Number.POSITIVE_INFINITY;
   const right = b.order ?? Number.POSITIVE_INFINITY;
-  if (left !== right) return left - right;
-  return a.title.localeCompare(b.title);
+  if (left !== right) return left < right ? -1 : 1;
+  const byName = a.name.localeCompare(b.name, 'en', { numeric: true, sensitivity: 'base' });
+  if (byName !== 0) return byName;
+  return a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0;
 }
 
-function sortNodes(nodes: TreeNode[]): void {
-  nodes.sort(compareByOrderThenTitle);
+/** The real store's `compareNodes`. */
+function compareNodes(a: TreeNode, b: TreeNode): number {
+  const left = a.order ?? Number.POSITIVE_INFINITY;
+  const right = b.order ?? Number.POSITIVE_INFINITY;
+  if (left !== right) return left < right ? -1 : 1;
+  const byTitle = a.title.localeCompare(b.title, 'en', { numeric: true, sensitivity: 'base' });
+  if (byTitle !== 0) return byTitle;
+  return a.path < b.path ? -1 : a.path > b.path ? 1 : 0;
+}
+
+function sortNodes(nodes: TreeNode[]): TreeNode[] {
+  nodes.sort(compareNodes);
   for (const node of nodes) sortNodes(node.children);
+  return nodes;
 }
 
+/**
+ * The real store's `buildTree`. Every page in the space takes part, the depth-1 home page
+ * included, so the space home page is the root and its children hang off it. The web reads
+ * `space.tree[0]` as that home page.
+ */
 function buildTree(pages: PageSummary[], space: string): TreeNode[] {
   const byPath = new Map<PagePath, TreeNode>();
   const roots: TreeNode[] = [];
   const inSpace = pages
-    .filter((page) => page.space === space && depth(page.path) > 1)
+    .filter((page) => page.space === space)
     .sort((a, b) => depth(a.path) - depth(b.path));
 
   for (const page of inSpace) {
-    const node: TreeNode = {
-      id: page.id,
-      path: page.path,
-      title: page.title,
-      icon: page.icon,
-      order: page.order,
-      children: [],
-    };
+    const node: TreeNode = { id: page.id, path: page.path, title: page.title, children: [] };
+    if (page.icon !== undefined) node.icon = page.icon;
+    if (page.order !== undefined) node.order = page.order;
     byPath.set(page.path, node);
     const parent = parentPath(page.path);
     const parentNode = parent === null ? undefined : byPath.get(parent);
@@ -118,8 +145,7 @@ function buildTree(pages: PageSummary[], space: string): TreeNode[] {
     parentNode.children.push(node);
   }
 
-  sortNodes(roots);
-  return roots;
+  return sortNodes(roots);
 }
 
 /** One row's cells after a patch. An absent property keeps its value; null clears it. */
@@ -162,6 +188,11 @@ function setCells(
  * A real content store over a real directory of markdown files: the file layout, the
  * frontmatter, leaf/parent promotion and stable ids all behave as the contract describes.
  * It lets the server test suite exercise the API end to end on its own.
+ *
+ * Where this double and the real `ContentStore` disagree, the real one is the specification.
+ * One difference is left on purpose: `init()` writes no starter space. The real store seeds
+ * `docs` into an empty directory on first boot, which is product content for a new install,
+ * and every route test here starts from an empty workspace by design.
  */
 export class FsContentStore implements ContentStore {
   readonly #idByFile = new Map<string, PageId>();
@@ -171,8 +202,13 @@ export class FsContentStore implements ContentStore {
 
   constructor(readonly contentDir: string) {}
 
+  /**
+   * The real store's `init` only makes the content directory. It writes no `_assets`: `buildApp`
+   * does that. It also writes a starter space, which this double deliberately does not; see the
+   * note on the class.
+   */
   async init(): Promise<void> {
-    await mkdir(join(this.contentDir, ASSETS_DIR), { recursive: true });
+    await mkdir(this.contentDir, { recursive: true });
   }
 
   async rebuild(): Promise<void> {
@@ -187,48 +223,51 @@ export class FsContentStore implements ContentStore {
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
       if (entry.name.startsWith('.') || entry.name.startsWith('_')) continue;
+      // The real store scans with `isSpaceSlug`, so a directory that is not a valid slug is
+      // not a space at all.
+      if (!isValidPagePath(entry.name) || entry.name.includes('/')) continue;
       const file = join(this.contentDir, spaceFileRelPath(entry.name));
       const record = existsSync(file) ? parseFlatYaml(await readFile(file, 'utf8')) : {};
+      // A directory with no readable `_space.yml` still names itself, exactly as
+      // `parseSpaceFile` does: the slug, made readable.
       const space: Space = {
         slug: entry.name,
-        name: typeof record.name === 'string' ? record.name : entry.name,
+        name: typeof record.name === 'string' ? record.name : titleize(entry.name),
       };
       if (typeof record.icon === 'string') space.icon = record.icon;
       if (typeof record.order === 'number') space.order = record.order;
       if (typeof record.owner === 'string') space.owner = record.owner;
       spaces.push(space);
     }
-    spaces.sort((a, b) => compareByOrderThenTitle({ ...a, title: a.name }, { ...b, title: b.name }));
+    spaces.sort(compareSpaces);
     return spaces;
   }
 
   async createSpace(input: CreateSpaceBody, owner?: string): Promise<Space> {
-    const dir = join(this.contentDir, input.slug);
-    if (existsSync(dir)) throw conflict(`Space ${input.slug} already exists`);
+    const slug = parseOrThrow(NewSpaceSlugSchema, input.slug, 'space slug');
+    // The descriptor decides, not the directory. A bare directory of markdown is adopted.
+    const file = join(this.contentDir, spaceFileRelPath(slug));
+    if (existsSync(file)) throw conflict(`Space already exists: ${slug}`);
+    const dir = join(this.contentDir, slug);
     await mkdir(dir, { recursive: true });
 
+    const icon = input.icon === undefined ? undefined : (normalizeIcon(input.icon) ?? undefined);
     const descriptor: Record<string, Scalar> = { name: input.name };
-    if (input.icon !== undefined) descriptor.icon = input.icon;
+    if (icon !== undefined) descriptor.icon = icon;
     if (input.order !== undefined) descriptor.order = input.order;
     if (owner !== undefined) descriptor.owner = owner;
-    await writeFile(
-      join(this.contentDir, spaceFileRelPath(input.slug)),
-      serializeFlatYaml(descriptor),
-      'utf8',
-    );
+    await writeFile(file, serializeFlatYaml(descriptor), 'utf8');
 
-    const now = new Date().toISOString();
-    const home: Frontmatter = {
-      id: newPageId(),
-      title: input.name,
-      created: now,
-      updated: now,
-    };
-    if (input.icon !== undefined) home.icon = input.icon;
-    await writeFile(join(dir, INDEX_FILE), serializeFrontmatter(home), 'utf8');
+    // An adopted directory may already hold its home page; only an empty one gets a new one.
+    if (this.#fileOf(slug as PagePath) === null) {
+      const now = new Date().toISOString();
+      const home: Frontmatter = { id: newPageId(), title: input.name, created: now, updated: now };
+      if (icon !== undefined) home.icon = icon;
+      await writeFile(join(dir, INDEX_FILE), serializeFrontmatter(home), 'utf8');
+    }
 
-    const space: Space = { slug: input.slug, name: input.name };
-    if (input.icon !== undefined) space.icon = input.icon;
+    const space: Space = { slug, name: input.name };
+    if (icon !== undefined) space.icon = icon;
     if (input.order !== undefined) space.order = input.order;
     if (owner !== undefined) space.owner = owner;
     return space;
@@ -248,7 +287,7 @@ export class FsContentStore implements ContentStore {
     if (typeof record.owner === 'string') current.owner = record.owner;
 
     const next: Space = { slug, name: patch.name ?? current.name };
-    const icon = patch.icon === undefined ? current.icon : (patch.icon ?? undefined);
+    const icon = patchedIcon(current.icon, patch.icon);
     if (icon !== undefined) next.icon = icon;
     const order = patch.order === undefined ? current.order : (patch.order ?? undefined);
     if (order !== undefined) next.order = order;
@@ -284,8 +323,11 @@ export class FsContentStore implements ContentStore {
     return spaces.map((space) => ({ ...space, tree: buildTree(pages, space.slug) }));
   }
 
+  /** Sorted by page path, as the real store's scan is, so a parent precedes its children. */
   async listPages(): Promise<PageSummary[]> {
-    return (await this.#allPages()).map(toSummary);
+    return (await this.#allPages())
+      .map(toSummary)
+      .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   }
 
 
@@ -342,19 +384,15 @@ export class FsContentStore implements ContentStore {
 
     let rel = this.#fileOf(current.path);
     if (rel === null) throw notFound(`No file for page ${current.path}`);
-    if (patch.path !== undefined && patch.path !== current.path) {
-      rel = await this.#move(current, patch.path);
-    }
+    const moved = patch.path !== undefined && patch.path !== current.path;
+    if (moved && patch.path !== undefined) rel = await this.#move(current, patch.path);
 
     const page = await this.#read(rel);
     if (page === null) throw internal(`Failed to read back ${rel}`);
 
     // Spread what is on disk, or editing a database page's body would drop its `db` block.
-    const frontmatter: Frontmatter = {
-      ...parsePageFile(await readFile(page.filePath, 'utf8')).frontmatter,
-      title: patch.title ?? page.title,
-      updated: new Date().toISOString(),
-    };
+    const onDisk = parsePageFile(await readFile(page.filePath, 'utf8')).frontmatter;
+    const frontmatter: Frontmatter = { ...onDisk, title: patch.title ?? page.title };
 
     const icon = patch.icon === null ? undefined : (patch.icon ?? page.icon);
     if (icon === undefined) delete frontmatter.icon;
@@ -364,8 +402,12 @@ export class FsContentStore implements ContentStore {
     if (order === undefined) delete frontmatter.order;
     if (order !== undefined) frontmatter.order = order;
 
-
     const markdown = merged ?? page.markdown;
+    // The real store's rule: a patch that settles on what is already there is not an edit, so
+    // it must not restamp `updated`. Otherwise every idle save looks like a fresh change.
+    const changed =
+      !frontmatterEqual(onDisk, frontmatter) || markdown !== page.markdown || moved;
+    if (changed) frontmatter.updated = new Date().toISOString();
     await writeFile(page.filePath, serializeFrontmatter(frontmatter) + markdown, 'utf8');
 
     const updated = await this.#read(rel);
@@ -408,11 +450,12 @@ export class FsContentStore implements ContentStore {
       );
     }
 
-    if (page.hasChildren) {
-      await rm(join(this.contentDir, page.path), { recursive: true, force: true });
-    } else {
-      await rm(join(this.contentDir, pagePathToRelFile(page.path, false)), { force: true });
-    }
+    // The file shape, not `hasChildren`: a childless space home page still owns a directory.
+    const ownsDirectory = this.#isIndex(page.path);
+    const target = ownsDirectory
+      ? join(this.contentDir, page.path)
+      : join(this.contentDir, pagePathToRelFile(page.path, false));
+    await rm(target, { recursive: ownsDirectory, force: true });
     await this.#demoteIfEmpty(parentPath(page.path));
     // Like the real store: the files are gone, so a disk that cannot be read here is not fatal.
     await this.removeOrphanedAssets([page.id, ...descendants.map((summary) => summary.id)]).catch(
@@ -464,7 +507,7 @@ export class FsContentStore implements ContentStore {
 
   async getBacklinks(id: PageId): Promise<Backlink[]> {
     const target = await this.getPageById(id);
-    if (target === null) return [];
+    if (target === null) throw notFound(`No page with id ${id}`);
     const needles = [`[[${target.path}]]`, `[[${target.path}|`];
     const backlinks: Backlink[] = [];
     for (const page of await this.#allPages()) {
@@ -516,9 +559,11 @@ export class FsContentStore implements ContentStore {
     baseRev?: string,
     rows?: Record<string, RowProps>,
   ): Promise<Page> {
+    // The real store parses first, so junk is a 400 and never an uncaught TypeError behind a 500.
+    const valid = parseOrThrow(DatabaseSchema, database, 'database');
     return this.#writes.runExclusive(() =>
       this.#writeFrontmatter(id, (next) => {
-        const settled = this.#reconcileSchema(id, database, next.db, baseRev);
+        const settled = this.#reconcileSchema(id, valid, next.db, baseRev);
         this.#rememberSchema(id, settled);
         next.db = settled;
         // After the schema, so a cell may name an option this very write added.
@@ -684,6 +729,28 @@ export class FsContentStore implements ContentStore {
     }
   }
 
+  /** True when a page file sits directly below `path`, which is the real store's rule. */
+  async #hasChildren(path: PagePath): Promise<boolean> {
+    const dir = join(this.contentDir, path);
+    if (!existsSync(dir)) return false;
+    for (const entry of await readdir(dir, { withFileTypes: true })) {
+      if (entry.name.startsWith('.') || entry.name.startsWith('_')) continue;
+      if (entry.isFile()) {
+        if (entry.name !== INDEX_FILE && entry.name.toLowerCase().endsWith(PAGE_EXT)) return true;
+        continue;
+      }
+      // A directory is only a child page when it carries an index.md of its own.
+      if (entry.isDirectory() && existsSync(join(dir, entry.name, INDEX_FILE))) return true;
+    }
+    return false;
+  }
+
+  /** Whether the page lives in `index.md`, which is what decides if a move carries a directory. */
+  #isIndex(path: PagePath): boolean {
+    const rel = this.#fileOf(path);
+    return rel !== null && isIndexRel(rel);
+  }
+
   #fileOf(path: PagePath): string | null {
     const leaf = pagePathToRelFile(path, false);
     if (existsSync(join(this.contentDir, leaf))) return leaf;
@@ -739,7 +806,9 @@ export class FsContentStore implements ContentStore {
       markdown,
       rev: contentRev(markdown),
       filePath: abs,
-      hasChildren: isIndexRel(relFile),
+      // Real children, not "the file is an index.md". A space home page is always an index
+      // file, so the two part company the moment a space has no pages under it.
+      hasChildren: await this.#hasChildren(path),
     };
     if (frontmatter.icon !== undefined) page.icon = frontmatter.icon;
     if (frontmatter.order !== undefined) page.order = frontmatter.order;
@@ -771,31 +840,42 @@ export class FsContentStore implements ContentStore {
     await rm(dir, { recursive: true, force: true });
   }
 
+  /** Mirrors the real store's `#movePage`, refusal for refusal. */
   async #move(current: Page, target: PagePath): Promise<string> {
     if (isDescendantOf(target, current.path)) {
-      throw validation(`Cannot move ${current.path} inside itself`);
+      throw conflict(`Cannot move ${current.path} into its own descendant ${target}`);
+    }
+    if (depth(current.path) === 1) {
+      throw conflict(`${current.path} is a space home page and cannot be moved`);
     }
     if (this.#fileOf(target) !== null) throw conflict(`A page already exists at ${target}`);
 
-    const targetParent = parentPath(target);
-    if (targetParent !== null) {
-      const parentFile = this.#fileOf(targetParent);
-      if (parentFile === null) throw notFound(`No parent page at ${targetParent}`);
-      if (!isIndexRel(parentFile)) await this.#promote(targetParent);
-    }
-
-    const sourceParent = parentPath(current.path);
-    const from = current.hasChildren
+    // The file shape decides what moves, so a leaf keeps moving as a file.
+    const movesDirectory = this.#isIndex(current.path);
+    const from = movesDirectory
       ? join(this.contentDir, current.path)
       : join(this.contentDir, pagePathToRelFile(current.path, false));
-    const to = current.hasChildren
+    const to = movesDirectory
       ? join(this.contentDir, target)
       : join(this.contentDir, pagePathToRelFile(target, false));
+    if (existsSync(to)) {
+      throw conflict(`A ${movesDirectory ? 'directory' : 'file'} already exists at ${target}`);
+    }
 
+    // The real store invents whatever the destination is missing rather than refusing the move.
+    // Promoting a subtree into a new top-level space renames the directory into place, so that
+    // space's descriptor can only be written afterwards.
+    const space = spaceOf(target);
+    const spaceIsDestination = movesDirectory && space === target;
+    if (!spaceIsDestination) await this.#ensureSpace(space);
+    await this.#ensureAncestors(target);
+
+    const sourceParent = parentPath(current.path);
     await mkdir(dirname(to), { recursive: true });
     await rename(from, to);
+    if (spaceIsDestination) await this.#ensureSpace(space);
     await this.#demoteIfEmpty(sourceParent);
 
-    return pagePathToRelFile(target, current.hasChildren);
+    return pagePathToRelFile(target, movesDirectory);
   }
 }

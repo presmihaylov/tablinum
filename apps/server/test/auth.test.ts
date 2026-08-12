@@ -374,8 +374,15 @@ describe('space role gates', () => {
     const created = await createSpace(harness, member, { slug: 'eng', name: 'Engineering' });
     expect(created.statusCode).toBe(401);
     expect(bodyOf(created, ErrorBodySchema).error.code).toBe('UNAUTHORIZED');
+    expect(existsSync(join(harness.contentDir, 'eng'))).toBe(false);
+    expect(await nameOf(harness, admin, 'eng')).toBeUndefined();
 
-    // The refusal is the same one DELETE /api/v1/spaces/:slug already produces.
+    // The refusal is the same one DELETE /api/v1/spaces/:slug already produces. The admin makes
+    // the space first, because the delete looks the slug up: a slug this member cannot see reads
+    // as absent and answers NOT_FOUND, which is what keeps a private space of somebody else secret.
+    const real = await createSpace(harness, admin, { slug: 'eng', name: 'Engineering' });
+    expect(real.statusCode).toBe(200);
+
     const deleted = await harness.app.inject({
       method: 'DELETE',
       url: '/api/v1/spaces/eng',
@@ -383,9 +390,7 @@ describe('space role gates', () => {
     });
     expect(deleted.statusCode).toBe(401);
     expect(bodyOf(deleted, ErrorBodySchema).error.code).toBe('UNAUTHORIZED');
-
-    expect(existsSync(join(harness.contentDir, 'eng'))).toBe(false);
-    expect(await nameOf(harness, admin, 'eng')).toBeUndefined();
+    expect(await nameOf(harness, admin, 'eng')).toBe('Engineering');
   });
 
   /** The gate must not reach the private bucket: every person keeps a corner of their own. */

@@ -26,8 +26,10 @@ const SlugParamsSchema = z.object({ slug: SpaceSlugSchema });
  * costs: an admin. A private space is the caller's own corner and nobody else can see it, so
  * its owner keeps it without holding the install.
  *
- * A slug this caller cannot see is left ungated on purpose. `updateSpace` answers NOT_FOUND for
- * it, and a 401 here would confirm that somebody else's private space exists.
+ * A slug this caller cannot see is left ungated on purpose. The store this helper reads is the
+ * viewer-filtered one, so such a slug is simply absent and the route answers its own NOT_FOUND.
+ * A 401 here would confirm that somebody else's private space exists, and a slug no one has taken
+ * would then answer differently from one that is taken but hidden.
  */
 async function requireSpaceAdminUnlessOwned(
   store: ContentStore,
@@ -98,10 +100,12 @@ export function registerSpaceRoutes(app: FastifyInstance, ctx: RouteContext): vo
   });
 
   app.delete(`${API_PREFIX}/spaces/:slug`, async (request): Promise<DeleteSpaceResponse> => {
-    // A space delete takes every page in it, so it asks for more than an ordinary session.
-    requireAdmin(request);
+    // The gate needs the store, so it costs an open workspace before an unauthorised caller is
+    // turned away. The patch above already pays that; a private space nobody else can see has
+    // no other way to be deleted, because its owner never becomes an admin to reach it.
     const { record, store, wiring, live } = await partsOf(ctx, request);
     const { slug } = parseOrThrow(SlugParamsSchema, request.params, 'params');
+    await requireSpaceAdminUnlessOwned(store, request, slug);
     const query = parseOrThrow(DeleteSpaceQuerySchema, request.query, 'query');
 
     // Read first: afterwards neither the owner nor the page ids are anywhere to be found.

@@ -1,3 +1,4 @@
+import { mkdir, writeFile } from 'node:fs/promises';
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from './fixtures';
 import { ADMIN } from './env';
@@ -11,6 +12,15 @@ import { ADMIN } from './env';
 function nav(page: Page): Locator {
   return page.getByRole('navigation', { name: 'Settings' });
 }
+
+/** A well-formed page id no page in the tree answers to, so its attachments are orphans. */
+const ORPHAN_PAGE_ID = 'pg_0E2E0RESCAN000000000000000';
+
+/** One red pixel, so the orphan the rescan collects is a real attachment. */
+const PNG_BYTES = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64',
+);
 
 test.describe('the settings page', () => {
   test('the avatar sits in the sidebar and offers two things', async ({ page }) => {
@@ -111,5 +121,44 @@ test.describe('the settings page', () => {
 
     await nav(page).getByRole('button', { name: 'Back to the pages' }).click();
     await expect(page).toHaveURL(/\/p\//);
+  });
+
+  /**
+   * The rescan route used to be reachable only by a hand-written curl. The operator who needs
+   * it has just restored a backup, so it belongs on the settings page. It deletes files, so it
+   * asks first and names every file it took.
+   */
+  test('an admin rescans the content directory and reads what it removed', async ({
+    page,
+    content,
+  }) => {
+    // An attachment directory named after a page that never existed, which is the shape a
+    // restore from a backup leaves behind. Written straight to disk: the upload route refuses
+    // a page id it cannot find, and the watcher never sweeps, so only a rescan collects this.
+    const orphanDir = `_assets/${ORPHAN_PAGE_ID}`;
+    const orphanFile = `${orphanDir}/left-behind.png`;
+    await mkdir(content.path(orphanDir), { recursive: true });
+    await writeFile(content.path(orphanFile), PNG_BYTES);
+
+    await page.goto('/settings/workspace');
+    const section = page.getByRole('region', { name: 'Rescan the content directory' });
+    await expect(section).toBeVisible();
+    await expect(section).toContainText('deletes the attachment files of pages that are gone');
+
+    await section.getByRole('button', { name: 'Rescan' }).click();
+
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toContainText('deletes the attachment files of pages that are gone');
+    await expect(dialog).toContainText('no history to restore from');
+    // The dialog is a sibling of the section, so nothing has run while it is open.
+    expect(await content.exists(orphanFile)).toBe(true);
+
+    await dialog.getByRole('button', { name: 'Rescan' }).click();
+
+    await expect(section).toContainText(orphanFile);
+    await expect(section).toContainText(/The search index now holds \d+ page/);
+    await expect
+      .poll(() => content.exists(orphanFile), { message: 'the orphan attachment is still on disk' })
+      .toBe(false);
   });
 });

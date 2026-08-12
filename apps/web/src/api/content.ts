@@ -30,6 +30,7 @@ import type {
   PagePath,
   PageResponse,
   ReplyBody,
+  RescanResponse,
   RevisionContentResponse,
   RowProps,
   RowResponse,
@@ -535,5 +536,23 @@ export function useUploadAsset(): UseMutationResult<AssetResponse, ApiError, Upl
   return useMutation({
     mutationFn: ({ file, pageId, replace }: UploadAssetVars) =>
       api.uploadAsset(file, pageId, replace),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// rescan
+// ---------------------------------------------------------------------------
+
+/**
+ * Read the content directory back into the page index and the search index, then collect the
+ * attachments of pages that are gone. For a directory something outside tablinum rewrote.
+ *
+ * Every cached content query describes the tree as it was before, so all of them drop.
+ */
+export function useRescanWorkspace(): UseMutationResult<RescanResponse, ApiError, void> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.rescan(),
+    onSuccess: () => invalidateContent(client),
   });
 }

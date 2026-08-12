@@ -55,6 +55,7 @@ import type {
   PageResponse,
   RegisterBody,
   ReplyBody,
+  RescanResponse,
   ResolveThreadBody,
   RevisionContentResponse,
   RowProps,
@@ -482,6 +483,9 @@ export const api = {
 
   gitResolve: (body: GitResolveBody): Promise<GitResolveResponse> =>
     request('/git/resolve', { method: 'POST', body }),
+
+  /** Re-read the content directory of the open workspace. Admin of that workspace only. */
+  rescan: (): Promise<RescanResponse> => request('/rescan', { method: 'POST' }),
 
   listWorkspaces: (signal?: AbortSignal): Promise<WorkspacesResponse> =>
     request('/workspaces', { signal }),

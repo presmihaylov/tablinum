@@ -113,6 +113,16 @@ The same content is available over the REST API under \`/api/v1\` and over MCP. 
 editor, through the API, or straight in the git repository all land in the same history.
 `;
 
+/**
+ * Of these page ids, the ones an `/_assets/<id>/` url outside the content tree still names.
+ *
+ * Throwing is how a source that cannot answer says so, and it is the only way to say it: an
+ * empty result means "nothing points at any of these", which is what deletes the files.
+ */
+export type AssetRefSource = (
+  candidates: readonly PageId[],
+) => Iterable<PageId> | Promise<Iterable<PageId>>;
+
 export interface ContentStoreOptions {
   /** Absolute path of the content repository. */
   contentDir: string;
@@ -121,6 +131,12 @@ export interface ContentStoreOptions {
   now?: () => Date;
   /** Write the starter space into an empty directory. A new workspace brings its own. */
   starter?: boolean;
+  /**
+   * References this store cannot see, such as an attachment url typed into a comment. Comment
+   * bodies live in the account database, so the source is injected rather than imported and the
+   * content layer stays ignorant of it. Left out, only page files keep an attachment.
+   */
+  assetRefs?: AssetRefSource;
 }
 
 export interface SpaceTree extends Space {
@@ -325,6 +341,7 @@ export class ContentStore {
   readonly #logger: Logger;
   readonly #now: () => Date;
   readonly #starter: boolean;
+  readonly #assetRefs: AssetRefSource | undefined;
   readonly #index: IndexMap;
   // Fastify serves requests concurrently and every write below is a chain of awaits, so two
   // requests would otherwise interleave between the "is this free" check and the write.
@@ -343,6 +360,7 @@ export class ContentStore {
     this.#logger = options.logger ?? consoleLogger;
     this.#now = options.now ?? ((): Date => new Date());
     this.#starter = options.starter ?? true;
+    this.#assetRefs = options.assetRefs;
     this.#index = new IndexMap({ contentDir: this.contentDir, logger: this.#logger });
   }
 
@@ -1123,10 +1141,12 @@ export class ContentStore {
     }
     if (candidates.size === 0) return { removed: [], kept };
 
-    const referenced = await this.#pagesReferencingAssets([...candidates.keys()]);
+    const ids = [...candidates.keys()];
+    const referenced = await this.#pagesReferencingAssets(ids);
+    const held = await this.#heldOutsideContent(ids);
     const removed: string[] = [];
     for (const [id, names] of candidates) {
-      if (referenced.has(id)) {
+      if (referenced.has(id) || held.has(id)) {
         kept.push(id);
         continue;
       }
@@ -1135,6 +1155,24 @@ export class ContentStore {
       removed.push(...names.map((name) => `${relDir}/${name}`));
     }
     return { removed, kept };
+  }
+
+  /**
+   * Of these ids, the ones the injected source still points at.
+   *
+   * A source that throws holds every candidate. It has just said it cannot see its references,
+   * and the alternative reading, that it has none, is the one that deletes files nobody can get
+   * back out of a private space, which git never carries.
+   */
+  async #heldOutsideContent(ids: PageId[]): Promise<Set<PageId>> {
+    const source = this.#assetRefs;
+    if (source === undefined) return new Set();
+    try {
+      return new Set(await source(ids));
+    } catch (err: unknown) {
+      this.#logger.warn(`Could not read references outside the content tree: ${String(err)}`);
+      return new Set(ids);
+    }
   }
 
   /**

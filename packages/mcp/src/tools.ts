@@ -191,6 +191,8 @@ const createPageTool = defineTool({
     'Create a new page. "path" decides where it lives: the first segment is the space, the remaining',
     'segments are the parent chain, e.g. "eng/runbooks/deploy" creates "deploy" under "eng/runbooks".',
     'Parent pages are promoted automatically, so you do not have to create them by hand.',
+    'The space must already exist: only an admin may start one, so a first segment nobody has claimed',
+    'fails with UNAUTHORIZED. Call tablinum_list_tree to see the spaces you may write in.',
     'Fails with CONFLICT when a page already exists at that path; search first.',
     'Do NOT write YAML frontmatter into "markdown": the server owns id, created and updated, and it writes',
     'title, icon and order from these arguments. Do not repeat the title as a level 1 heading',
@@ -546,7 +548,8 @@ const movePageTool = defineTool({
   description: [
     'Move a page to a new path, which also renames it. Identify the page with "id" or "path".',
     'The page id, its body and its git history are unchanged; only the location changes, and every child',
-    'page moves with it. Moving into a different first segment moves the page to another space.',
+    'page moves with it. Moving into a different first segment moves the page to another space, and that',
+    'space must already exist: a first segment nobody has claimed fails with UNAUTHORIZED.',
     'Fails with CONFLICT when a page already sits at "newPath".',
   ].join(' '),
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, title: 'Move or rename a page' },

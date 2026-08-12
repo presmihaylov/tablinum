@@ -15,6 +15,8 @@ import {
   parseOrThrow,
   replacePathPrefix,
   segments,
+  spaceOf,
+  unauthorized,
   type CursorResponse,
   type PagePath,
   type BacklinksResponse,
@@ -74,6 +76,32 @@ async function requirePageIn(store: ContentStore, id: PageId): Promise<Page> {
 }
 
 /**
+ * A write whose first path segment names no space creates that space, so it is the same act
+ * `POST /api/v1/spaces` gates on an admin and it costs the same here. Without this the gate was
+ * decoration: a member refused a space could write a page into it and get one anyway.
+ *
+ * A slug the caller cannot see is refused with this very answer rather than a NOT_FOUND. Both a
+ * free slug and somebody else's private space say the same thing, so neither confirms the other.
+ */
+async function requireAdminForNewSpace(
+  store: ContentStore,
+  request: FastifyRequest,
+  pagePath: PagePath,
+): Promise<void> {
+  const slug = spaceOf(pagePath);
+  const spaces = await store.listSpaces();
+  if (spaces.some((space) => space.slug === slug)) return;
+  if (request.principal.admin) return;
+  throw unauthorized(`No space ${slug}. ${startAdvice(request)}`);
+}
+
+/** What this caller can do about it. An agent owns nothing, so no private space is open to it. */
+function startAdvice(request: FastifyRequest): string {
+  if (request.principal.account === null) return 'Only an admin can start a space.';
+  return 'Only an admin can start a space everybody reads; POST /api/v1/spaces with private: true starts your own.';
+}
+
+/**
  * Sit an agent on the page it just worked on, so the people reading it see it arrive.
  * A person needs none of this: a browser announces itself over the live socket.
  */
@@ -108,6 +136,7 @@ export function registerPageRoutes(app: FastifyInstance, ctx: RouteContext): voi
   app.post(`${API_PREFIX}/pages`, async (request, reply): Promise<PageResponse> => {
     const { store, wiring, live } = await partsOf(ctx, request);
     const body = parseOrThrow(CreatePageBodySchema, request.body, 'page');
+    await requireAdminForNewSpace(store, request, body.path);
     wiring.markWritten(plannedFiles(body.path));
     const page = await store.createPage(body);
 
@@ -147,6 +176,8 @@ export function registerPageRoutes(app: FastifyInstance, ctx: RouteContext): voi
     const { id } = parseOrThrow(IdParamsSchema, request.params, 'params');
     const patch = parseOrThrow(UpdatePageBodySchema, request.body, 'patch');
     const before = await requirePageIn(store, id);
+    // A move names the destination space, and a move into one that does not exist creates it.
+    if (patch.path !== undefined) await requireAdminForNewSpace(store, request, patch.path);
     wiring.markWritten(plannedFiles(before.path));
     if (patch.path !== undefined) wiring.markWritten(plannedFiles(patch.path));
     const page = await store.updatePage(id, patch);

@@ -29,6 +29,11 @@ import type { ContentStore, OrphanedAssets, ParsedPageFile, SpaceTree } from './
  *
  * A hidden space answers NOT_FOUND, never FORBIDDEN. Saying "you may not open this" would
  * confirm the space exists, and the slug alone can be the secret.
+ *
+ * The page routes refuse a write into a slug the caller cannot see before they reach this wrapper,
+ * because writing into an unclaimed slug creates the space. That refusal is a 401 rather than the
+ * NOT_FOUND above, and it keeps the same secret for the same reason: a free slug is answered
+ * identically, so neither answer says whether the space is there.
  */
 
 /** Who is looking. Null for an agent token or a public request: neither is a person. */

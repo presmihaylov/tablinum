@@ -47,12 +47,16 @@ async function claim(): Promise<string> {
 }
 
 /** Invite a second person into the workspace and sign them in. They are a member, not an admin. */
-async function invite(adminCookie: string): Promise<string> {
+async function invite(
+  adminCookie: string,
+  name = 'Grace Hopper',
+  email = 'grace@example.com',
+): Promise<string> {
   const created = await harness.app.inject({
     method: 'POST',
     url: '/api/v1/invites',
     headers: { cookie: adminCookie },
-    payload: { email: 'grace@example.com' },
+    payload: { email },
   });
   const issued = bodyOf(created, InviteResponseSchema);
   const token = issued.url.slice(issued.url.lastIndexOf('/') + 1);
@@ -60,7 +64,7 @@ async function invite(adminCookie: string): Promise<string> {
   const registered = await harness.app.inject({
     method: 'POST',
     url: '/api/v1/auth/register',
-    payload: { token, name: 'Grace Hopper', password: 'nanoseconds-please' },
+    payload: { token, name, password: 'nanoseconds-please' },
   });
   expect(bodyOf(registered, AuthResponseSchema).user?.role).toBe('member');
   return cookiePair(registered);
@@ -76,13 +80,13 @@ async function slugs(headers: Record<string, string>): Promise<string[]> {
   return bodyOf(response, SpacesResponseSchema).spaces.map((space) => space.slug);
 }
 
-/** A private space with one page in it, owned by the admin who can therefore delete it. */
-async function privateSpace(cookie: string): Promise<string> {
+/** A private space with one page in it, owned by whoever this cookie signs in. */
+async function privateSpace(cookie: string, slug = 'notes'): Promise<string> {
   const created = await harness.app.inject({
     method: 'POST',
     url: '/api/v1/spaces',
     headers: { cookie },
-    payload: { slug: 'notes', name: 'Notes', private: true },
+    payload: { slug, name: 'Notes', private: true },
   });
   expect(created.statusCode).toBe(200);
   expect(bodyOf(created, SpaceResponseSchema).space.owner).toBeDefined();
@@ -91,7 +95,7 @@ async function privateSpace(cookie: string): Promise<string> {
     method: 'POST',
     url: '/api/v1/pages',
     headers: { cookie },
-    payload: { path: 'notes/salary', title: 'Salary', markdown: 'The word here is aardvark.' },
+    payload: { path: `${slug}/salary`, title: 'Salary', markdown: 'The word here is aardvark.' },
   });
   expect(page.statusCode).toBe(201);
   return bodyOf(page, PageResponseSchema).page.id;
@@ -181,6 +185,61 @@ describe('DELETE /api/v1/spaces/:slug', () => {
     expect(harness.git.excluded).not.toContain('notes');
     expect(await excludeFile()).not.toContain('/notes/');
     expect(existsSync(join(harness.contentDir, 'notes'))).toBe(false);
+  });
+
+  it('lets the owner of a private space delete it, though the owner is no admin', async () => {
+    const admin = await claim();
+    const member = await invite(admin);
+    await seed(harness);
+    await privateSpace(member);
+
+    const response = await deleteSpace('notes', { cookie: member }, true);
+    expect(response.statusCode).toBe(200);
+    const body = bodyOf(response, DeleteSpaceResponseSchema);
+    expect(body.deleted).toEqual(['notes', 'notes/salary']);
+    expect(body.recoverable).toBe(false);
+
+    expect(await slugs({ cookie: member })).not.toContain('notes');
+    expect(existsSync(join(harness.contentDir, 'notes'))).toBe(false);
+    expect(harness.git.excluded).not.toContain('notes');
+    expect(await excludeFile()).not.toContain('/notes/');
+  });
+
+  it('answers NOT_FOUND, never UNAUTHORIZED, for the private space of somebody else', async () => {
+    const admin = await claim();
+    const owner = await invite(admin);
+    const stranger = await invite(admin, 'Alan Turing', 'alan@example.com');
+    await privateSpace(owner);
+
+    // A 401 would say the slug is taken. An unclaimed slug has to answer the same way.
+    for (const cookie of [stranger, admin]) {
+      const hidden = await deleteSpace('notes', { cookie }, true);
+      const unclaimed = await deleteSpace('ghost', { cookie }, true);
+      expect(hidden.statusCode).toBe(404);
+      expect(bodyOf(hidden, ErrorBodySchema).error.code).toBe('NOT_FOUND');
+      expect(unclaimed.statusCode).toBe(hidden.statusCode);
+      expect(bodyOf(unclaimed, ErrorBodySchema).error.code).toBe(
+        bodyOf(hidden, ErrorBodySchema).error.code,
+      );
+    }
+
+    expect(await slugs({ cookie: owner })).toContain('notes');
+    expect(existsSync(join(harness.contentDir, 'notes/_space.yml'))).toBe(true);
+  });
+
+  it('still lets an install admin delete a space that belongs to nobody', async () => {
+    const admin = await claim();
+    await invite(admin);
+    await seed(harness);
+
+    const response = await deleteSpace('eng', { cookie: admin }, true);
+    expect(response.statusCode).toBe(200);
+    expect(bodyOf(response, DeleteSpaceResponseSchema).deleted).toEqual([
+      'eng',
+      'eng/deploy',
+      'eng/oncall',
+    ]);
+    expect(existsSync(join(harness.contentDir, 'eng'))).toBe(false);
   });
 
   it('takes the deleted pages out of the search index', async () => {

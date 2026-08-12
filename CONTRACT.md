@@ -638,8 +638,13 @@ PATCH  /api/v1/spaces/:slug                    body { name?, icon?, order? } -> 
                                                (admin, except on the caller's own private space,
                                                 which its owner keeps. A private space somebody
                                                 else owns answers NOT_FOUND, admin or not)
-DELETE /api/v1/spaces/:slug                    admin, ?recursive=true
+DELETE /api/v1/spaces/:slug                    ?recursive=true
                                                -> { slug, deleted: PagePath[], recoverable, recovery }
+                                               (admin, except on the caller's own private space,
+                                                which its owner deletes. A private space somebody
+                                                else owns answers NOT_FOUND, admin or not, and so
+                                                does a slug nobody has taken: the two must not be
+                                                told apart. Same gate as the PATCH above)
                                                (takes `_space.yml` and every page in the space, so the
                                                 space is gone rather than empty; it also drops the
                                                 `.git/info/exclude` line a private space was made with)

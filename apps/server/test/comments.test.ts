@@ -528,6 +528,41 @@ describe('a deleted page', () => {
     expect(removed.statusCode).toBe(200);
     expect(harness.accounts.listThreads(workspaceId, pageId)).toEqual([]);
   });
+
+  /**
+   * The threads go after the store delete, never before it. Sending them first would close the
+   * window where a crash strands them, but a refused delete would then take the conversation of
+   * a page that is still on disk. This is the failure that trade buys.
+   */
+  it('keeps its threads when a non-recursive delete is refused', async () => {
+    const cookie = await claim();
+    await seed(harness);
+    const parent = bodyOf(
+      await harness.app.inject({
+        method: 'POST',
+        url: '/api/v1/pages',
+        headers: { cookie },
+        payload: { path: 'eng/guides', title: 'Guides' },
+      }),
+      PageResponseSchema,
+    ).page;
+    await harness.app.inject({
+      method: 'POST',
+      url: '/api/v1/pages',
+      headers: { cookie },
+      payload: { path: 'eng/guides/first', title: 'First' },
+    });
+    await openThread(cookie, parent.id, 'Is this the right runbook?', ANCHOR);
+
+    const refused = await harness.app.inject({
+      method: 'DELETE',
+      url: `/api/v1/pages/${parent.id}`,
+      headers: { cookie },
+    });
+    expect(refused.statusCode).toBe(409);
+    expect(bodyOf(refused, ErrorBodySchema).error.code).toBe('CONFLICT');
+    expect(await listThreads(cookie, parent.id)).toHaveLength(1);
+  });
 });
 
 // ---------------------------------------------------------------------------

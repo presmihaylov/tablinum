@@ -250,6 +250,9 @@ export function registerPageRoutes(app: FastifyInstance, ctx: RouteContext): voi
     const deleted = await store.deletePage(id, query.recursive === true);
 
     // Comments and pins live in the account database, so no foreign key takes them with the file.
+    // After the store delete, never before it: deletePage() throws CONFLICT on a page that has
+    // children, and going first would destroy the conversation of a page that is still there.
+    // Dying in between only strands rows no read can reach, which is the cheaper way to fail.
     const victimIds = victims.map((victim) => victim.id);
     ctx.deps.accounts.deleteThreadsForPages(record.id, victimIds);
     ctx.deps.accounts.deleteFavoritesForPages(record.id, victimIds);

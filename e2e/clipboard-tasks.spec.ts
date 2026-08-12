@@ -128,7 +128,7 @@ test.describe('copying a to-do list', () => {
 
     // Three to-dos and no loose paragraph beside them.
     await expect(editorBody(page).locator('li[data-checked]')).toHaveCount(3);
-    await expect(editorBody(page).locator('.gd-editor-surface > p')).toHaveCount(0);
+    await expect(editorBody(page).locator('> p')).toHaveCount(0);
     await expect
       .poll(async () => bodyOf((await content.read(target.file)) ?? ''), {
         message: 'the pasted page never held the to-do list',

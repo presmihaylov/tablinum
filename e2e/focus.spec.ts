@@ -52,6 +52,9 @@ test.describe('focus leaves on a click somewhere else', () => {
     await expect(page.locator('.pagemeta')).toBeVisible();
 
     await page.locator('.gd-editor-diagram').click();
+    // `selectedBackground` reads the page once and answers "(none)" while the class is still
+    // on its way, which `isClear` calls lit, so the read below would pass for the wrong reason.
+    await expect(page.locator('.ProseMirror-selectednode')).toHaveCount(1);
     expect(isClear(await selectedBackground(page))).toBe(false);
 
     await page.locator('.pagemeta').first().click({ position: { x: 5, y: 5 } });

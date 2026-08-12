@@ -17,6 +17,16 @@ const SEND_STEPS_MS = 40;
 /** A caret moves far more often than it needs to be redrawn on somebody else's screen. */
 const SEND_CARET_MS = 120;
 
+/**
+ * Put the caret back where it was, as near as the text now on screen allows. `setContent` drops
+ * the selection, and a room hands out a new baseline while somebody is typing, so without this
+ * the next keystroke lands at the far end of the document.
+ */
+function restoreCaret(editor: Editor, from: number, to: number): void {
+  const end = editor.state.doc.content.size;
+  editor.commands.setTextSelection({ from: Math.min(from, end), to: Math.min(to, end) });
+}
+
 export interface StreamOptions {
   editor: Editor | null;
   /** Null when the live channel is off, which leaves the plain autosave path in charge. */
@@ -98,24 +108,45 @@ export function useDocStream({ editor, room, frame, page, onTitle }: StreamOptio
       }, SEND_CARET_MS);
     };
 
-    /** Replace the document and restart the step counter at the authority's version. */
-    const seed = (markdown: string, version: number, emit: boolean): void => {
+    /**
+     * Take the authority's text, and restart the step counter at its version. Says whether the
+     * text on screen was actually replaced.
+     */
+    const seed = (markdown: string, version: number, emit: boolean): boolean => {
+      // Read before the plugin goes: unregistering it takes the unconfirmed steps with it.
+      const unsent = seededRef.current && sendableSteps(editor.state) !== null;
       editor.unregisterPlugin('collab');
       const read = readMarkdown(markdown);
+      // A room hands out its baseline every time it starts, and that baseline is usually the
+      // text already on screen: on a join it is the page as it loaded. Replacing a document
+      // with itself still rebuilds every node view, moves the caret and wipes everyone else's,
+      // so the text is compared first and left alone when it already matches.
+      //
+      // Matching text is not the same document, because markdown does not carry everything the
+      // document holds: an empty paragraph at the end writes nothing at all. Keeping such a
+      // document while the counter below restarts at the room's version would leave this tab one
+      // node ahead of the room with no record of it, and every offset it sent afterwards would
+      // miss by that node. So work the room has not seen is reseeded and folded back in instead.
+      const settled = !unsent && writeMarkdown(editor.state.doc, read.frame) === markdown;
       frame.current = read.frame;
-      editor.commands.setContent(read.body, emit, PARSE_OPTIONS);
+      if (!settled) {
+        editor.commands.setContent(read.body, emit, PARSE_OPTIONS);
+        // A caret points into the document it was drawn over, which is gone.
+        clearCarets(editor.view);
+      }
       editor.registerPlugin(collab({ version, clientID: clientId }));
       seededRef.current = true;
-      clearCarets(editor.view);
+      return !settled;
     };
 
-    const onInit = (init: DocInit): void => {
+    /** Take the room's baseline and fold this tab's unseen work back in. Says if the text moved. */
+    const applyInit = (init: DocInit): boolean => {
       const previousBase = baseRef.current;
       // Whatever is on screen right now. On the first join that is the page as it loaded;
       // on a rejoin it is this tab's work, which the room below has never seen.
       const carried = writeMarkdown(editor.state.doc, frame.current);
 
-      seed(init.baseline.markdown, init.baseVersion, false);
+      const replaced = seed(init.baseline.markdown, init.baseVersion, false);
       const parsed = parse(init.steps);
       if (parsed.steps.length > 0) {
         editor.view.dispatch(receiveTransaction(editor.state, parsed.steps, parsed.ids));
@@ -123,11 +154,17 @@ export function useDocStream({ editor, room, frame, page, onTitle }: StreamOptio
       baseRef.current = init.baseline.markdown;
       onTitleRef.current(init.baseline.title);
 
+      // The text on screen already is the baseline, so this tab has nothing the room has not
+      // seen and there is nothing to fold in. Going on would compare the same document against
+      // itself through two different frames, and a difference that is only a matter of spelling
+      // still reaches the merge, which is free to put the text back in another order.
+      if (!replaced) return false;
+
       // Fold this tab's work back in. Only the tab that writes the file does it, or every
       // tab applies the same merge and they all fight to save it.
-      if (!room.isWriter) return;
+      if (!room.isWriter) return replaced;
       const shared = writeMarkdown(editor.state.doc, frame.current);
-      if (carried === shared) return;
+      if (carried === shared) return replaced;
 
       const merged = mergeText(previousBase ?? shared, carried, shared, {
         ours: 'your edits',
@@ -136,12 +173,22 @@ export function useDocStream({ editor, room, frame, page, onTitle }: StreamOptio
       // A merge that clashes keeps this tab's text. Saving it is rejected by the server,
       // which opens the conflict dialog the shell already has.
       const text = merged.clean ? merged.text : carried;
-      if (text === shared) return;
+      if (text === shared) return replaced;
 
       const read = readMarkdown(text);
       frame.current = read.frame;
       editor.commands.setContent(read.body, true, PARSE_OPTIONS);
       scheduleSteps();
+      return true;
+    };
+
+    const onInit = (init: DocInit): void => {
+      const { from, to } = editor.state.selection;
+      // The caret goes back once, against the text that ended up on screen. Restoring it at
+      // each step instead clamps it to the baseline, and a baseline shorter than the caret
+      // pins it to the start: the merge then puts the longer text back around it and the next
+      // keystroke lands at the front of the page.
+      if (applyInit(init)) restoreCaret(editor, from, to);
     };
 
     const off = room.listen({

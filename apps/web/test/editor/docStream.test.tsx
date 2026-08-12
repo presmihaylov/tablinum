@@ -10,7 +10,7 @@ import { useDocStream } from '../../src/editor/useStream';
 import { readMarkdown } from '../../src/editor/markdown';
 import type { MarkdownFrame } from '../../src/editor/markdown';
 import { page } from '../fixtures';
-import { createTestEditor } from './harness';
+import { createTestEditor, toMarkdown } from './harness';
 
 const PATH = 'eng/deploy' as PagePath;
 const MARKDOWN = '# Deploy\n';
@@ -85,13 +85,16 @@ function mountStream(markdown: string) {
   const room = new DocRoom(connection, PATH);
   const wire = socket();
 
-  /** The room's answer to `doc-open`, which is what registers the collab plugin. */
-  const sendInit = (writer: string | null): void => {
+  /**
+   * The room's answer to `doc-open`, which is what registers the collab plugin. The baseline is
+   * the text this tab loaded unless a test hands over another one, which is a file that moved.
+   */
+  const sendInit = (writer: string | null, baseline: string = markdown): void => {
     act(() => {
       wire.deliver({
         type: 'doc-init',
         path: PATH,
-        baseline: { markdown, title: 'Deploy', rev: 'rev-1' },
+        baseline: { markdown: baseline, title: 'Deploy', rev: 'rev-1' },
         baseVersion: 0,
         steps: [],
         writer,
@@ -165,6 +168,119 @@ describe('the document stream', () => {
         view?.rerender({ markdown: MARKDOWN, rev: 'rev-2' });
       });
       expect(sentOfType(tab.wire, 'doc-baseline')).toHaveLength(1);
+    } finally {
+      tab.stop(view);
+    }
+  });
+
+  it('leaves the document alone when the first frame carries the text already on screen', () => {
+    const tab = mountStream('# Deploy\n\nRun the pipeline from main.\n');
+    let view: ReturnType<typeof tab.mount> | null = null;
+    try {
+      view = tab.mount();
+      tab.sendInit(myClientId());
+      act(() => {
+        tab.wire.deliver({
+          type: 'doc-agent-caret',
+          path: PATH,
+          client: AGENT.id,
+          user: { id: AGENT.id, name: AGENT.name, color: '#ef4444' },
+          agent: AGENT,
+          anchor: { block: 1, offset: 4 },
+          head: { block: 1, offset: 4 },
+        });
+      });
+      const caret = 20;
+      act(() => {
+        tab.editor.commands.setTextSelection(caret);
+      });
+      const before = tab.editor.state.doc;
+
+      // The room restarts, and its baseline is still the text on screen.
+      tab.sendInit(myClientId());
+
+      // Replacing the document with itself rebuilds every node view, moves the caret and wipes
+      // everyone else's, which is what a person typing while the room restarts would lose.
+      expect(tab.editor.state.doc).toBe(before);
+      expect(tab.editor.state.selection.from).toBe(caret);
+      expect(caretsKey.getState(tab.editor.state)?.carets.has(AGENT.id)).toBe(true);
+    } finally {
+      tab.stop(view);
+    }
+  });
+
+  it('reseeds when the text matches but the document carries work the room has not seen', () => {
+    const source = '# Deploy\n\nRun the pipeline from main.\n';
+    const tab = mountStream(source);
+    let view: ReturnType<typeof tab.mount> | null = null;
+    try {
+      view = tab.mount();
+      tab.sendInit(myClientId());
+      const baseline = tab.editor.state.doc.childCount;
+
+      // Enter at the end of the page, which is the one keystroke that leaves the document and
+      // its markdown disagreeing: a trailing empty paragraph writes nothing at all.
+      act(() => {
+        tab.editor.commands.setTextSelection(tab.editor.state.doc.content.size);
+        tab.editor.commands.splitBlock();
+      });
+      expect(tab.editor.state.doc.childCount).toBe(baseline + 1);
+      expect(toMarkdown(tab.editor)).toBe(source);
+
+      // The room restarts and hands back a baseline that still matches the text on screen.
+      tab.sendInit(myClientId());
+
+      // Keeping the extra node while the step counter restarts at the room's version would leave
+      // this tab one node ahead of a room that has no record of it, and every offset it sent
+      // afterwards would miss by that node, which puts the next thing typed in the wrong block.
+      expect(tab.editor.state.doc.childCount).toBe(baseline);
+    } finally {
+      tab.stop(view);
+    }
+  });
+
+  it('keeps the caret near where it was when a restarted room hands over new text', () => {
+    const tab = mountStream('# Deploy\n\nRun the pipeline from main.\n');
+    let view: ReturnType<typeof tab.mount> | null = null;
+    try {
+      view = tab.mount();
+      tab.sendInit(myClientId());
+      const caret = 20;
+      act(() => {
+        tab.editor.commands.setTextSelection(caret);
+      });
+
+      // A file that moved under the room resets it, and the rejoin brings the new text back.
+      tab.sendInit(myClientId(), '# Deploy\n\nRun the pipeline from main.\n\nThen tell the room.\n');
+
+      expect(toMarkdown(tab.editor)).toContain('Then tell the room.');
+      expect(tab.editor.state.selection.from).toBe(caret);
+    } finally {
+      tab.stop(view);
+    }
+  });
+
+  it('keeps the caret at the end of work the room has never seen', () => {
+    // The tab has typed a line the room knows nothing about, which is what a person doing so
+    // while the first frame is still in flight looks like. The baseline is shorter than the
+    // caret, and the merge below puts the typed line back, so the caret belongs at its end.
+    const typed = 'Ship it -';
+    const tab = mountStream(`${typed}\n\nA line after it.\n`);
+    let view: ReturnType<typeof tab.mount> | null = null;
+    try {
+      view = tab.mount();
+      // The end of the first line, which is neither the start nor the end of the document.
+      const caret = typed.length + 1;
+      act(() => {
+        tab.editor.commands.setTextSelection(caret);
+      });
+
+      tab.sendInit(myClientId(), '');
+
+      expect(toMarkdown(tab.editor)).toContain(typed);
+      // Clamping to the empty baseline on the way through drags the caret to the first
+      // position and leaves it there, and the next keystroke lands at the front of the page.
+      expect(tab.editor.state.selection.from).toBe(caret);
     } finally {
       tab.stop(view);
     }

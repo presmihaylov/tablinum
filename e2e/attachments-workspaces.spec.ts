@@ -61,6 +61,10 @@ async function createWorkspace(page: BrowserPage, name: string): Promise<Workspa
 
   // The switcher names the workspace this tab is in, so it is the sign the move happened.
   await expect(page.getByRole('button', { name: 'Workspace', exact: true })).toContainText(name);
+  // The switcher only waits on the workspace list. The move empties every query, and the tree
+  // is the slower of the two to come back, so a "New page" before it lands reads the space as
+  // none and reports "Create a space first." instead of opening the dialog.
+  await expect(page.getByRole('treeitem', { name: 'General' })).toBeVisible();
   const row = await workspaceRow(page, name);
   scratchWorkspaces.push(row.id);
   return row;

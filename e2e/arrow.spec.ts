@@ -155,6 +155,10 @@ test.describe('the arrow rule', () => {
     await page.goto(seeded.href);
     // A click on the picture opens the source and puts the caret in it.
     await page.locator('.gd-editor-mermaid').getByLabel('Mermaid diagram').click();
+    // The click opens the source through `editor.chain().focus()`, and Tiptap defers the real
+    // `view.focus()` into a `requestAnimationFrame`. `data-source` only says "open" once the
+    // editor reports focus, so this is the wait for the caret, not just for the box.
+    await expect(page.locator('.gd-editor-mermaid')).toHaveAttribute('data-source', 'open');
     await page.keyboard.press('End');
     // Slowly: the block redraws itself between keystrokes.
     await page.keyboard.type('->B[End]', { delay: 80 });
@@ -221,7 +225,10 @@ test.describe('the arrow rule', () => {
     await database.getByRole('button', { name: /Add a filter/ }).click();
     await database.getByLabel('Filter property').selectOption({ label: 'Notes' });
 
-    const value = database.getByLabel('Filter value');
+    // The panel opens on `Status`, whose value is picked from a list, and the swap for a box to
+    // type in waits on the save. `textbox` is the box and never the list it replaces.
+    const value = database.getByRole('textbox', { name: 'Filter value' });
+    await expect(value).toBeVisible();
     await value.click();
     await value.pressSequentially('ours -> theirs');
     await expect(value).toHaveValue(`ours ${ARROW} theirs`);

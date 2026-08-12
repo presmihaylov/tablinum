@@ -21,15 +21,24 @@ function rowItem(page: Page, title: string): Locator {
   return sidebar(page).getByRole('treeitem').filter({ hasText: title }).last();
 }
 
-/** The row actions are drawn only while the row is hovered, so every use starts here. */
-async function rowAction(page: Page, title: string, action: string): Promise<Locator> {
-  await row(page, title).hover();
-  return sidebar(page).getByRole('button', { name: action });
+/**
+ * The row actions are `display: none` until the row is hovered, and a hover is a single mouse
+ * move that Playwright does not repeat when it retries the click. Favourites are not optimistic,
+ * so a row can still slide out from under the pointer a round trip after the click that pinned
+ * it. Hover and click therefore go together, and the pair is retried as one.
+ */
+async function clickRowAction(page: Page, title: string, action: string): Promise<void> {
+  const item = rowItem(page, title);
+  await expect(item).toBeVisible();
+  await expect(async () => {
+    await item.hover();
+    await item.getByRole('button', { name: action }).click({ timeout: 1000 });
+  }).toPass();
 }
 
 /** Open the "..." menu of a page row. */
 async function openRowMenu(page: Page, title: string): Promise<void> {
-  await (await rowAction(page, title, `Page options for ${title}`)).click();
+  await clickRowAction(page, title, `Page options for ${title}`);
   await expect(page.getByRole('menu')).toBeVisible();
 }
 
@@ -146,7 +155,7 @@ test.describe('page lifecycle', () => {
     await page.goto(`/p/${slug}/handbook`);
     await expect(row(page, 'Handbook')).toBeVisible();
 
-    await (await rowAction(page, 'Handbook', 'Add a page inside Handbook')).click();
+    await clickRowAction(page, 'Handbook', 'Add a page inside Handbook');
     const dialog = page.getByRole('dialog', { name: 'New page' });
     await dialog.getByLabel('Page title').fill('Onboarding');
     await dialog.getByRole('button', { name: 'Create' }).click();

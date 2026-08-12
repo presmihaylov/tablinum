@@ -58,6 +58,8 @@ interface AgentSeat {
   /** True once the agent has written the page, rather than only read it. */
   editing: boolean;
   expiresAt: number;
+  /** Where the caret was last put, so a tab that opens the page later is still shown it. */
+  caret: { anchor: Cursor; head: Cursor } | null;
 }
 
 /** Read the tab id off the upgrade URL. Tabs mint their own, so an odd one is replaced. */
@@ -250,6 +252,8 @@ export class LiveHub {
       path,
       editing,
       expiresAt: now + AGENT_PRESENCE_MS,
+      // A caret belongs to the page it was put on, so a move to another page starts again.
+      caret: previous !== undefined && previous.path === path ? previous.caret : null,
     });
     if (previous !== undefined && previous.path !== path) {
       this.#announcePresence(previous.path, now);
@@ -262,6 +266,13 @@ export class LiveHub {
    * that is how an agent addresses text; the tab turns it into a position in its own document.
    */
   agentCaret(agent: LiveAgent, path: PagePath, anchor: Cursor, head: Cursor): void {
+    // Held on the seat before the room is looked up. Opening a page puts the caret down at
+    // once, and the reader's room takes two file reads to open, so this call is very often
+    // the earlier of the two. Without the record the caret is dropped and never sent again,
+    // and the reader sees the agent in the presence bar with no caret until it next moves.
+    const seat = this.#agents.get(agent.id);
+    if (seat !== undefined && seat.path === path) seat.caret = { anchor, head };
+
     const room = this.#rooms.get(path);
     if (room === null) return;
     this.#toRoom(room, {
@@ -483,6 +494,23 @@ export class LiveHub {
       writer: writerOf(room),
     });
     this.#toRoom(room, { type: 'doc-writer', path, writer: writerOf(room) }, client.id);
+    this.#replayAgentCarets(client, path);
+  }
+
+  /** Show a tab that has just opened a page the carets the agents on it already put down. */
+  #replayAgentCarets(client: LiveClient, path: PagePath, now: number = Date.now()): void {
+    for (const seat of this.#agents.values()) {
+      if (seat.path !== path || seat.expiresAt <= now || seat.caret === null) continue;
+      this.#send(client, {
+        type: 'doc-agent-caret',
+        path,
+        client: seat.agent.id,
+        user: { id: seat.agent.id, name: seat.agent.name, color: colorForId(seat.agent.id) },
+        agent: seat.agent,
+        anchor: seat.caret.anchor,
+        head: seat.caret.head,
+      });
+    }
   }
 
   #relayCaret(client: LiveClient, path: PagePath, anchor: number, head: number): void {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  DEFAULT_CONTENT_DIR,
+  DEFAULT_CONTENT_SUBDIR,
   getConfig,
   loadConfig,
   redactConfig,
@@ -9,11 +9,14 @@ import {
 } from '../src/config.js';
 import { AppError } from '../src/errors.js';
 
+// The content dir defaults under the home directory, so every case needs one.
+const HOME = '/home/alice';
+
 describe('loadConfig defaults', () => {
-  const config = loadConfig({});
+  const config = loadConfig({ HOME });
 
   it('applies every documented default', () => {
-    expect(config.contentDir).toBe(DEFAULT_CONTENT_DIR);
+    expect(config.contentDir).toBe(`${HOME}/${DEFAULT_CONTENT_SUBDIR}`);
     expect(config.port).toBe(4000);
     expect(config.gitBranch).toBe('main');
     expect(config.gitAuthorName).toBe('tablinum');
@@ -37,6 +40,7 @@ describe('loadConfig defaults', () => {
 
 describe('loadConfig overrides', () => {
   const config = loadConfig({
+    HOME,
     TABLINUM_CONTENT_DIR: '/srv/docs/',
     TABLINUM_PORT: '8080',
     TABLINUM_API_TOKENS: ' alpha, beta ,, alpha ',
@@ -66,53 +70,63 @@ describe('loadConfig overrides', () => {
   });
 
   it('reads every spelling of a boolean, and stays off by default', () => {
-    expect(loadConfig({}).trustProxy).toBe(false);
+    expect(loadConfig({ HOME }).trustProxy).toBe(false);
     for (const value of ['1', 'true', 'TRUE', 'yes', 'on']) {
-      expect(loadConfig({ TABLINUM_TRUST_PROXY: value }).trustProxy).toBe(true);
+      expect(loadConfig({ HOME, TABLINUM_TRUST_PROXY: value }).trustProxy).toBe(true);
     }
     for (const value of ['0', 'false', 'no', 'off']) {
-      expect(loadConfig({ TABLINUM_TRUST_PROXY: value }).trustProxy).toBe(false);
+      expect(loadConfig({ HOME, TABLINUM_TRUST_PROXY: value }).trustProxy).toBe(false);
     }
   });
 
   it('treats an empty variable as unset', () => {
-    expect(loadConfig({ TABLINUM_GIT_BRANCH: '   ' }).gitBranch).toBe('main');
-    expect(loadConfig({ TABLINUM_API_TOKENS: '  ' }).apiTokens).toEqual([]);
+    expect(loadConfig({ HOME, TABLINUM_GIT_BRANCH: '   ' }).gitBranch).toBe('main');
+    expect(loadConfig({ HOME, TABLINUM_API_TOKENS: '  ' }).apiTokens).toEqual([]);
   });
 });
 
 describe('loadConfig validation', () => {
   const bad: Array<[string, Record<string, string>]> = [
-    ['non-numeric port', { TABLINUM_PORT: 'nope' }],
-    ['port 0', { TABLINUM_PORT: '0' }],
-    ['port above range', { TABLINUM_PORT: '70000' }],
-    ['fractional port', { TABLINUM_PORT: '80.5' }],
-    ['relative content dir', { TABLINUM_CONTENT_DIR: 'relative/dir' }],
-    ['traversing content dir', { TABLINUM_CONTENT_DIR: '../content' }],
-    ['branch with whitespace', { TABLINUM_GIT_BRANCH: 'my branch' }],
-    ['author email without @', { TABLINUM_GIT_AUTHOR_EMAIL: 'tablinum' }],
-    ['short session secret', { TABLINUM_SESSION_SECRET: 'short' }],
-    ['negative autocommit', { TABLINUM_AUTOCOMMIT_MS: '-1' }],
-    ['unreadable boolean', { TABLINUM_TRUST_PROXY: 'maybe' }],
-    ['short webhook secret', { TABLINUM_WEBHOOK_SECRET: 'too-short' }],
+    ['non-numeric port', { HOME, TABLINUM_PORT: 'nope' }],
+    ['port 0', { HOME, TABLINUM_PORT: '0' }],
+    ['port above range', { HOME, TABLINUM_PORT: '70000' }],
+    ['fractional port', { HOME, TABLINUM_PORT: '80.5' }],
+    ['relative content dir', { HOME, TABLINUM_CONTENT_DIR: 'relative/dir' }],
+    ['traversing content dir', { HOME, TABLINUM_CONTENT_DIR: '../content' }],
+    ['branch with whitespace', { HOME, TABLINUM_GIT_BRANCH: 'my branch' }],
+    ['author email without @', { HOME, TABLINUM_GIT_AUTHOR_EMAIL: 'tablinum' }],
+    ['short session secret', { HOME, TABLINUM_SESSION_SECRET: 'short' }],
+    ['negative autocommit', { HOME, TABLINUM_AUTOCOMMIT_MS: '-1' }],
+    ['unreadable boolean', { HOME, TABLINUM_TRUST_PROXY: 'maybe' }],
+    ['short webhook secret', { HOME, TABLINUM_WEBHOOK_SECRET: 'too-short' }],
   ];
 
   it.each(bad)('throws on %s', (_label, env) => {
     expect(() => loadConfig(env)).toThrow(AppError);
   });
 
+  it('refuses to guess a content dir when there is no home directory', () => {
+    expect(() => loadConfig({})).toThrow(/TABLINUM_CONTENT_DIR is unset/);
+  });
+
+  it('falls back to the windows home variable', () => {
+    expect(loadConfig({ USERPROFILE: 'C:\\Users\\alice' }).contentDir).toBe(
+      `C:\\Users\\alice/${DEFAULT_CONTENT_SUBDIR}`,
+    );
+  });
+
   it('reports the offending variable', () => {
-    expect(() => loadConfig({ TABLINUM_PORT: 'nope' })).toThrow(/TABLINUM_PORT/);
+    expect(() => loadConfig({ HOME, TABLINUM_PORT: 'nope' })).toThrow(/TABLINUM_PORT/);
   });
 });
 
 describe('TABLINUM_WEBHOOK_SECRET', () => {
   it('is unset by default, which turns agent webhooks off', () => {
-    expect(loadConfig({}).webhookSecret).toBeNull();
+    expect(loadConfig({ HOME }).webhookSecret).toBeNull();
   });
 
   it('is kept when it is long enough, and never printed', () => {
-    const config = loadConfig({ TABLINUM_WEBHOOK_SECRET: 'a-signing-secret-long-enough' });
+    const config = loadConfig({ HOME, TABLINUM_WEBHOOK_SECRET: 'a-signing-secret-long-enough' });
     expect(config.webhookSecret).toBe('a-signing-secret-long-enough');
     expect(redactConfig(config).webhookSecret).toBe('set');
     expect(JSON.stringify(redactConfig(config))).not.toContain('a-signing-secret');
@@ -122,10 +136,10 @@ describe('TABLINUM_WEBHOOK_SECRET', () => {
 describe('getConfig', () => {
   it('memoizes until reset', () => {
     resetConfigCache();
-    const first = getConfig({ TABLINUM_PORT: '5001' });
-    expect(getConfig({ TABLINUM_PORT: '5002' })).toBe(first);
+    const first = getConfig({ HOME, TABLINUM_PORT: '5001' });
+    expect(getConfig({ HOME, TABLINUM_PORT: '5002' })).toBe(first);
     resetConfigCache();
-    expect(getConfig({ TABLINUM_PORT: '5002' }).port).toBe(5002);
+    expect(getConfig({ HOME, TABLINUM_PORT: '5002' }).port).toBe(5002);
     resetConfigCache();
   });
 });
@@ -133,7 +147,7 @@ describe('getConfig', () => {
 describe('redactConfig', () => {
   it('hides secrets', () => {
     const redacted = redactConfig(
-      loadConfig({ TABLINUM_API_TOKENS: 'a,b', TABLINUM_SESSION_SECRET: 'hunter2-and-then-some' }),
+      loadConfig({ HOME, TABLINUM_API_TOKENS: 'a,b', TABLINUM_SESSION_SECRET: 'hunter2-and-then-some' }),
     );
     expect(redacted.apiTokens).toBe('2 token(s)');
     expect(redacted.sessionSecret).toBe('set');
@@ -143,6 +157,7 @@ describe('redactConfig', () => {
   it('washes the token out of the git remote', () => {
     const redacted = redactConfig(
       loadConfig({
+        HOME,
         TABLINUM_GIT_REMOTE: 'https://x-access-token:ghp_secret@github.com/acme/docs.git',
       }),
     );
@@ -152,7 +167,7 @@ describe('redactConfig', () => {
 
   it('leaves an ssh remote as it is', () => {
     const redacted = redactConfig(
-      loadConfig({ TABLINUM_GIT_REMOTE: 'git@github.com:acme/docs.git' }),
+      loadConfig({ HOME, TABLINUM_GIT_REMOTE: 'git@github.com:acme/docs.git' }),
     );
     expect(redacted.gitRemote).toBe('git@github.com:acme/docs.git');
   });

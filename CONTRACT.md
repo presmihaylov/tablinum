@@ -11,7 +11,7 @@ API, no sync. It only borrows the *look and feel* of that style of block editor.
 ## MONOREPO LAYOUT (pnpm workspaces)
 
 ```
-/Users/pmihaylov/prg/repos/tablinum/
+tablinum/
   package.json, pnpm-workspace.yaml, tsconfig.base.json, .gitignore, README.md, .env.example
   packages/shared/    @tablinum/shared   - types + zod schemas + config, zero deps beyond zod
   packages/core/      @tablinum/core     - content store (fs, frontmatter, page tree, id index)
@@ -27,7 +27,7 @@ API, no sync. It only borrows the *look and feel* of that style of block editor.
 ## ON-DISK CONTENT FORMAT (source of truth for everything)
 
 A content repo is a git repo. Default path: `${TABLINUM_CONTENT_DIR}`, fallback
-`/Users/pmihaylov/prg/repos/tablinum/.data/content`
+`~/.tablinum/content`
 
 That directory is the DEFAULT WORKSPACE. Every other workspace is a git repo of its own with
 exactly the same layout, one directory per workspace under `<parent of content dir>/workspaces/`.
@@ -140,7 +140,7 @@ created: 2026-08-08T10:00:00.000Z   # ISO 8601 UTC
 updated: 2026-08-08T10:00:00.000Z   # ISO 8601 UTC
 props:                   # optional, Record<string, string|number|boolean|string[]|null>
   status: draft          # arbitrary user properties. THIS powers the table view.
-  owner: pmihaylov
+  owner: alice
 ---
 ```
 
@@ -837,7 +837,7 @@ Read from env, all packages use `@tablinum/shared`'s `loadConfig()`:
 
 | Variable | Default |
 | --- | --- |
-| `TABLINUM_CONTENT_DIR` | `/Users/pmihaylov/prg/repos/tablinum/.data/content` |
+| `TABLINUM_CONTENT_DIR` | `~/.tablinum/content` |
 | `TABLINUM_PORT` | `4000` |
 | `TABLINUM_API_TOKENS` | comma-separated bearer tokens |
 | `TABLINUM_SESSION_SECRET` | cookie signing secret |

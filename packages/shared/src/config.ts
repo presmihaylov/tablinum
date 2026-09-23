@@ -3,7 +3,7 @@ import type { Config } from './types.js';
 
 export type EnvSource = Record<string, string | undefined>;
 
-export const DEFAULT_CONTENT_DIR = '/Users/pmihaylov/prg/repos/tablinum/.data/content';
+export const DEFAULT_CONTENT_SUBDIR = '.tablinum/content';
 export const DEFAULT_PORT = 4000;
 export const DEFAULT_GIT_BRANCH = 'main';
 export const DEFAULT_GIT_AUTHOR_NAME = 'tablinum';
@@ -78,6 +78,20 @@ function isAbsolutePath(value: string): boolean {
   return value.startsWith('/') || WINDOWS_ABSOLUTE_RE.test(value);
 }
 
+/**
+ * Fallback when TABLINUM_CONTENT_DIR is unset. dev.sh, the docker entrypoint and the e2e config
+ * all set the variable, so this only catches a bare `node dist/index.js`.
+ */
+export function defaultContentDir(env: EnvSource): string {
+  const home = (env['HOME'] ?? env['USERPROFILE'] ?? '').trim();
+  if (home === '' || !isAbsolutePath(home)) {
+    throw validation(
+      'TABLINUM_CONTENT_DIR is unset and no home directory was found. Set it to an absolute path.',
+    );
+  }
+  return `${home.replace(/[\\/]+$/, '')}/${DEFAULT_CONTENT_SUBDIR}`;
+}
+
 function randomHex(bytes: number): string {
   const buffer = new Uint8Array(bytes);
   globalThis.crypto.getRandomValues(buffer);
@@ -98,7 +112,7 @@ function parseTokens(raw: string | undefined): string[] {
  * Throws a VALIDATION AppError with a readable message on any bad value.
  */
 export function loadConfig(env: EnvSource = process.env): Config {
-  const contentDir = read(env, 'TABLINUM_CONTENT_DIR') ?? DEFAULT_CONTENT_DIR;
+  const contentDir = read(env, 'TABLINUM_CONTENT_DIR') ?? defaultContentDir(env);
   if (!isAbsolutePath(contentDir)) {
     throw validation(`TABLINUM_CONTENT_DIR must be an absolute path, got ${JSON.stringify(contentDir)}`);
   }

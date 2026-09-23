@@ -1,7 +1,8 @@
 name: Deploy
 
-# Builds the image in CI and tells apps-01 to run it. The host never builds:
-# it is a cx23, and this Dockerfile compiles better-sqlite3 from source.
+# Builds the image in CI and tells the production host to run it. The host never
+# builds: this Dockerfile compiles better-sqlite3 from source, which needs more
+# than a small box has. Every detail of the host lives in repository secrets.
 
 on:
   push:
@@ -36,7 +37,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # amd64 only. apps-01 is amd64 and an arm64 build would need QEMU.
+      # amd64 only. The host is amd64 and an arm64 build would need QEMU.
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
@@ -53,11 +54,13 @@ jobs:
       # Secrets go through env, never through ${{ }} inside the script. A
       # ${{ }} is substituted into the script text before the shell runs, which
       # both leaks the value under shell tracing and allows injection.
-      - name: Deploy to apps-01
+      - name: Deploy
         env:
           SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
           HOST: ${{ secrets.DEPLOY_HOST }}
+          SSH_USER: ${{ secrets.DEPLOY_SSH_USER }}
+          SSH_PORT: ${{ secrets.DEPLOY_SSH_PORT }}
           TAG: sha-${{ github.sha }}
         run: |
           set -euo pipefail
@@ -68,7 +71,7 @@ jobs:
           printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
           ssh -i ~/.ssh/deploy -o IdentitiesOnly=yes \
               -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
-              -p 4423 "apps@$HOST" "appctl deploy tablinum $TAG"
+              -p "$SSH_PORT" "$SSH_USER@$HOST" "appctl deploy tablinum $TAG"
 
       - name: Wipe the key
         if: always()

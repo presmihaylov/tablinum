@@ -649,7 +649,7 @@ Both `scripts/dev.sh` and `scripts/seed.ts` now also accept the `--` that `pnpm 
 ### Install and verify
 
 ```bash
-cd /Users/pmihaylov/prg/repos/tablinum
+cd tablinum
 pnpm install
 pnpm -r typecheck
 pnpm -r build
@@ -708,7 +708,7 @@ curl -X POST -H "Authorization: Bearer $TOKEN" -H 'content-type: application/jso
 claude mcp add tablinum --scope project \
   --env TABLINUM_URL=http://127.0.0.1:4000 \
   --env TABLINUM_TOKEN=your-token-here \
-  -- node /Users/pmihaylov/prg/repos/tablinum/packages/mcp/dist/cli.js
+  -- node /path/to/tablinum/packages/mcp/dist/cli.js
 ```
 
 ### Docker

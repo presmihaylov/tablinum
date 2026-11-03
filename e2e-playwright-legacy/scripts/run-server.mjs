@@ -1,10 +1,6 @@
 #!/usr/bin/env node
-// Started by playwright's `webServer`. It builds the workspace when the build output is
-// missing, throws away this port's content directory, and then runs the real server:
-// the same apps/server/dist/server.js production runs, serving apps/web/dist itself.
-//
-// Everything it needs arrives in the environment (see e2e/playwright.config.ts), so the
-// script never guesses a port or a directory.
+// Started by playwright's `webServer`: builds the workspace if needed, wipes this port's content
+// directory, then runs the production server. playwright.config.ts supplies the paths and port.
 
 import { spawnSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs';

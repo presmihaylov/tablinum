@@ -59,7 +59,7 @@ export default defineConfig({
   ],
 
   webServer: {
-    command: 'node e2e/scripts/run-server.mjs',
+    command: 'node e2e-playwright-legacy/scripts/run-server.mjs',
     cwd: REPO_ROOT,
     url: `${BASE_URL}/api/v1/health`,
     // A fresh run must own its server; reusing one would inherit its content directory.

@@ -148,22 +148,8 @@ export class ApiClient {
     return body.pages;
   }
 
-  /**
-   * Put the content tree of this workspace back to the one a fresh server writes: take it away,
-   * copy the seed over it, and tell the server to read the result. Nothing else is touched;
-   * extra workspaces, favorites, accounts and agents live outside the content directory, and a
-   * spec that makes one still removes it itself.
-   *
-   * The seed is the running server's own first tree, copied out before any spec had a chance to
-   * change it (`captureSeed` in e2e/scripts/run-server.mjs). So this names no kind of content,
-   * which is the point: an enumerated clean-up forgets whichever kind it was written before.
-   *
-   * The rescan is what makes the raw filesystem work safe. A removal the API did not do would
-   * otherwise be left to the content watcher, and the watcher drops any event for a file the
-   * API wrote in the last five seconds (`recentWrites.consume` at apps/server/src/wiring.ts).
-   * A page inside that window would live on in the index and in search.db pointing at a file
-   * that is gone.
-   */
+  // Restore the fresh server's captured seed. Specs clean up state outside this content directory.
+  // Rescan explicitly because recentWrites can hide removals from the watcher for five seconds.
   async reset(): Promise<void> {
     for (const entry of await readdir(this.contentDir)) {
       // `.git` is the history, not the content. A reset rewrites the tree, never the history.

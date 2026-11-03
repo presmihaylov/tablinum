@@ -148,10 +148,8 @@ export class ApiClient {
     return body.pages;
   }
 
-  /**
-   * Restore the fresh server's captured seed tree; specs clean up state outside the content directory.
-   * Rescans explicitly because `recentWrites` hides removals from the watcher for five seconds.
-   */
+  // Restore the fresh server's captured seed. Specs clean up state outside this content directory.
+  // Rescan explicitly because recentWrites can hide removals from the watcher for five seconds.
   async reset(): Promise<void> {
     for (const entry of await readdir(this.contentDir)) {
       // `.git` is the history, not the content. A reset rewrites the tree, never the history.

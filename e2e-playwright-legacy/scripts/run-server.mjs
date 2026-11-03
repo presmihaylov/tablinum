@@ -3,7 +3,7 @@
 // missing, throws away this port's content directory, and then runs the real server:
 // the same apps/server/dist/server.js production runs, serving apps/web/dist itself.
 //
-// Everything it needs arrives in the environment (see e2e/playwright.config.ts), so the
+// Everything it needs arrives in the environment (see e2e-playwright-legacy/playwright.config.ts), so the
 // script never guesses a port or a directory.
 
 import { spawnSync } from 'node:child_process';

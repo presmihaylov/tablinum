@@ -155,7 +155,7 @@ export class ApiClient {
    * spec that makes one still removes it itself.
    *
    * The seed is the running server's own first tree, copied out before any spec had a chance to
-   * change it (`captureSeed` in e2e/scripts/run-server.mjs). So this names no kind of content,
+   * change it (`captureSeed` in e2e-playwright-legacy/scripts/run-server.mjs). So this names no kind of content,
    * which is the point: an enumerated clean-up forgets whichever kind it was written before.
    *
    * The rescan is what makes the raw filesystem work safe. A removal the API did not do would

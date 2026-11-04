@@ -58,6 +58,57 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  e2e:
+    name: e2e (webdriverio)
+    runs-on: ubuntu-latest
+    # The suite runs on one worker against one server, so it is serial by design. 25 minutes
+    # covers a cold build plus the whole run, with room for the CI retry of a flaky test.
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      # Same two setup steps as the build job: the pnpm version comes from "packageManager",
+      # and the store is cached on pnpm-lock.yaml.
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The runner image ships Google Chrome with the chromedriver of the same version, so the
+      # suite downloads no browser. Printing both versions makes a mismatch obvious.
+      - name: Point the suite at the runner's Chrome
+        run: |
+          echo "CHROME_BIN=$(command -v google-chrome)" >> "$GITHUB_ENV"
+          echo "CHROMEDRIVER=$CHROMEWEBDRIVER/chromedriver" >> "$GITHUB_ENV"
+          google-chrome --version
+          "$CHROMEWEBDRIVER/chromedriver" --version
+
+      # The suite serves apps/web/dist out of apps/server/dist, so both must exist first.
+      - name: Build
+        run: pnpm build
+
+      - name: Run the e2e suite
+        run: pnpm e2e
+
+      # A failed test leaves a screenshot of its page.
+      - name: Upload the failure screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-screenshots
+          path: test-results
+          if-no-files-found: ignore
+          retention-days: 7
+
   docker:
     name: docker build
     runs-on: ubuntu-latest

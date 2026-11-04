@@ -8,7 +8,6 @@ export interface RequestOptions {
   data?: unknown;
   params?: Record<string, string | number | boolean>;
   headers?: Record<string, string>;
-  multipart?: Record<string, string | { name: string; mimeType: string; buffer: Buffer }>;
 }
 
 export class HttpResponse {
@@ -27,14 +26,6 @@ export class HttpResponse {
 
   url(): string {
     return this.response.url;
-  }
-
-  headers(): Record<string, string> {
-    return Object.fromEntries(this.response.headers.entries());
-  }
-
-  body(): Buffer {
-    return this.bytes;
   }
 
   text(): Promise<string> {
@@ -110,14 +101,6 @@ export class Http {
 }
 
 function body(options: RequestOptions, headers: Headers): BodyInit | undefined {
-  if (options.multipart) {
-    const form = new FormData();
-    for (const [k, v] of Object.entries(options.multipart)) {
-      if (typeof v === 'string') form.append(k, v);
-      if (typeof v !== 'string') form.append(k, new Blob([new Uint8Array(v.buffer)], { type: v.mimeType }), v.name);
-    }
-    return form;
-  }
   if (options.data === undefined) return undefined;
   if (typeof options.data === 'string' || Buffer.isBuffer(options.data)) return options.data as BodyInit;
   if (!headers.has('content-type')) headers.set('content-type', 'application/json');

@@ -37,11 +37,9 @@ const normalize = (s: string) => s.replace(/\s+/g, ' ').trim();
 
 type TextMatch = string | RegExp;
 
-function textMatches(actual: string, expected: TextMatch, contains: boolean, ignoreCase = false): boolean {
+function textMatches(actual: string, expected: TextMatch, contains: boolean): boolean {
   if (expected instanceof RegExp) return expected.test(actual);
-  const a = ignoreCase ? normalize(actual).toLowerCase() : normalize(actual);
-  const e = ignoreCase ? normalize(expected).toLowerCase() : normalize(expected);
-  return contains ? a.includes(e) : a === e;
+  return contains ? normalize(actual).includes(normalize(expected)) : normalize(actual) === normalize(expected);
 }
 
 // One element's state, read in a single round trip; `count` lets the strictness rules apply.
@@ -51,9 +49,7 @@ interface Snapshot {
   enabled: boolean;
   focused: boolean;
   inViewport: boolean;
-  checked: boolean;
   text: string;
-  innerText: string;
   value: string;
   attr: string | null;
   className: string;
@@ -73,9 +69,7 @@ function snapshot(locator: Locator, attr = ''): Promise<Snapshot> {
         enabled: el ? window.__e2e.isEnabled(el) : false,
         focused: el ? active === el : false,
         inViewport: el ? window.__e2e.inViewport(el) : false,
-        checked: el ? (el as HTMLInputElement).checked === true || el.getAttribute('aria-checked') === 'true' : false,
         text: el?.textContent ?? '',
-        innerText: el?.innerText ?? '',
         value: el ? ((el as HTMLInputElement).value ?? '') : '',
         attr: el && name ? el.getAttribute(name) : null,
         className: el?.getAttribute('class') ?? '',
@@ -109,13 +103,13 @@ function asLocator(received: unknown): Locator {
 }
 
 function textAssertion(contains: boolean) {
-  return async function (this: { isNot: boolean }, received: unknown, expected: TextMatch | TextMatch[], opts?: Options & { ignoreCase?: boolean; useInnerText?: boolean }) {
+  return async function (this: { isNot: boolean }, received: unknown, expected: TextMatch | TextMatch[], opts?: Options) {
     const locator = asLocator(received);
     if (Array.isArray(expected)) {
       return retry(this.isNot, opts?.timeout, async () => {
         const s = await snapshot(locator);
         const texts = s.texts;
-        const pass = texts.length === expected.length && expected.every((e, i) => textMatches(texts[i] ?? '', e, contains, opts?.ignoreCase));
+        const pass = texts.length === expected.length && expected.every((e, i) => textMatches(texts[i] ?? '', e, contains));
         return { pass, message: () => `${locator.toString()} texts are ${JSON.stringify(texts.map(normalize))}, expected ${String(expected)}` };
       });
     }
@@ -123,7 +117,7 @@ function textAssertion(contains: boolean) {
       locator,
       this.isNot,
       opts,
-      (s) => textMatches(opts?.useInnerText ? s.innerText : s.text, expected, contains, opts?.ignoreCase),
+      (s) => textMatches(s.text, expected, contains),
       `${contains ? 'containing' : 'with text'} ${String(expected)}`,
     );
   };
@@ -174,14 +168,8 @@ expect.extend({
   toBeDisabled(received: unknown, opts?: Options) {
     return single(asLocator(received), this.isNot, opts, (s) => !s.enabled, 'disabled');
   },
-  toBeEnabled(received: unknown, opts?: Options) {
-    return single(asLocator(received), this.isNot, opts, (s) => s.enabled, 'enabled');
-  },
   toBeFocused(received: unknown, opts?: Options) {
     return single(asLocator(received), this.isNot, opts, (s) => s.focused, 'focused');
-  },
-  toBeChecked(received: unknown, opts?: Options) {
-    return single(asLocator(received), this.isNot, opts, (s) => s.checked, 'checked');
   },
   toBeInViewport(received: unknown, opts?: Options) {
     return single(asLocator(received), this.isNot, opts, (s) => s.inViewport, 'in the viewport');
@@ -217,15 +205,13 @@ interface LocatorMatchers<R> {
   toBeVisible(opts?: Options): Promise<R>;
   toBeHidden(opts?: Options): Promise<R>;
   toHaveCount(n: number, opts?: Options): Promise<R>;
-  toHaveText(expected: TextMatch | TextMatch[], opts?: Options & { ignoreCase?: boolean; useInnerText?: boolean }): Promise<R>;
-  toContainText(expected: TextMatch | TextMatch[], opts?: Options & { ignoreCase?: boolean; useInnerText?: boolean }): Promise<R>;
+  toHaveText(expected: TextMatch | TextMatch[], opts?: Options): Promise<R>;
+  toContainText(expected: TextMatch | TextMatch[], opts?: Options): Promise<R>;
   toHaveValue(expected: TextMatch, opts?: Options): Promise<R>;
   toHaveAttribute(name: string, expected?: TextMatch, opts?: Options): Promise<R>;
   toHaveClass(expected: TextMatch, opts?: Options): Promise<R>;
   toBeDisabled(opts?: Options): Promise<R>;
-  toBeEnabled(opts?: Options): Promise<R>;
   toBeFocused(opts?: Options): Promise<R>;
-  toBeChecked(opts?: Options): Promise<R>;
   toBeInViewport(opts?: Options): Promise<R>;
   toHaveURL(expected: TextMatch, opts?: Options): Promise<R>;
   toHaveTitle(expected: TextMatch, opts?: Options): Promise<R>;

@@ -28,20 +28,10 @@ function roleOf(el: Element): string | null {
   return role;
 }
 
-function ariaState(el: Element, attr: string): string | null {
-  return el.getAttribute(attr);
-}
-
 function roleStateMatches(el: Element, opts: RoleOptions): boolean {
-  if (opts.selected !== undefined && (ariaState(el, 'aria-selected') === 'true') !== opts.selected) return false;
-  if (opts.checked !== undefined) {
-    const checked = el instanceof HTMLInputElement ? el.checked : ariaState(el, 'aria-checked') === 'true';
-    if (checked !== opts.checked) return false;
-  }
-  if (opts.pressed !== undefined && (ariaState(el, 'aria-pressed') === 'true') !== opts.pressed) return false;
-  if (opts.expanded !== undefined && (ariaState(el, 'aria-expanded') === 'true') !== opts.expanded) return false;
+  if (opts.selected !== undefined && (el.getAttribute('aria-selected') === 'true') !== opts.selected) return false;
   if (opts.level !== undefined) {
-    const level = Number(ariaState(el, 'aria-level') ?? /^h([1-6])$/.exec(el.localName)?.[1]);
+    const level = Number(el.getAttribute('aria-level') ?? /^h([1-6])$/.exec(el.localName)?.[1]);
     if (level !== opts.level) return false;
   }
   return true;
@@ -74,7 +64,7 @@ function nameOf(el: Element, role: string | null): string {
 function byRole(root: ParentNode, role: string, opts: RoleOptions): Element[] {
   return [...root.querySelectorAll('*')].filter((el) => {
     if (roleOf(el) !== role) return false;
-    if (!opts.includeHidden && hiddenFromTree(el)) return false;
+    if (hiddenFromTree(el)) return false;
     if (!roleStateMatches(el, opts)) return false;
     return opts.name === undefined || matches(nameOf(el, role), opts.name, opts.exact);
   });
@@ -168,11 +158,7 @@ function applyStep(roots: ParentNode[], step: Step): Element[] {
   if (step.kind === 'filter') {
     return (roots as Element[]).filter((el) => {
       if (step.hasText && !matches(el.textContent ?? '', step.hasText, false)) return false;
-      if (step.hasNotText && matches(el.textContent ?? '', step.hasNotText, false)) return false;
-      if (step.has && resolve(step.has, el).length === 0) return false;
-      if (step.hasNot && resolve(step.hasNot, el).length > 0) return false;
-      if (step.visible !== undefined && isVisible(el) !== step.visible) return false;
-      return true;
+      return !step.has || resolve(step.has, el).length > 0;
     });
   }
   return uniqueInOrder(roots.flatMap((root) => stepOnce(root, step)));

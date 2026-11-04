@@ -193,7 +193,7 @@ export class Page {
 
   constructor(private readonly ctx: BrowserContext) {
     this.mouse = new Mouse(ctx.wdio, ctx.cdp);
-    this.keyboard = new Keyboard(ctx.wdio, this.mouse);
+    this.keyboard = new Keyboard(ctx.wdio);
   }
 
   get wdio() {
@@ -313,10 +313,6 @@ export class Page {
     return new Locator(this, [{ kind: 'attr', attr: 'title', value: matcher(text), exact: options?.exact }]);
   }
 
-  getByPlaceholder(text: string | RegExp, options?: { exact?: boolean }) {
-    return new Locator(this, [{ kind: 'attr', attr: 'placeholder', value: matcher(text), exact: options?.exact }]);
-  }
-
   // Clicks at viewport coordinates, as a user's mouse would, holding any modifier keys.
   async clickAt(x: number, y: number, options: ClickOptions = {}) {
     const held = this.mouse.modifiers;
@@ -343,10 +339,7 @@ async function settle(wdio: WdioBrowser) {
 }
 
 export class Keyboard {
-  constructor(
-    private readonly wdio: WdioBrowser,
-    private readonly mouse: Mouse,
-  ) {}
+  constructor(private readonly wdio: WdioBrowser) {}
 
   private key() {
     return this.wdio.action('key', { id: 'keyboard' });
@@ -359,19 +352,6 @@ export class Keyboard {
     if (options.delay) action.pause(options.delay);
     for (const k of [...keys].reverse()) action.up(k);
     await action.perform(true);
-    await settle(this.wdio);
-  }
-
-  // A held modifier also rides on the mouse's events, which go over CDP rather than WebDriver.
-  async down(name: string) {
-    await this.key().down(keyValue(name)).perform(true);
-    this.mouse.modifiers |= modifierBits([name]);
-    await settle(this.wdio);
-  }
-
-  async up(name: string) {
-    await this.key().up(keyValue(name)).perform(true);
-    this.mouse.modifiers &= ~modifierBits([name]);
     await settle(this.wdio);
   }
 
@@ -503,10 +483,6 @@ export class Mouse {
     return this.click(x, y, { clickCount: 2 });
   }
 
-  async wheel(deltaX: number, deltaY: number) {
-    await this.send('mouseWheel', { deltaX, deltaY });
-    await settle(this.wdio);
-  }
 }
 
 export function modifierBits(names: string[]): number {
@@ -551,10 +527,7 @@ interface Target {
 
 export interface FilterOptions {
   hasText?: string | RegExp;
-  hasNotText?: string | RegExp;
   has?: Locator;
-  hasNot?: Locator;
-  visible?: boolean;
 }
 
 export class Locator {
@@ -596,10 +569,6 @@ export class Locator {
     return this.with({ kind: 'attr', attr: 'data-testid', value: matcher(id), exact: true });
   }
 
-  getByTitle(text: string | RegExp, options?: { exact?: boolean }) {
-    return this.with({ kind: 'attr', attr: 'title', value: matcher(text), exact: options?.exact });
-  }
-
   getByPlaceholder(text: string | RegExp, options?: { exact?: boolean }) {
     return this.with({ kind: 'attr', attr: 'placeholder', value: matcher(text), exact: options?.exact });
   }
@@ -608,10 +577,7 @@ export class Locator {
     return this.with({
       kind: 'filter',
       ...(options.hasText === undefined ? {} : { hasText: matcher(options.hasText) }),
-      ...(options.hasNotText === undefined ? {} : { hasNotText: matcher(options.hasNotText) }),
       ...(options.has ? { has: options.has.steps } : {}),
-      ...(options.hasNot ? { hasNot: options.hasNot.steps } : {}),
-      ...(options.visible === undefined ? {} : { visible: options.visible }),
     });
   }
 
@@ -722,10 +688,6 @@ export class Locator {
     if (value !== '') await this.owner.keyboard.insertText(value);
   }
 
-  async clear() {
-    await this.fill('');
-  }
-
   async press(key: string) {
     await this.focus();
     await this.owner.keyboard.press(key);
@@ -795,10 +757,6 @@ export class Locator {
     }
   }
 
-  scrollIntoViewIfNeeded() {
-    return this.one((el) => el.scrollIntoView({ block: 'nearest', inline: 'nearest' }));
-  }
-
   boundingBox(): Promise<Box | null> {
     return this.one((el) => window.__e2e.box(el));
   }
@@ -807,31 +765,12 @@ export class Locator {
     return this.one((el) => el.textContent);
   }
 
-  innerText(): Promise<string> {
-    return this.one((el) => (el as HTMLElement).innerText);
-  }
-
-  inputValue(): Promise<string> {
-    return this.one((el) => (el as HTMLInputElement).value);
-  }
-
   getAttribute(name: string): Promise<string | null> {
     return this.one((el, n: string) => el.getAttribute(n), name);
   }
 
-  async isVisible(): Promise<boolean> {
-    return this.owner.run((steps: Step[]) => {
-      const [el] = window.__e2e.resolve(steps);
-      return el !== undefined && window.__e2e.isVisible(el);
-    }, this.steps);
-  }
-
   allInnerTexts(): Promise<string[]> {
     return this.owner.run((steps: Step[]) => window.__e2e.resolve(steps).map((el) => (el as HTMLElement).innerText), this.steps);
-  }
-
-  allTextContents(): Promise<string[]> {
-    return this.owner.run((steps: Step[]) => window.__e2e.resolve(steps).map((el) => el.textContent ?? ''), this.steps);
   }
 
   evaluate<R, A, E extends Element = HTMLElement>(fn: (el: E, arg: A) => R | Promise<R>, arg?: A): Promise<R> {
@@ -842,24 +781,6 @@ export class Locator {
     return this.owner.run<R>(`(steps, a) => (${fn.toString()})(window.__e2e.resolve(steps), a)`, this.steps, arg);
   }
 
-  async waitFor(options: { state?: 'attached' | 'detached' | 'visible' | 'hidden'; timeout?: number } = {}) {
-    const state = options.state ?? 'visible';
-    const deadline = Date.now() + (options.timeout ?? ACTION_TIMEOUT);
-    for (;;) {
-      const [count, visible] = await this.owner.run((steps: Step[]) => {
-        const els = window.__e2e.resolve(steps);
-        return [els.length, els.some((el) => window.__e2e.isVisible(el))] as const;
-      }, this.steps);
-      const done =
-        (state === 'attached' && count > 0) ||
-        (state === 'detached' && count === 0) ||
-        (state === 'visible' && visible) ||
-        (state === 'hidden' && !visible);
-      if (done) return;
-      if (Date.now() > deadline) throw new Error(`${this.toString()}: never became ${state}`);
-      await sleep(POLL_MS);
-    }
-  }
 }
 
 interface InPage {

@@ -5,11 +5,7 @@ export interface RoleOptions {
   name?: Matcher;
   exact?: boolean;
   selected?: boolean;
-  checked?: boolean;
-  pressed?: boolean;
-  expanded?: boolean;
   level?: number;
-  includeHidden?: boolean;
 }
 
 export type Step =
@@ -19,14 +15,7 @@ export type Step =
   | { kind: 'label'; text: Matcher; exact?: boolean }
   | { kind: 'attr'; attr: string; value: Matcher; exact?: boolean }
   | { kind: 'nth'; index: number }
-  | {
-      kind: 'filter';
-      hasText?: Matcher;
-      hasNotText?: Matcher;
-      has?: Step[];
-      hasNot?: Step[];
-      visible?: boolean;
-    };
+  | { kind: 'filter'; hasText?: Matcher; has?: Step[] };
 
 export const matcher = (value: string | RegExp): Matcher =>
   typeof value === 'string' ? { str: value } : { re: value.source, flags: value.flags };

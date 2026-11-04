@@ -42,6 +42,42 @@ function describe(el: Element): string {
   return `<${el.localName}${el.id ? `#${el.id}` : ''}${cls}>`;
 }
 
+// Playwright's hit-target check, at the moment the press arrives: a press that would land on another
+// element (the list re-rendered under the pointer) is stopped before the page sees it, and retried.
+const GUARDED = ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'] as const;
+let guard: { el: Element; hit: boolean | null; stop: (e: Event) => void } | null = null;
+
+function owns(el: Element, target: EventTarget | null): boolean {
+  if (!(target instanceof Node)) return false;
+  if (el === target || el.contains(target)) return true;
+  const labels = el instanceof HTMLInputElement ? [...(el.labels ?? [])] : [];
+  return labels.some((l) => l === target || l.contains(target));
+}
+
+function arm(el: Element) {
+  disarm();
+  const state = {
+    el,
+    hit: null as boolean | null,
+    stop: (e: Event) => {
+      if (state.hit === null) state.hit = owns(el, e.target);
+      if (state.hit) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    },
+  };
+  for (const type of GUARDED) window.addEventListener(type, state.stop, true);
+  guard = state;
+}
+
+function disarm(): boolean | null {
+  if (!guard) return null;
+  for (const type of GUARDED) window.removeEventListener(type, guard.stop, true);
+  const hit = guard.hit;
+  guard = null;
+  return hit;
+}
+
 // Playwright's fill: focus, select everything the field holds, so the next keystroke or insert replaces it.
 function selectAll(el: Element): string | null {
   if (!isEditable(el)) return 'element is not editable';
@@ -76,5 +112,5 @@ function describeAll(steps: Step[]): string[] {
 // esbuild's keepNames wraps serialized functions in __name(); in the page it only has to return them.
 Object.assign(window, {
   __name: <T>(fn: T) => fn,
-  __e2e: { resolve, isVisible, isEnabled, isEditable, target, selectAll, box, inViewport, describeAll },
+  __e2e: { resolve, isVisible, isEnabled, isEditable, target, selectAll, box, inViewport, describeAll, arm, disarm },
 });

@@ -679,8 +679,23 @@ export class Locator {
     }
   }
 
-  click(options: ClickOptions = {}) {
-    return this.act((t) => this.owner.clickAt(t.x, t.y, options), options);
+  // A click that another element took (see arm() in in-page.ts) never reached the page, so it is retried.
+  async click(options: ClickOptions = {}) {
+    const deadline = Date.now() + (options.timeout ?? ACTION_TIMEOUT);
+    for (;;) {
+      let hit: boolean | null = null;
+      await this.act(async (t) => {
+        await this.one((el) => window.__e2e.arm(el));
+        try {
+          await this.owner.clickAt(t.x, t.y, options);
+        } finally {
+          hit = await this.owner.run<boolean | null>('() => window.__e2e.disarm()').catch(() => null);
+        }
+      }, { ...options, timeout: Math.max(1, deadline - Date.now()) });
+      if (hit !== false || options.force) return;
+      if (Date.now() > deadline) throw new Error(`${this.toString()}: another element kept taking the click`);
+      await sleep(POLL_MS);
+    }
   }
 
   dblclick(options: ClickOptions = {}) {
@@ -857,6 +872,8 @@ interface InPage {
   box(el: Element): Box | null;
   inViewport(el: Element): boolean;
   describeAll(steps: Step[]): string[];
+  arm(el: Element): void;
+  disarm(): boolean | null;
 }
 
 declare global {

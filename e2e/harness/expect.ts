@@ -91,8 +91,9 @@ function strict(s: Snapshot, locator: Locator): string | null {
 function single(locator: Locator, isNot: boolean | undefined, opts: Options | undefined, test: (s: Snapshot) => boolean, what: string, attr = '') {
   return retry(isNot, opts?.timeout, async () => {
     const s = await snapshot(locator, attr);
+    // Thrown, so retry() fails it under .not as well: several matches prove nothing about one element.
     const err = strict(s, locator);
-    if (err) return { pass: false, message: () => err };
+    if (err) throw new Error(err);
     const pass = s.count === 1 && test(s);
     return { pass, message: () => `${locator.toString()} ${isNot === true ? 'is still' : 'is not'} ${what} (matches: ${String(s.count)}, text: ${JSON.stringify(normalize(s.text).slice(0, 200))})` };
   });
@@ -131,6 +132,8 @@ expect.extend({
     // Under .not, no match at all also passes, as Playwright's toBeHidden does.
     return retry(true, opts?.timeout, async () => {
       const s = await snapshot(locator);
+      const err = strict(s, locator);
+      if (err) throw new Error(err);
       return { pass: s.count > 0 && s.visible, message: () => `${locator.toString()} is still visible` };
     });
   },

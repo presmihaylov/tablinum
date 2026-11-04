@@ -75,6 +75,9 @@ test.describe('the harness', () => {
     await page.goto(`${origin}/`);
     await expect(page.getByRole('button', { name: 'Save' }).click({ timeout: 600 })).rejects.toThrow(/strict mode: 2 elements/);
     await expect(expect(page.getByText('One shared line')).toBeVisible(fast)).rejects.toThrow(/strict mode: 2 elements/);
+    // Negated assertions must not pass on several matches either.
+    await expect(expect(page.getByText('One shared line')).not.toContainText('One shared line', fast)).rejects.toThrow(/strict mode: 2 elements/);
+    await expect(expect(page.getByText('One shared line')).not.toBeVisible(fast)).rejects.toThrow(/strict mode: 2 elements/);
   });
 
   test('waits for an element that arrives late, and gives up on one that never does', async ({ page }) => {

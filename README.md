@@ -116,12 +116,39 @@ pnpm build       # build every package
 pnpm typecheck   # strict tsc across the workspace
 pnpm test        # vitest across the workspace
 pnpm dev         # API and web together, with reload
+pnpm e2e         # browser tests, see below
 ```
 
 ### End-to-end tests
 
-The browser suite is parked in `e2e-playwright-legacy/` while it moves off Playwright. Nothing
-runs it: it has no script, no CI job and no dependency in `package.json`.
+`e2e/` drives a real browser against a real server: the built `apps/server/dist/server.js`
+serving the built `apps/web/dist`, over a content repo of its own. It runs on vitest with
+WebdriverIO, so it needs a Chromium and the chromedriver of the same version:
+
+- Debian or Ubuntu: Chromium and `chromium-driver` from the distribution, or Google Chrome and its
+  chromedriver. `CHROME_BIN` names the browser (default `/usr/local/bin/chromium`) and
+  `CHROMEDRIVER` the driver (default `chromedriver` on the `PATH`).
+- macOS: `npx @puppeteer/browsers install chrome@stable chromedriver@stable`, then point
+  `CHROME_BIN` and `CHROMEDRIVER` at what it printed.
+
+Then run the suite:
+
+```bash
+pnpm e2e                          # the whole suite
+pnpm e2e search                   # the spec files whose name contains "search"
+pnpm e2e -t "deletes a page"      # the tests whose name matches
+```
+
+The suite starts and stops chromedriver and the server itself, and builds the workspace first
+when `dist` is missing. Every run begins from an empty content repo, an empty `accounts.db` and
+a fresh admin account, so no test depends on what the last run left. Each test gets a Chromium
+session of its own, with its sandbox on.
+
+- `TABLINUM_E2E_PORT=4310 pnpm e2e` moves the run to another port. The port names the server, the
+  driver, the content directory and the saved session, so two runs on two ports never collide.
+- `TABLINUM_E2E_SERVER_LOG=1` shows the server log and `TABLINUM_E2E_DRIVER_LOG=1` chromedriver's,
+  both hidden by default.
+- A failed test leaves a screenshot in `test-results/`.
 
 ## Live collaboration
 

@@ -170,7 +170,10 @@ function useCaretInside(editor: Editor, getPos: () => number, nodeSize: number):
         return;
       }
       const { from, to } = editor.state.selection;
-      setInside(to > pos && from < pos + sizeRef.current);
+      // The size from the state, not the last render: a key at the end of the source grows the
+      // node in this very transaction, and the rendered size would put the caret outside it.
+      const size = editor.state.doc.nodeAt(pos)?.nodeSize ?? sizeRef.current;
+      setInside(to > pos && from < pos + size);
     };
     update();
     const events = ['transaction', 'focus', 'blur'] as const;

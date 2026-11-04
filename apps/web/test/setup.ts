@@ -5,7 +5,7 @@ import { installArrowRewrite } from '../src/lib/arrow';
 
 // main.tsx puts this on the document before React starts, so every field a test renders has it
 // too. jsdom ships no `execCommand`, so the fallback path is the one exercised here; the real
-// one is covered by the parked e2e-playwright-legacy/arrow.spec.ts.
+// one is proved in e2e/arrow.spec.ts.
 installArrowRewrite();
 
 // jsdom ships no matchMedia; the theme provider asks for it on mount.

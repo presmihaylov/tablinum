@@ -12,8 +12,7 @@ dist/
 *.tsbuildinfo
 coverage/
 deploy/ssh/
-# playwright e2e output. The suite's own server, content repo and saved session live in the
-# OS temp directory (tablinum-e2e-<port>), so only the report and the traces reach the checkout.
-playwright-report/
+# e2e output. The suite's own server, content repo and saved session live in the OS temp
+# directory (tablinum-e2e-<port>), so only a failed test's screenshot reaches the checkout.
 test-results/
 tablinum-e2e-*/

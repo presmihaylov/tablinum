@@ -64,7 +64,7 @@ const extended = base.extend<TablinumFixtures>({
   page: async ({ task }, use) => {
     const context = await newSession({ baseURL: BASE_URL, cookies: adminState().cookies });
     try {
-      await use(context.page);
+      await use(context.takeFirstPage());
       if (task.result?.state === 'fail') {
         await mkdir(RESULTS_DIR, { recursive: true });
         await context.wdio.saveScreenshot(join(RESULTS_DIR, `${slug(task.name)}.png`)).catch(() => undefined);
@@ -121,7 +121,7 @@ const extended = base.extend<TablinumFixtures>({
 
   signedOutPage: async ({ browser }, use) => {
     const context = await browser.newContext({ storageState: EMPTY_STATE });
-    await use(context.page);
+    await use(context.takeFirstPage());
   },
 
   signedOutRequest: async ({}, use) => {

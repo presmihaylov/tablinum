@@ -99,6 +99,25 @@ test.describe('the harness', () => {
     expect((await bob.cookies()).map((c) => c.name)).not.toContain('who');
   });
 
+  test('opens a second tab as a page of its own, and closing it leaves the first', async ({ page }) => {
+    await page.goto(`${origin}/#first`);
+    const other = await page.context().newPage();
+    expect(other).not.toBe(page);
+    await other.goto(`${origin}/#second`);
+    expect(await page.evaluate(() => location.hash)).toBe('#first');
+    expect(await other.evaluate(() => location.hash)).toBe('#second');
+    await other.close();
+    await expect(page.getByRole('navigation', { name: 'Pages' })).toBeVisible();
+  });
+
+  test('fails a negated assertion on a page it cannot read', async ({ browser }) => {
+    const gone = await browser.newContext({ baseURL: origin });
+    const page = await gone.newPage();
+    await page.goto('/');
+    await gone.close();
+    await expect(expect(page.getByText('anything')).not.toBeVisible(fast)).rejects.toThrow(/could not read the page/);
+  });
+
   test('drags with a native drag and drop, over CDP', async ({ page }) => {
     await page.goto(`${origin}/`);
     await page.locator('#card').dragTo(page.locator('#bin'));

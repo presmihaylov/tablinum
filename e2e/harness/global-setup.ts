@@ -84,10 +84,7 @@ function startServer(): ChildProcess {
   });
 }
 
-/**
- * The first visitor of a fresh server claims it, so the suite does that once over the API and
- * saves the session cookie. Every spec's page starts from that file and therefore signed in.
- */
+// Claim the fresh server before tests so every isolated session uses the same admin cookie.
 async function claimServer() {
   const http = new Http({ baseURL: BASE_URL });
   const state = await http.get('/api/v1/auth/state');

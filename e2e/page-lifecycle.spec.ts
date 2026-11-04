@@ -21,12 +21,8 @@ function rowItem(page: Page, title: string): Locator {
   return sidebar(page).getByRole('treeitem').filter({ hasText: title }).last();
 }
 
-/**
- * The row actions are `display: none` until the row is hovered, and a hover is a single mouse
- * move that the harness does not repeat when it retries the click. Favourites are not optimistic,
- * so a row can still slide out from under the pointer a round trip after the click that pinned
- * it. Hover and click therefore go together, and the pair is retried as one.
- */
+// A favorite row can move after its response and hide its actions.
+// Retry hover and click together so the click follows the moved row.
 async function clickRowAction(page: Page, title: string, action: string): Promise<void> {
   const item = rowItem(page, title);
   await expect(item).toBeVisible();

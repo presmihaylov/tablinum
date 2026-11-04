@@ -24,8 +24,9 @@ async function retry(negated: boolean | undefined, timeout: number | undefined, 
     try {
       last = await check();
     } catch (err) {
-      const reason = String(err);
-      last = { pass: false, message: () => reason };
+      // A page that could not be read proves nothing either way, so the assertion fails under .not too.
+      const reason = `could not read the page: ${String(err)}`;
+      last = { pass: isNot, message: () => reason };
     }
     if (last.pass !== isNot) return last;
     if (Date.now() > deadline) return last;

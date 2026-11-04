@@ -126,9 +126,21 @@ export class BrowserContext {
     await this.wdio.setCookies(cookies.map((c) => ({ name: c.name, value: c.value, domain, path: '/' })));
   }
 
-  // One page per context: a second page in the same cookie jar has never been needed by a spec.
-  newPage(): Promise<Page> {
-    return Promise.resolve(this.page);
+  private firstPageTaken = false;
+  private readonly tabs: BrowserContext[] = [];
+
+  takeFirstPage(): Page {
+    this.firstPageTaken = true;
+    return this.page;
+  }
+
+  // WebDriver drives one window per session, so a second tab is a session of its own on these cookies.
+  async newPage(): Promise<Page> {
+    if (!this.firstPageTaken) return this.takeFirstPage();
+    const tab = await newSession({ ...this.options, cookies: await this.cookies(), viewport: this.viewport });
+    tab.takeFirstPage();
+    this.tabs.push(tab);
+    return tab.page;
   }
 
   async cookies(): Promise<BrowserCookie[]> {
@@ -172,6 +184,7 @@ export class BrowserContext {
   }
 
   async close() {
+    await Promise.all(this.tabs.map((tab) => tab.close()));
     await this.wdio.deleteSession().catch(() => undefined);
   }
 }
